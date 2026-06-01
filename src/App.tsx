@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL } from './constants'
-import { isoProject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints } from './iso'
+import { isoProject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoStampTransform } from './iso'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
@@ -510,38 +510,41 @@ export default function App() {
       const h = sz.rows * TILE_PX
       const imgEl = stampImages.get(stamp.type)!
 
-      let x: number, y: number
       if (showIso) {
         const iso = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, TILE_PX * 2, TILE_PX)
-        x = iso.x
-        y = iso.y
-      } else {
-        x = stamp.col * TILE_PX + w / 2
-        y = stamp.row * TILE_PX + h / 2
+        const t = isoStampTransform(stamp.rotation)
+        // Use a Group with no offset so skewX is applied before the translate, keeping the
+        // stamp center exactly at the iso tile center (offsetX/offsetY + skewX interact badly).
+        const group = new Konva.Group({
+          x: iso.x, y: iso.y,
+          rotation: t.rotation,
+          scaleX: t.scaleX, scaleY: t.scaleY,
+          skewX: t.skewX,
+        })
+        group.add(new Konva.Image({ image: imgEl, x: -w / 2, y: -h / 2, width: w, height: h }))
+        layer.add(group)
+        continue
       }
 
+      const x = stamp.col * TILE_PX + w / 2
+      const y = stamp.row * TILE_PX + h / 2
       const node = new Konva.Image({
         image: imgEl,
-        x,
-        y,
-        width: w,
-        height: h,
-        offsetX: w / 2,
-        offsetY: h / 2,
-        rotation: showIso ? 0 : stamp.rotation,
-        draggable: !showIso,
+        x, y,
+        width: w, height: h,
+        offsetX: w / 2, offsetY: h / 2,
+        rotation: stamp.rotation,
+        draggable: true,
       })
-      if (!showIso) {
-        node.on('mousedown', (e) => {
-          e.cancelBubble = true
-          setSelectedStampId(stamp.id)
-        })
-        node.on('dragend', () => {
-          const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - w / 2) / TILE_PX)))
-          const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - h / 2) / TILE_PX)))
-          setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, stamp.id, snappedCol, snappedRow) }))
-        })
-      }
+      node.on('mousedown', (e) => {
+        e.cancelBubble = true
+        setSelectedStampId(stamp.id)
+      })
+      node.on('dragend', () => {
+        const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - w / 2) / TILE_PX)))
+        const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - h / 2) / TILE_PX)))
+        setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, stamp.id, snappedCol, snappedRow) }))
+      })
       layer.add(node)
 
       if (!showIso && stamp.id === selectedStampId) {
@@ -686,13 +689,25 @@ export default function App() {
       } else if (shape.kind === 'image') {
         const imgEl = stampImages.get(shape.stampType as any)
         if (imgEl) {
-          offLayer.add(new Konva.Image({
-            image: imgEl,
-            x: shape.x, y: shape.y,
-            width: shape.w, height: shape.h,
-            offsetX: shape.offsetX, offsetY: shape.offsetY,
-            rotation: shape.rotation,
-          }))
+          if (shape.scaleX !== undefined) {
+            // iso mode: Group with no offset so skewX is applied before translate
+            const group = new Konva.Group({
+              x: shape.x, y: shape.y,
+              rotation: shape.rotation,
+              scaleX: shape.scaleX, scaleY: shape.scaleY,
+              skewX: shape.skewX,
+            })
+            group.add(new Konva.Image({ image: imgEl, x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h }))
+            offLayer.add(group)
+          } else {
+            offLayer.add(new Konva.Image({
+              image: imgEl,
+              x: shape.x, y: shape.y,
+              width: shape.w, height: shape.h,
+              offsetX: shape.offsetX, offsetY: shape.offsetY,
+              rotation: shape.rotation,
+            }))
+          }
         }
       }
     }
