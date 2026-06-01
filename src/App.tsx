@@ -528,7 +528,7 @@ export default function App() {
         height: h,
         offsetX: w / 2,
         offsetY: h / 2,
-        rotation: stamp.rotation,
+        rotation: showIso ? 0 : stamp.rotation,
         draggable: !showIso,
       })
       if (!showIso) {
