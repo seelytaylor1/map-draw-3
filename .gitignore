@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Runtime
+.env
+.env.local
+.env.*.local
+
+# Scratch/temp
+.scratch/
+.playwright-mcp/
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
