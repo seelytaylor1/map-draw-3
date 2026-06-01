@@ -1,6 +1,6 @@
 import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COLOR, FACE_PX, TILE_PX, WALL } from './constants'
 import { getTile } from './grid'
-import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject } from './iso'
+import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject, isoStampTransform } from './iso'
 import { stampSize, type Stamp } from './stamps'
 
 export type RectSpec = {
@@ -27,6 +27,9 @@ export type ImageSpec = {
   x: number; y: number; w: number; h: number
   offsetX: number; offsetY: number
   rotation: number
+  scaleX?: number
+  scaleY?: number
+  skewX?: number
 }
 
 export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec
@@ -197,6 +200,7 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
     const w = sz.cols * T
     const h = sz.rows * T
     const iso = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, ITW, ITH)
+    const t = isoStampTransform(stamp.rotation)
     shapes.push({
       kind: 'image',
       stampType: stamp.type,
@@ -205,7 +209,10 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
       w, h,
       offsetX: w / 2,
       offsetY: h / 2,
-      rotation: stamp.rotation,
+      rotation: t.rotation,
+      scaleX: t.scaleX,
+      scaleY: t.scaleY,
+      skewX: t.skewX,
     })
   }
 

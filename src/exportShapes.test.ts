@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildExportShapes } from './exportShapes'
 import { createGrid, paintTiles } from './grid'
 import { FLOOR, FLOOR_COLOR } from './constants'
-import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints } from './iso'
+import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject } from './iso'
 
 const ET = 60 // export tile size
 
@@ -113,5 +113,42 @@ describe('buildExportShapes – ISO mode', () => {
     const polys = shapes.filter(s => s.kind === 'polygon') as any[]
     const eastFace = polys.find(p => JSON.stringify(p.points) === JSON.stringify(isoEastFacePoints(0, 0, ITW, ITH, FACE)))
     expect(eastFace).toBeDefined()
+  })
+
+  it('ISO stamp uses natural tile size (ET×ET), not doubled width', () => {
+    const stamp = { id: 'x', type: 'star' as const, col: 1, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    expect(img).toBeDefined()
+    expect(img.w).toBe(ET)
+    expect(img.h).toBe(ET)
+  })
+
+  it('ISO stamp center position matches isoProject of tile center', () => {
+    const stamp = { id: 'x', type: 'star' as const, col: 2, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(4, 4), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    const expected = isoProject(stamp.col + 0.5, stamp.row + 0.5, ITW, ITH)
+    expect(img.x).toBe(expected.x)
+    expect(img.y).toBe(expected.y)
+  })
+
+  it('ISO stamp rotation=0 gets iso floor projection: rotation≈26.6°, scaleX, scaleY, skewX≈-0.6', () => {
+    const stamp = { id: 'x', type: 'star' as const, col: 1, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    expect(img.rotation).toBeCloseTo(Math.atan(0.5) * 180 / Math.PI, 2)
+    expect(img.scaleX).toBeCloseTo(Math.sqrt(5) / 2, 4)
+    expect(img.scaleY).toBeCloseTo(2 / Math.sqrt(5), 4)
+    expect(img.skewX).toBeCloseTo(-0.6, 4)
+  })
+
+  it('ISO stamp rotation=90 gets different iso rotation and skewX≈+0.6', () => {
+    const stamp = { id: 'x', type: 'star' as const, col: 1, row: 1, rotation: 90 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    const ISO_ANGLE = Math.atan(0.5) * 180 / Math.PI
+    expect(img.rotation).toBeCloseTo(180 - ISO_ANGLE, 2)
+    expect(img.skewX).toBeCloseTo(0.6, 4)
   })
 })
