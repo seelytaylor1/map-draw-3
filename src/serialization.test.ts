@@ -15,6 +15,7 @@ const BASE = {
 }
 
 const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90 }
+const OBJECT_STAMP: Stamp = { id: 'def', type: 'archway', col: 3, row: 4, rotation: 0 }
 
 describe('serialize', () => {
   it('produces a JSON-safe object', () => {
@@ -110,6 +111,12 @@ describe('deserialize', () => {
   it('throws on invalid stamp type', () => {
     const bad = { ...serialize(BASE), stamps: [{ ...STAMP, type: 'ghost' }] }
     expect(() => deserialize(bad)).toThrow('Invalid stamp type')
+  })
+
+  it('round-trips object stamp (archway)', () => {
+    const json = JSON.stringify(serialize({ ...BASE, stamps: [OBJECT_STAMP] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.stamps).toEqual([OBJECT_STAMP])
   })
 
   it('throws on invalid stamp rotation', () => {

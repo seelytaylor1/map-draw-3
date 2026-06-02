@@ -1,4 +1,4 @@
-import { STAMP_TYPES, type Stamp, type StampType, type Rotation } from './stamps'
+import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type ObjectStampType, type Rotation } from './stamps'
 
 export interface MapSave {
   version: 1
@@ -56,13 +56,14 @@ export function deserialize(raw: unknown): MapSave {
     if (typeof entry !== 'object' || entry === null) throw new Error('Invalid stamp entry')
     const o = entry as Record<string, unknown>
     if (typeof o['id'] !== 'string') throw new Error('Invalid stamp id')
-    if (!STAMP_TYPES.includes(o['type'] as StampType)) throw new Error('Invalid stamp type')
+    const allTypes = [...STAMP_TYPES, ...OBJECT_STAMP_TYPES]
+    if (!allTypes.includes(o['type'] as StampType | ObjectStampType)) throw new Error('Invalid stamp type')
     if (typeof o['col'] !== 'number') throw new Error('Invalid stamp col')
     if (typeof o['row'] !== 'number') throw new Error('Invalid stamp row')
     if (![0, 90, 180, 270].includes(o['rotation'] as number)) throw new Error('Invalid stamp rotation')
     return {
       id: o['id'] as string,
-      type: o['type'] as StampType,
+      type: o['type'] as StampType | ObjectStampType,
       col: o['col'] as number,
       row: o['row'] as number,
       rotation: o['rotation'] as Rotation,

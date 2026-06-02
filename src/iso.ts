@@ -5,6 +5,13 @@ export function isoProject(col: number, row: number, tileW: number, tileH: numbe
   }
 }
 
+export function isoUnproject(x: number, y: number, tileW: number, tileH: number): { col: number; row: number } {
+  return {
+    col: x / tileW + y / tileH,
+    row: -x / tileW + y / tileH,
+  }
+}
+
 export function isoFloorPoints(col: number, row: number, tileW: number, tileH: number): number[] {
   const top = isoProject(col, row, tileW, tileH)
   const right = isoProject(col + 1, row, tileW, tileH)

@@ -2,22 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL } from './constants'
-import { isoProject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoStampTransform } from './iso'
+import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoStampTransform } from './iso'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
-  addStamp, moveStamp, removeStamp, rotateStamp, stampSize,
-  STAMP_TYPES, type Stamp, type StampType,
+  addStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, stampSize,
+  type Stamp,
 } from './stamps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
-import doorUrl from './stamps/door.svg?url'
-import trapUrl from './stamps/trap.svg?url'
-import starUrl from './stamps/star.svg?url'
-import barsUrl from './stamps/bars.svg?url'
-import stairsUrl from './stamps/stairs.svg?url'
+import { StampPicker, type Mode } from './StampPicker'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -28,25 +24,8 @@ const WALL_PRESETS = [
   { label: 'Transparent', color: '#000000', opacity: 0 },
 ]
 
-const STAMP_URLS: Record<StampType, string> = {
-  door: doorUrl,
-  trap: trapUrl,
-  star: starUrl,
-  bars: barsUrl,
-  stairs: stairsUrl,
-}
-
-const STAMP_LABELS: Record<StampType, string> = {
-  door: 'Door',
-  trap: 'Trap',
-  star: 'Star',
-  bars: 'Bars',
-  stairs: 'Stairs',
-}
-
 type BrushShape = 'square' | 'circle'
 type RoughPhase = 'idle' | 'placed1' | 'placed2'
-type Mode = 'paint' | 'rough' | StampType
 
 interface Tile { col: number; row: number }
 
@@ -190,9 +169,21 @@ export default function App() {
         panLastRef.current = { x: e.evt.clientX, y: e.evt.clientY }
         return
       }
-      if (showIso) return
+      if (showIso && (mode === 'paint' || mode === 'rough')) return
       const stage = e.target.getStage()!
-      const tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
+      let tile: Tile | null
+      if (showIso) {
+        const rect = stage.container().getBoundingClientRect()
+        const scale = stage.scaleX()
+        const worldX = (e.evt.clientX - rect.left - stage.x()) / scale
+        const worldY = (e.evt.clientY - rect.top - stage.y()) / scale
+        const { col: fc, row: fr } = isoUnproject(worldX, worldY, TILE_PX * 2, TILE_PX)
+        const col = Math.floor(fc)
+        const row = Math.floor(fr)
+        tile = (col >= 0 && row >= 0 && col < cols && row < rows) ? { col, row } : null
+      } else {
+        tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
+      }
       if (!tile) return
 
       if (mode === 'rough') {
@@ -512,42 +503,52 @@ export default function App() {
 
       if (showIso) {
         const iso = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, TILE_PX * 2, TILE_PX)
-        const t = isoStampTransform(stamp.rotation)
-        // Use a Group with no offset so skewX is applied before the translate, keeping the
-        // stamp center exactly at the iso tile center (offsetX/offsetY + skewX interact badly).
-        const group = new Konva.Group({
-          x: iso.x, y: iso.y,
-          rotation: t.rotation,
-          scaleX: t.scaleX, scaleY: t.scaleY,
-          skewX: t.skewX,
-        })
-        group.add(new Konva.Image({ image: imgEl, x: -w / 2, y: -h / 2, width: w, height: h }))
-        layer.add(group)
+        if (isObjectStamp(stamp)) {
+          // Billboard: base at ISO tile center, image extends upward at natural aspect ratio
+          const billboardH = imgEl.naturalWidth > 0 ? Math.round(w * imgEl.naturalHeight / imgEl.naturalWidth) : h
+          layer.add(new Konva.Image({ image: imgEl, x: iso.x - w / 2, y: iso.y - billboardH, width: w, height: billboardH }))
+        } else {
+          const t = isoStampTransform(stamp.rotation)
+          // Use a Group with no offset so skewX is applied before the translate, keeping the
+          // stamp center exactly at the iso tile center (offsetX/offsetY + skewX interact badly).
+          const group = new Konva.Group({
+            x: iso.x, y: iso.y,
+            rotation: t.rotation,
+            scaleX: t.scaleX, scaleY: t.scaleY,
+            skewX: t.skewX,
+          })
+          group.add(new Konva.Image({ image: imgEl, x: -w / 2, y: -h / 2, width: w, height: h }))
+          layer.add(group)
+        }
         continue
       }
 
       const x = stamp.col * TILE_PX + w / 2
       const y = stamp.row * TILE_PX + h / 2
+      const isGhost = isObjectStamp(stamp)
       const node = new Konva.Image({
         image: imgEl,
         x, y,
         width: w, height: h,
         offsetX: w / 2, offsetY: h / 2,
         rotation: stamp.rotation,
-        draggable: true,
+        draggable: !isGhost,
+        opacity: isGhost ? 0.25 : 1,
       })
-      node.on('mousedown', (e) => {
-        e.cancelBubble = true
-        setSelectedStampId(stamp.id)
-      })
-      node.on('dragend', () => {
-        const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - w / 2) / TILE_PX)))
-        const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - h / 2) / TILE_PX)))
-        setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, stamp.id, snappedCol, snappedRow) }))
-      })
+      if (!isGhost) {
+        node.on('mousedown', (e) => {
+          e.cancelBubble = true
+          setSelectedStampId(stamp.id)
+        })
+        node.on('dragend', () => {
+          const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - w / 2) / TILE_PX)))
+          const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - h / 2) / TILE_PX)))
+          setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, stamp.id, snappedCol, snappedRow) }))
+        })
+      }
       layer.add(node)
 
-      if (!showIso && stamp.id === selectedStampId) {
+      if (!isGhost && stamp.id === selectedStampId) {
         layer.add(new Konva.Rect({
           x,
           y,
@@ -847,30 +848,7 @@ export default function App() {
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
         {/* ── STAMPS ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Stamps</div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {STAMP_TYPES.map(type => (
-            <button
-              key={type}
-              title={STAMP_LABELS[type]}
-              onClick={() => setMode(m => m === type ? 'paint' : type)}
-              style={{
-                width: 32, height: 32, padding: 2, cursor: 'pointer',
-                background: mode === type ? '#555' : 'transparent',
-                border: mode === type ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-                borderRadius: 4,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              <img src={STAMP_URLS[type]} alt={STAMP_LABELS[type]} style={{ width: 20, height: type === 'stairs' ? 10 : 20, imageRendering: 'crisp-edges' }} />
-            </button>
-          ))}
-        </div>
-        {mode !== 'paint' && mode !== 'rough' && (
-          <div style={{ fontSize: 11, color: '#aaa' }}>
-            Placing: {STAMP_LABELS[mode as StampType]} — click map to place
-          </div>
-        )}
+        <StampPicker mode={mode} showIso={showIso} onModeChange={setMode} />
         {selectedStampId && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <button

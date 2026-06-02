@@ -1,17 +1,27 @@
 export type StampType = 'door' | 'trap' | 'star' | 'bars' | 'stairs'
+export type ObjectStampType = 'archway'
 export type Rotation = 0 | 90 | 180 | 270
 
 export interface Stamp {
   id: string
-  type: StampType
+  type: StampType | ObjectStampType
   col: number
   row: number
   rotation: Rotation
 }
 
 export const STAMP_TYPES: StampType[] = ['door', 'trap', 'star', 'bars', 'stairs']
+export const OBJECT_STAMP_TYPES: ObjectStampType[] = ['archway']
 
-export function stampSize(type: StampType): { cols: number; rows: number } {
+export function isObjectStamp(s: Stamp): s is Stamp & { type: ObjectStampType } {
+  return (OBJECT_STAMP_TYPES as string[]).includes(s.type)
+}
+
+export function isFloorStamp(s: Stamp): s is Stamp & { type: StampType } {
+  return (STAMP_TYPES as string[]).includes(s.type)
+}
+
+export function stampSize(type: StampType | ObjectStampType): { cols: number; rows: number } {
   return type === 'stairs' ? { cols: 2, rows: 1 } : { cols: 1, rows: 1 }
 }
 

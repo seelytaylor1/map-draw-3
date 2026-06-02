@@ -1,7 +1,7 @@
 import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COLOR, FACE_PX, TILE_PX, WALL } from './constants'
 import { getTile } from './grid'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject, isoStampTransform } from './iso'
-import { stampSize, type Stamp } from './stamps'
+import { isObjectStamp, stampSize, type Stamp } from './stamps'
 
 export type RectSpec = {
   kind: 'rect'
@@ -114,6 +114,7 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
   }
 
   for (const stamp of stamps) {
+    if (isObjectStamp(stamp)) continue
     const sz = stampSize(stamp.type)
     const w = sz.cols * T
     const h = sz.rows * T
@@ -200,20 +201,33 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
     const w = sz.cols * T
     const h = sz.rows * T
     const iso = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, ITW, ITH)
-    const t = isoStampTransform(stamp.rotation)
-    shapes.push({
-      kind: 'image',
-      stampType: stamp.type,
-      x: iso.x,
-      y: iso.y,
-      w, h,
-      offsetX: w / 2,
-      offsetY: h / 2,
-      rotation: t.rotation,
-      scaleX: t.scaleX,
-      scaleY: t.scaleY,
-      skewX: t.skewX,
-    })
+    if (isObjectStamp(stamp)) {
+      shapes.push({
+        kind: 'image',
+        stampType: stamp.type,
+        x: iso.x,
+        y: iso.y,
+        w, h,
+        offsetX: w / 2,
+        offsetY: h,
+        rotation: 0,
+      })
+    } else {
+      const t = isoStampTransform(stamp.rotation)
+      shapes.push({
+        kind: 'image',
+        stampType: stamp.type,
+        x: iso.x,
+        y: iso.y,
+        w, h,
+        offsetX: w / 2,
+        offsetY: h / 2,
+        rotation: t.rotation,
+        scaleX: t.scaleX,
+        scaleY: t.scaleY,
+        skewX: t.skewX,
+      })
+    }
   }
 
   return { canvasW, canvasH, offsetX, shapes }

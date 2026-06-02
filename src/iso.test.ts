@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isoProject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints } from './iso'
+import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints } from './iso'
 
 describe('isoProject', () => {
   it('origin stays at origin', () => {
@@ -83,6 +83,43 @@ describe('isoFrontFacePoints', () => {
     const face10 = isoFrontFacePoints(1, 0, 32, 32, 8)
     // face00 top-right corner = isoProject(1,1) = face10 top-left corner = isoProject(1,1)
     expect([face00[2], face00[3]]).toEqual([face10[0], face10[1]])
+  })
+})
+
+describe('isoUnproject', () => {
+  it('inverts isoProject at origin', () => {
+    const { x, y } = isoProject(0, 0, 32, 32)
+    const result = isoUnproject(x, y, 32, 32)
+    expect(result.col).toBeCloseTo(0)
+    expect(result.row).toBeCloseTo(0)
+  })
+
+  it('inverts isoProject for arbitrary col/row', () => {
+    const { x, y } = isoProject(3, 2, 32, 32)
+    const result = isoUnproject(x, y, 32, 32)
+    expect(result.col).toBeCloseTo(3)
+    expect(result.row).toBeCloseTo(2)
+  })
+
+  it('inverts isoProject with non-square tile dimensions (TILE_PX=32: tileW=64, tileH=32)', () => {
+    const tileW = 64
+    const tileH = 32
+    const { x, y } = isoProject(5, 1, tileW, tileH)
+    const result = isoUnproject(x, y, tileW, tileH)
+    expect(result.col).toBeCloseTo(5)
+    expect(result.row).toBeCloseTo(1)
+  })
+
+  it('returns fractional coords for points between tile centers', () => {
+    const tileW = 64
+    const tileH = 32
+    const { x: x0, y: y0 } = isoProject(1, 0, tileW, tileH)
+    const { x: x1, y: y1 } = isoProject(2, 0, tileW, tileH)
+    const midX = (x0 + x1) / 2
+    const midY = (y0 + y1) / 2
+    const result = isoUnproject(midX, midY, tileW, tileH)
+    expect(result.col).toBeCloseTo(1.5)
+    expect(result.row).toBeCloseTo(0)
   })
 })
 

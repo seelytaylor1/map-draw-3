@@ -152,3 +152,56 @@ describe('buildExportShapes – ISO mode', () => {
     expect(img.skewX).toBeCloseTo(0.6, 4)
   })
 })
+
+// ── Object stamp export behaviour ─────────────────────────────────────────────
+
+describe('buildExportShapes – object stamps', () => {
+  const ITW = ET * 2
+  const ITH = ET
+
+  it('flat export: object stamp (archway) produces no image shapes', () => {
+    const stamp = { id: 'a', type: 'archway' as const, col: 1, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), stamps: [stamp] })
+    const imgs = shapes.filter(s => s.kind === 'image')
+    expect(imgs).toHaveLength(0)
+  })
+
+  it('flat export: floor stamp (star) still appears when mixed with object stamp', () => {
+    const stamps = [
+      { id: 'a', type: 'archway' as const, col: 0, row: 0, rotation: 0 as const },
+      { id: 's', type: 'star' as const, col: 1, row: 1, rotation: 0 as const },
+    ]
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), stamps })
+    const imgs = shapes.filter(s => s.kind === 'image')
+    expect(imgs).toHaveLength(1)
+    expect((imgs[0] as any).stampType).toBe('star')
+  })
+
+  it('ISO export: object stamp appears as an image shape', () => {
+    const stamp = { id: 'a', type: 'archway' as const, col: 1, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
+    const imgs = shapes.filter(s => s.kind === 'image')
+    expect(imgs).toHaveLength(1)
+    expect((imgs[0] as any).stampType).toBe('archway')
+  })
+
+  it('ISO export: object stamp is billboard — no scaleX, no skewX, rotation=0', () => {
+    const stamp = { id: 'a', type: 'archway' as const, col: 1, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    expect(img.rotation).toBe(0)
+    expect(img.scaleX).toBeUndefined()
+    expect(img.skewX).toBeUndefined()
+  })
+
+  it('ISO export: object stamp base anchored at tile floor center', () => {
+    const stamp = { id: 'a', type: 'archway' as const, col: 2, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(4, 4), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    const floor = isoProject(stamp.col + 0.5, stamp.row + 0.5, ITW, ITH)
+    expect(img.x).toBe(floor.x)
+    expect(img.y).toBe(floor.y)
+    expect(img.offsetX).toBe(img.w / 2)
+    expect(img.offsetY).toBe(img.h)
+  })
+})

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addStamp, moveStamp, removeStamp, rotateStamp, stampSize, type Stamp } from './stamps'
+import { addStamp, isFloorStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, stampSize, type Stamp } from './stamps'
 
 const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   id: 'a',
@@ -19,6 +19,10 @@ describe('stampSize', () => {
 
   it('returns 2×1 for stairs', () => {
     expect(stampSize('stairs')).toEqual({ cols: 2, rows: 1 })
+  })
+
+  it('returns 1×1 for archway', () => {
+    expect(stampSize('archway')).toEqual({ cols: 1, rows: 1 })
   })
 })
 
@@ -104,5 +108,25 @@ describe('moveStamp', () => {
     const list = [stamp({ id: 'a', col: 2, row: 3 })]
     moveStamp(list, 'a', 5, 7)
     expect(list[0].col).toBe(2)
+  })
+})
+
+describe('isObjectStamp', () => {
+  it('returns true for archway', () => {
+    expect(isObjectStamp(stamp({ type: 'archway' } as any))).toBe(true)
+  })
+
+  it('returns false for floor stamp types', () => {
+    expect(isObjectStamp(stamp({ type: 'door' }))).toBe(false)
+  })
+})
+
+describe('isFloorStamp', () => {
+  it('returns true for floor stamp types', () => {
+    expect(isFloorStamp(stamp({ type: 'door' }))).toBe(true)
+  })
+
+  it('returns false for archway', () => {
+    expect(isFloorStamp(stamp({ type: 'archway' } as any))).toBe(false)
   })
 })
