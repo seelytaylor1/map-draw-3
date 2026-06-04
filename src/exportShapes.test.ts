@@ -267,4 +267,11 @@ describe('buildExportShapes – stamp mirrored', () => {
     const mirroredImg = mirroredShapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec
     expect(mirroredImg.scaleX).toBe(-(normalImg.scaleX!))
   })
+
+  it('iso billboard mirrored stamp has mirrored: true in image spec', () => {
+    const stamp: Stamp = { id: 'a', type: 'archway', col: 0, row: 0, rotation: 0, mirrored: true }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec | undefined
+    expect(img?.mirrored).toBe(true)
+  })
 })
