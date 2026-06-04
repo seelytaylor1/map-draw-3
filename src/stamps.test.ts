@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addStamp, isFloorStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
+import { addStamp, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
 
 const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   id: 'a',
@@ -133,6 +133,37 @@ describe('scaleStamp', () => {
     const list = [stamp({ id: 'a' })]
     scaleStamp(list, 'a', 2)
     expect(list[0].scale).toBeUndefined()
+  })
+})
+
+describe('mirrorStamp', () => {
+  it('sets mirrored to true on an un-mirrored stamp', () => {
+    const list = [stamp({ id: 'a' })]
+    const result = mirrorStamp(list, 'a')
+    expect(result[0].mirrored).toBe(true)
+  })
+
+  it('toggles mirrored back to false when already true', () => {
+    const list = [stamp({ id: 'a', mirrored: true })]
+    const result = mirrorStamp(list, 'a')
+    expect(result[0].mirrored).toBe(false)
+  })
+
+  it('leaves other stamps unchanged', () => {
+    const list = [stamp({ id: 'a' }), stamp({ id: 'b' })]
+    const result = mirrorStamp(list, 'a')
+    expect(result[1].mirrored).toBeUndefined()
+  })
+
+  it('is a no-op for unknown id', () => {
+    const list = [stamp({ id: 'a' })]
+    expect(mirrorStamp(list, 'z')).toEqual(list)
+  })
+
+  it('does not mutate the original array', () => {
+    const list = [stamp({ id: 'a' })]
+    mirrorStamp(list, 'a')
+    expect(list[0].mirrored).toBeUndefined()
   })
 })
 

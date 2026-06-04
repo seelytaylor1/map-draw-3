@@ -19,6 +19,7 @@ export interface Stamp {
   row: number
   rotation: Rotation
   scale?: number
+  mirrored?: boolean
 }
 
 export const STAMP_TYPES: StampType[] = ['door', 'trap', 'star', 'bars', 'stairs']
@@ -68,4 +69,8 @@ export function moveStamp(stamps: Stamp[], id: string, col: number, row: number)
 
 export function scaleStamp(stamps: Stamp[], id: string, scale: number): Stamp[] {
   return stamps.map(s => s.id === id ? { ...s, scale } : s)
+}
+
+export function mirrorStamp(stamps: Stamp[], id: string): Stamp[] {
+  return stamps.map(s => s.id === id ? { ...s, mirrored: !s.mirrored } : s)
 }
