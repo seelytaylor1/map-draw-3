@@ -30,6 +30,7 @@ export type ImageSpec = {
   scaleX?: number
   scaleY?: number
   skewX?: number
+  mirrored?: boolean
 }
 
 export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec
@@ -128,6 +129,7 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
       offsetX: w / 2,
       offsetY: h / 2,
       rotation: stamp.rotation,
+      mirrored: stamp.mirrored,
     })
   }
 
@@ -215,6 +217,7 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
         offsetX: sz.cols * T * sc,
         offsetY: h,
         rotation: 0,
+        mirrored: stamp.mirrored,
       })
     } else {
       const t = isoStampTransform(stamp.rotation)
@@ -227,7 +230,7 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
         offsetX: w / 2,
         offsetY: h / 2,
         rotation: t.rotation,
-        scaleX: t.scaleX,
+        scaleX: stamp.mirrored ? -t.scaleX : t.scaleX,
         scaleY: t.scaleY,
         skewX: t.skewX,
       })

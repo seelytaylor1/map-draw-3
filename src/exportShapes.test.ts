@@ -3,6 +3,7 @@ import { buildExportShapes } from './exportShapes'
 import { createGrid, paintTiles } from './grid'
 import { FLOOR, FLOOR_COLOR } from './constants'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject } from './iso'
+import { type Stamp } from './stamps'
 
 const ET = 60 // export tile size
 
@@ -237,5 +238,33 @@ describe('buildExportShapes – stamp scale', () => {
     const img = shapes.find(s => s.kind === 'image') as any
     expect(img.w).toBe(ET)
     expect(img.h).toBe(ET)
+  })
+})
+
+// ── Stamp mirrored ────────────────────────────────────────────────────────────
+
+describe('buildExportShapes – stamp mirrored', () => {
+  it('top-down mirrored stamp has mirrored: true in image spec', () => {
+    const stamp: Stamp = { id: 'a', type: 'door', col: 0, row: 0, rotation: 0, mirrored: true }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec | undefined
+    expect(img?.mirrored).toBe(true)
+  })
+
+  it('top-down un-mirrored stamp has mirrored falsy', () => {
+    const stamp: Stamp = { id: 'a', type: 'door', col: 0, row: 0, rotation: 0 }
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3), stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec | undefined
+    expect(img?.mirrored).toBeFalsy()
+  })
+
+  it('iso floor mirrored stamp has negated scaleX vs un-mirrored', () => {
+    const base: Stamp = { id: 'a', type: 'door', col: 0, row: 0, rotation: 0 }
+    const mirrored: Stamp = { ...base, mirrored: true }
+    const normalShapes = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [base] }).shapes
+    const mirroredShapes = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [mirrored] }).shapes
+    const normalImg = normalShapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec
+    const mirroredImg = mirroredShapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec
+    expect(mirroredImg.scaleX).toBe(-(normalImg.scaleX!))
   })
 })
