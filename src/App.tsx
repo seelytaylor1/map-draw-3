@@ -7,7 +7,7 @@ import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTile
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
-  addStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
+  addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
 import { useStampImages } from './hooks/useStampImages'
@@ -121,6 +121,10 @@ export default function App() {
       }
       if ((e.key === 'r' || e.key === 'R') && selectedStampId) {
         setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, selectedStampId) }))
+        return
+      }
+      if ((e.key === 'e' || e.key === 'E') && selectedStampId) {
+        setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))
         return
       }
       if (e.key === 'Escape') {
@@ -797,6 +801,7 @@ export default function App() {
               width: shape.w, height: shape.h,
               offsetX: shape.offsetX, offsetY: shape.offsetY,
               rotation: shape.rotation,
+              scaleX: shape.mirrored ? -1 : 1,
             }))
           }
         }
@@ -955,6 +960,16 @@ export default function App() {
               >
                 ↻ Rotate
               </button>
+              <button
+                onClick={() => setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))}
+                style={{
+                  padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                  background: 'transparent', color: '#eee',
+                  border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+                }}
+              >
+                ⇔ Mirror
+              </button>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <label style={{ width: 36, color: '#aaa', fontSize: 11 }}>Scale</label>
                 <input
@@ -968,7 +983,7 @@ export default function App() {
                 <span style={{ color: '#aaa', fontSize: 11, width: 28, textAlign: 'right' }}>{currentScale}×</span>
               </div>
               <div style={{ fontSize: 11, color: '#aaa' }}>
-                R: rotate · Del: delete · Esc: deselect
+                R: rotate · E: mirror · Del: delete · Esc: deselect
               </div>
             </div>
           )
