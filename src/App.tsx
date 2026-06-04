@@ -548,6 +548,7 @@ export default function App() {
             width: bw, height: billboardH,
             offsetX: bw / 2, offsetY: billboardH / 2,
             rotation: stamp.rotation,
+            scaleX: stamp.mirrored ? -1 : 1,
           })
           imgNode.on('mousedown', (e) => {
             e.cancelBubble = true
@@ -577,7 +578,8 @@ export default function App() {
           const group = new Konva.Group({
             x: isoCenter.x, y: isoCenter.y,
             rotation: t.rotation,
-            scaleX: t.scaleX, scaleY: t.scaleY,
+            scaleX: stamp.mirrored ? -t.scaleX : t.scaleX,
+            scaleY: t.scaleY,
             skewX: t.skewX,
           })
           group.add(new Konva.Image({ image: imgEl, x: -effectiveW / 2, y: -effectiveH / 2, width: effectiveW, height: effectiveH }))
@@ -614,6 +616,7 @@ export default function App() {
         width: effectiveW, height: effectiveH,
         offsetX: effectiveW / 2, offsetY: effectiveH / 2,
         rotation: stamp.rotation,
+        scaleX: stamp.mirrored ? -1 : 1,
         draggable: !isGhost,
         opacity: isGhost ? 0.25 : 1,
       })
