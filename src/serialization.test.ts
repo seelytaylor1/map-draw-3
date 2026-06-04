@@ -124,3 +124,42 @@ describe('deserialize', () => {
     expect(() => deserialize(bad)).toThrow('Invalid stamp rotation')
   })
 })
+
+describe('scale field', () => {
+  it('serialize omits scale when it equals 1', () => {
+    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 1 }
+    const save = serialize({ ...BASE, stamps: [scaledStamp] })
+    expect(save.stamps[0]).not.toHaveProperty('scale')
+  })
+
+  it('serialize includes scale when not 1', () => {
+    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 2.5 }
+    const save = serialize({ ...BASE, stamps: [scaledStamp] })
+    expect(save.stamps[0].scale).toBe(2.5)
+  })
+
+  it('deserialize defaults scale to undefined when field is missing', () => {
+    const raw = { ...serialize(BASE), stamps: [{ id: 'abc', type: 'door', col: 1, row: 2, rotation: 0 }] }
+    const restored = deserialize(raw)
+    expect(restored.stamps[0].scale).toBeUndefined()
+  })
+
+  it('deserialize round-trips scale: 2', () => {
+    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 2 }
+    const json = JSON.stringify(serialize({ ...BASE, stamps: [scaledStamp] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.stamps[0].scale).toBe(2)
+  })
+
+  it('deserialize ignores invalid scale (non-finite) and omits it', () => {
+    const raw = { ...serialize(BASE), stamps: [{ id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: Infinity }] }
+    const restored = deserialize(raw)
+    expect(restored.stamps[0].scale).toBeUndefined()
+  })
+
+  it('deserialize ignores invalid scale (zero) and omits it', () => {
+    const raw = { ...serialize(BASE), stamps: [{ id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 0 }] }
+    const restored = deserialize(raw)
+    expect(restored.stamps[0].scale).toBeUndefined()
+  })
+})

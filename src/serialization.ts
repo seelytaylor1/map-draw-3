@@ -34,7 +34,13 @@ export function serialize(params: {
     brushShape: params.brushShape,
     showGrid: params.showGrid,
     show3D: params.show3D,
-    stamps: params.stamps,
+    stamps: params.stamps.map(s => {
+      if (s.scale === undefined || s.scale === 1) {
+        const { scale: _, ...rest } = s
+        return rest as Stamp
+      }
+      return s
+    }),
   }
 }
 
@@ -61,13 +67,20 @@ export function deserialize(raw: unknown): MapSave {
     if (typeof o['col'] !== 'number') throw new Error('Invalid stamp col')
     if (typeof o['row'] !== 'number') throw new Error('Invalid stamp row')
     if (![0, 90, 180, 270].includes(o['rotation'] as number)) throw new Error('Invalid stamp rotation')
-    return {
+    const rawScale = o['scale']
+    const scale = typeof rawScale === 'number' && Number.isFinite(rawScale) && rawScale > 0
+      ? rawScale
+      : undefined
+
+    const stamp: Stamp = {
       id: o['id'] as string,
       type: o['type'] as StampType | ObjectStampType,
       col: o['col'] as number,
       row: o['row'] as number,
       rotation: o['rotation'] as Rotation,
     }
+    if (scale !== undefined && scale !== 1) stamp.scale = scale
+    return stamp
   })
 
   return {
