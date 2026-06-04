@@ -163,3 +163,31 @@ describe('scale field', () => {
     expect(restored.stamps[0].scale).toBeUndefined()
   })
 })
+
+describe('stamp mirrored field', () => {
+  it('serialize strips mirrored when false', () => {
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, mirrored: false }
+    const save = serialize({ ...BASE, stamps: [s] })
+    expect(save.stamps[0]).not.toHaveProperty('mirrored')
+  })
+
+  it('serialize preserves mirrored: true', () => {
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, mirrored: true }
+    const save = serialize({ ...BASE, stamps: [s] })
+    expect(save.stamps[0].mirrored).toBe(true)
+  })
+
+  it('deserialize round-trips mirrored: true', () => {
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, mirrored: true }
+    const json = JSON.stringify(serialize({ ...BASE, stamps: [s] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.stamps[0].mirrored).toBe(true)
+  })
+
+  it('deserialize treats missing mirrored as undefined', () => {
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0 }
+    const json = JSON.stringify(serialize({ ...BASE, stamps: [s] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.stamps[0].mirrored).toBeUndefined()
+  })
+})

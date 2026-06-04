@@ -35,11 +35,11 @@ export function serialize(params: {
     showGrid: params.showGrid,
     show3D: params.show3D,
     stamps: params.stamps.map(s => {
-      if (s.scale === undefined || s.scale === 1) {
-        const { scale: _, ...rest } = s
-        return rest as Stamp
-      }
-      return s
+      const { scale, mirrored, ...rest } = s
+      const out: Partial<Stamp> = { ...rest }
+      if (scale !== undefined && scale !== 1) out.scale = scale
+      if (mirrored) out.mirrored = mirrored
+      return out as Stamp
     }),
   }
 }
@@ -80,6 +80,7 @@ export function deserialize(raw: unknown): MapSave {
       rotation: o['rotation'] as Rotation,
     }
     if (scale !== undefined && scale !== 1) stamp.scale = scale
+    if (o['mirrored'] === true) stamp.mirrored = true
     return stamp
   })
 
