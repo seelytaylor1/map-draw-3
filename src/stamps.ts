@@ -1,5 +1,15 @@
 export type StampType = 'door' | 'trap' | 'star' | 'bars' | 'stairs'
-export type ObjectStampType = 'archway'
+export type ObjectStampType =
+  | 'archway'
+  | 'bigpillar'
+  | 'iron-door'
+  | 'passageway-arch'
+  | 'pillar'
+  | 'portculis'
+  | 'ramp'
+  | 'well'
+  | 'wood-door'
+  | 'wood-doubledoor'
 export type Rotation = 0 | 90 | 180 | 270
 
 export interface Stamp {
@@ -8,10 +18,22 @@ export interface Stamp {
   col: number
   row: number
   rotation: Rotation
+  scale?: number
 }
 
 export const STAMP_TYPES: StampType[] = ['door', 'trap', 'star', 'bars', 'stairs']
-export const OBJECT_STAMP_TYPES: ObjectStampType[] = ['archway']
+export const OBJECT_STAMP_TYPES: ObjectStampType[] = [
+  'archway',
+  'bigpillar',
+  'iron-door',
+  'passageway-arch',
+  'pillar',
+  'portculis',
+  'ramp',
+  'well',
+  'wood-door',
+  'wood-doubledoor',
+]
 
 export function isObjectStamp(s: Stamp): s is Stamp & { type: ObjectStampType } {
   return (OBJECT_STAMP_TYPES as string[]).includes(s.type)
@@ -22,7 +44,8 @@ export function isFloorStamp(s: Stamp): s is Stamp & { type: StampType } {
 }
 
 export function stampSize(type: StampType | ObjectStampType): { cols: number; rows: number } {
-  return type === 'stairs' ? { cols: 2, rows: 1 } : { cols: 1, rows: 1 }
+  if (type === 'stairs' || type === 'wood-doubledoor') return { cols: 2, rows: 1 }
+  return { cols: 1, rows: 1 }
 }
 
 export function addStamp(stamps: Stamp[], stamp: Stamp): Stamp[] {
@@ -41,4 +64,8 @@ export function rotateStamp(stamps: Stamp[], id: string): Stamp[] {
 
 export function moveStamp(stamps: Stamp[], id: string, col: number, row: number): Stamp[] {
   return stamps.map(s => s.id === id ? { ...s, col, row } : s)
+}
+
+export function scaleStamp(stamps: Stamp[], id: string, scale: number): Stamp[] {
+  return stamps.map(s => s.id === id ? { ...s, scale } : s)
 }

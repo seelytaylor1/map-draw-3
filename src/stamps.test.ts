@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addStamp, isFloorStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, stampSize, type Stamp } from './stamps'
+import { addStamp, isFloorStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
 
 const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   id: 'a',
@@ -108,6 +108,31 @@ describe('moveStamp', () => {
     const list = [stamp({ id: 'a', col: 2, row: 3 })]
     moveStamp(list, 'a', 5, 7)
     expect(list[0].col).toBe(2)
+  })
+})
+
+describe('scaleStamp', () => {
+  it('sets scale on the target stamp', () => {
+    const list = [stamp({ id: 'a' })]
+    const result = scaleStamp(list, 'a', 2)
+    expect(result[0].scale).toBe(2)
+  })
+
+  it('leaves other stamps unchanged', () => {
+    const list = [stamp({ id: 'a' }), stamp({ id: 'b' })]
+    const result = scaleStamp(list, 'a', 2)
+    expect(result[1].scale).toBeUndefined()
+  })
+
+  it('is a no-op for unknown id', () => {
+    const list = [stamp({ id: 'a' })]
+    expect(scaleStamp(list, 'z', 2)).toEqual(list)
+  })
+
+  it('does not mutate the original array', () => {
+    const list = [stamp({ id: 'a' })]
+    scaleStamp(list, 'a', 2)
+    expect(list[0].scale).toBeUndefined()
   })
 })
 
