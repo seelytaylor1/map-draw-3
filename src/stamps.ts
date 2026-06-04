@@ -72,5 +72,9 @@ export function scaleStamp(stamps: Stamp[], id: string, scale: number): Stamp[] 
 }
 
 export function mirrorStamp(stamps: Stamp[], id: string): Stamp[] {
-  return stamps.map(s => s.id === id ? { ...s, mirrored: !s.mirrored } : s)
+  return stamps.map(s => {
+    if (s.id !== id) return s
+    const { mirrored: _, ...rest } = s
+    return s.mirrored ? rest : { ...rest, mirrored: true }
+  })
 }

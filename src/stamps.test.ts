@@ -143,10 +143,10 @@ describe('mirrorStamp', () => {
     expect(result[0].mirrored).toBe(true)
   })
 
-  it('toggles mirrored back to false when already true', () => {
+  it('toggles mirrored back to undefined when already true', () => {
     const list = [stamp({ id: 'a', mirrored: true })]
     const result = mirrorStamp(list, 'a')
-    expect(result[0].mirrored).toBe(false)
+    expect(result[0].mirrored).toBeUndefined()
   })
 
   it('leaves other stamps unchanged', () => {
