@@ -7,7 +7,7 @@ import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTile
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
-  addStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, stampSize,
+  addStamp, isObjectStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
 import { useStampImages } from './hooks/useStampImages'
@@ -93,6 +93,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const stageRef = useRef<Konva.Stage>(null)
+  const pendingFitRef = useRef(false)
   const layerRef = useRef<Konva.Layer>(null)
   const stampLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
@@ -361,6 +362,36 @@ export default function App() {
     stage.position(newPos)
   }, [])
 
+  const fitView = useCallback(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const pad = 60
+    const availW = size.w - pad * 2
+    const availH = size.h - pad * 2
+    const contentW = showIso ? (cols + rows) * TILE_PX : cols * TILE_PX
+    const contentH = showIso ? (cols + rows) * TILE_PX / 2 : rows * TILE_PX
+    const originX = showIso ? -rows * TILE_PX : 0
+    const scale = Math.min(availW / contentW, availH / contentH, 8)
+    stage.scale({ x: scale, y: scale })
+    stage.position({
+      x: (size.w - contentW * scale) / 2 - originX * scale,
+      y: (size.h - contentH * scale) / 2,
+    })
+  }, [cols, rows, showIso, size])
+
+  useEffect(() => {
+    if (pendingFitRef.current) { pendingFitRef.current = false; fitView() }
+  }, [cols, rows, fitView])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'f' || e.key === 'F') fitView()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fitView])
+
   const ghostTiles: Tile[] = areaStart && areaEnd && areaPhase === 'selecting'
     ? getAreaTiles(areaStart, areaEnd, brushShape)
     : []
@@ -502,35 +533,86 @@ export default function App() {
       const imgEl = stampImages.get(stamp.type)!
 
       if (showIso) {
-        const iso = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, TILE_PX * 2, TILE_PX)
+        const isoCenter = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, TILE_PX * 2, TILE_PX)
+        const isoBottom = isoProject(stamp.col + sz.cols, stamp.row + sz.rows, TILE_PX * 2, TILE_PX)
         if (isObjectStamp(stamp)) {
-          // Billboard: base at ISO tile center, image extends upward at natural aspect ratio
-          const billboardH = imgEl.naturalWidth > 0 ? Math.round(w * imgEl.naturalHeight / imgEl.naturalWidth) : h
-          layer.add(new Konva.Image({ image: imgEl, x: iso.x - w / 2, y: iso.y - billboardH, width: w, height: billboardH }))
+          // Billboard: base anchored at tile bottom corner so the object sits on the floor.
+          const sc = stamp.scale ?? 1
+          const bw = sz.cols * TILE_PX * 2 * sc
+          const billboardH = imgEl.naturalWidth > 0 ? Math.round(bw * imgEl.naturalHeight / imgEl.naturalWidth) : h * sc
+          const pivotX = isoCenter.x
+          const pivotY = isoBottom.y - billboardH / 2
+          const imgNode = new Konva.Image({
+            image: imgEl,
+            x: pivotX, y: pivotY,
+            width: bw, height: billboardH,
+            offsetX: bw / 2, offsetY: billboardH / 2,
+            rotation: stamp.rotation,
+          })
+          imgNode.on('mousedown', (e) => {
+            e.cancelBubble = true
+            if (e.evt.button === 2 && stamp.id === selectedStampId) {
+              setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
+              setSelectedStampId(null)
+            } else {
+              setSelectedStampId(stamp.id)
+            }
+          })
+          layer.add(imgNode)
+          if (stamp.id === selectedStampId) {
+            layer.add(new Konva.Rect({
+              x: pivotX, y: pivotY,
+              width: bw + 2, height: billboardH + 2,
+              offsetX: (bw + 2) / 2, offsetY: (billboardH + 2) / 2,
+              rotation: stamp.rotation,
+              stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+            }))
+          }
         } else {
+          const sc = stamp.scale ?? 1
+          const effectiveW = w * sc
+          const effectiveH = h * sc
           const t = isoStampTransform(stamp.rotation)
-          // Use a Group with no offset so skewX is applied before the translate, keeping the
-          // stamp center exactly at the iso tile center (offsetX/offsetY + skewX interact badly).
+          // Group positioned at tile iso center; skewX is applied before the translate.
           const group = new Konva.Group({
-            x: iso.x, y: iso.y,
+            x: isoCenter.x, y: isoCenter.y,
             rotation: t.rotation,
             scaleX: t.scaleX, scaleY: t.scaleY,
             skewX: t.skewX,
           })
-          group.add(new Konva.Image({ image: imgEl, x: -w / 2, y: -h / 2, width: w, height: h }))
+          group.add(new Konva.Image({ image: imgEl, x: -effectiveW / 2, y: -effectiveH / 2, width: effectiveW, height: effectiveH }))
+          group.on('mousedown', (e) => {
+            e.cancelBubble = true
+            if (e.evt.button === 2 && stamp.id === selectedStampId) {
+              setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
+              setSelectedStampId(null)
+            } else {
+              setSelectedStampId(stamp.id)
+            }
+          })
+          if (stamp.id === selectedStampId) {
+            group.add(new Konva.Rect({
+              x: -effectiveW / 2 - 1, y: -effectiveH / 2 - 1,
+              width: effectiveW + 2, height: effectiveH + 2,
+              stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+            }))
+          }
           layer.add(group)
         }
         continue
       }
 
+      const sc = stamp.scale ?? 1
+      const effectiveW = w * sc
+      const effectiveH = h * sc
       const x = stamp.col * TILE_PX + w / 2
       const y = stamp.row * TILE_PX + h / 2
       const isGhost = isObjectStamp(stamp)
       const node = new Konva.Image({
         image: imgEl,
         x, y,
-        width: w, height: h,
-        offsetX: w / 2, offsetY: h / 2,
+        width: effectiveW, height: effectiveH,
+        offsetX: effectiveW / 2, offsetY: effectiveH / 2,
         rotation: stamp.rotation,
         draggable: !isGhost,
         opacity: isGhost ? 0.25 : 1,
@@ -538,11 +620,16 @@ export default function App() {
       if (!isGhost) {
         node.on('mousedown', (e) => {
           e.cancelBubble = true
-          setSelectedStampId(stamp.id)
+          if (e.evt.button === 2 && stamp.id === selectedStampId) {
+            setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
+            setSelectedStampId(null)
+          } else {
+            setSelectedStampId(stamp.id)
+          }
         })
         node.on('dragend', () => {
-          const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - w / 2) / TILE_PX)))
-          const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - h / 2) / TILE_PX)))
+          const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - effectiveW / 2) / TILE_PX)))
+          const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - effectiveH / 2) / TILE_PX)))
           setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, stamp.id, snappedCol, snappedRow) }))
         })
       }
@@ -552,10 +639,10 @@ export default function App() {
         layer.add(new Konva.Rect({
           x,
           y,
-          width: w + 2,
-          height: h + 2,
-          offsetX: (w + 2) / 2,
-          offsetY: (h + 2) / 2,
+          width: effectiveW + 2,
+          height: effectiveH + 2,
+          offsetX: (effectiveW + 2) / 2,
+          offsetY: (effectiveH + 2) / 2,
           rotation: stamp.rotation,
           stroke: '#ffff00',
           strokeWidth: 2,
@@ -753,6 +840,7 @@ export default function App() {
       setShow3D(save.show3D)
       setSelectedStampId(null)
       setLoadError(null)
+      pendingFitRef.current = true
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load file')
     }
@@ -849,23 +937,39 @@ export default function App() {
 
         {/* ── STAMPS ── */}
         <StampPicker mode={mode} showIso={showIso} onModeChange={setMode} />
-        {selectedStampId && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button
-              onClick={() => setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, selectedStampId) }))}
-              style={{
-                padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: 'transparent', color: '#eee',
-                border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-              }}
-            >
-              ↻ Rotate
-            </button>
-            <div style={{ fontSize: 11, color: '#aaa' }}>
-              R: rotate · Del: delete · Esc: deselect
+        {selectedStampId && (() => {
+          const sel = stamps.find(s => s.id === selectedStampId)
+          const currentScale = sel?.scale ?? 1
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <button
+                onClick={() => setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, selectedStampId) }))}
+                style={{
+                  padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                  background: 'transparent', color: '#eee',
+                  border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+                }}
+              >
+                ↻ Rotate
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <label style={{ width: 36, color: '#aaa', fontSize: 11 }}>Scale</label>
+                <input
+                  type="range" min={0.5} max={4} step={0.25} value={currentScale}
+                  onChange={e => {
+                    const v = Number(e.target.value)
+                    setHistory(h => push(h, { ...h.present, stamps: scaleStamp(h.present.stamps, selectedStampId, v) }))
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ color: '#aaa', fontSize: 11, width: 28, textAlign: 'right' }}>{currentScale}×</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#aaa' }}>
+                R: rotate · Del: delete · Esc: deselect
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
@@ -1037,7 +1141,7 @@ export default function App() {
         onMouseLeave={() => setHoverTile(null)}
         onWheel={handleWheel}
         onContextMenu={e => e.evt.preventDefault()}
-        style={{ cursor: showIso ? 'not-allowed' : mode === 'paint' ? 'crosshair' : 'cell' }}
+        style={{ cursor: showIso && (mode === 'paint' || mode === 'rough') ? 'not-allowed' : mode === 'paint' ? 'crosshair' : 'cell' }}
       >
         <Layer ref={layerRef} />
         <Layer ref={stampLayerRef} />
