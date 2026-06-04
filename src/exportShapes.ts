@@ -116,13 +116,14 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
   for (const stamp of stamps) {
     if (isObjectStamp(stamp)) continue
     const sz = stampSize(stamp.type)
-    const w = sz.cols * T
-    const h = sz.rows * T
+    const sc = stamp.scale ?? 1
+    const w = sz.cols * T * sc
+    const h = sz.rows * T * sc
     shapes.push({
       kind: 'image',
       stampType: stamp.type,
-      x: stamp.col * T + w / 2,
-      y: stamp.row * T + h / 2,
+      x: stamp.col * T + sz.cols * T / 2,
+      y: stamp.row * T + sz.rows * T / 2,
       w, h,
       offsetX: w / 2,
       offsetY: h / 2,
@@ -198,17 +199,20 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
 
   for (const stamp of stamps) {
     const sz = stampSize(stamp.type)
-    const w = sz.cols * T
-    const h = sz.rows * T
-    const iso = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, ITW, ITH)
+    const sc = stamp.scale ?? 1
+    const w = sz.cols * T * sc
+    const h = sz.rows * T * sc
+    const isoCenter = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, ITW, ITH)
+    const isoBottom = isoProject(stamp.col + sz.cols, stamp.row + sz.rows, ITW, ITH)
     if (isObjectStamp(stamp)) {
       shapes.push({
         kind: 'image',
         stampType: stamp.type,
-        x: iso.x,
-        y: iso.y,
-        w, h,
-        offsetX: w / 2,
+        x: isoCenter.x,
+        y: isoBottom.y,
+        w: sz.cols * T * 2 * sc,
+        h,
+        offsetX: sz.cols * T * sc,
         offsetY: h,
         rotation: 0,
       })
@@ -217,8 +221,8 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
       shapes.push({
         kind: 'image',
         stampType: stamp.type,
-        x: iso.x,
-        y: iso.y,
+        x: isoCenter.x,
+        y: isoCenter.y,
         w, h,
         offsetX: w / 2,
         offsetY: h / 2,

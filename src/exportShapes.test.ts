@@ -194,14 +194,48 @@ describe('buildExportShapes – object stamps', () => {
     expect(img.skewX).toBeUndefined()
   })
 
-  it('ISO export: object stamp base anchored at tile floor center', () => {
+  it('ISO export: object stamp base anchored at tile bottom corner (x=center.x, y=bottom.y)', () => {
     const stamp = { id: 'a', type: 'archway' as const, col: 2, row: 1, rotation: 0 as const }
     const { shapes } = buildExportShapes({ ...baseParams(4, 4), showIso: true, stamps: [stamp] })
     const img = shapes.find(s => s.kind === 'image') as any
-    const floor = isoProject(stamp.col + 0.5, stamp.row + 0.5, ITW, ITH)
-    expect(img.x).toBe(floor.x)
-    expect(img.y).toBe(floor.y)
+    const center = isoProject(stamp.col + 0.5, stamp.row + 0.5, ITW, ITH)
+    const bottom = isoProject(stamp.col + 1, stamp.row + 1, ITW, ITH)
+    expect(img.x).toBe(center.x)
+    expect(img.y).toBe(bottom.y)
+    expect(img.w).toBe(ITW)
     expect(img.offsetX).toBe(img.w / 2)
     expect(img.offsetY).toBe(img.h)
+  })
+})
+
+// ── Stamp scale ───────────────────────────────────────────────────────────────
+
+describe('buildExportShapes – stamp scale', () => {
+  it('top-down: a floor stamp at scale 2 doubles its rendered w and h', () => {
+    const grid = paintTiles(createGrid(4, 4), 4, [{ col: 1, row: 1 }], FLOOR)
+    const stamp = { id: 's1', type: 'door' as const, col: 1, row: 1, rotation: 0 as const, scale: 2 }
+    const { shapes } = buildExportShapes({ ...baseParams(4, 4, grid), stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    expect(img).toBeDefined()
+    expect(img.w).toBe(ET * 2)
+    expect(img.h).toBe(ET * 2)
+  })
+
+  it('top-down: a floor stamp at scale 0.5 halves its rendered w and h', () => {
+    const grid = paintTiles(createGrid(4, 4), 4, [{ col: 1, row: 1 }], FLOOR)
+    const stamp = { id: 's1', type: 'door' as const, col: 1, row: 1, rotation: 0 as const, scale: 0.5 }
+    const { shapes } = buildExportShapes({ ...baseParams(4, 4, grid), stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    expect(img.w).toBe(ET * 0.5)
+    expect(img.h).toBe(ET * 0.5)
+  })
+
+  it('top-down: a floor stamp with no scale uses default size', () => {
+    const grid = paintTiles(createGrid(4, 4), 4, [{ col: 1, row: 1 }], FLOOR)
+    const stamp = { id: 's1', type: 'door' as const, col: 1, row: 1, rotation: 0 as const }
+    const { shapes } = buildExportShapes({ ...baseParams(4, 4, grid), stamps: [stamp] })
+    const img = shapes.find(s => s.kind === 'image') as any
+    expect(img.w).toBe(ET)
+    expect(img.h).toBe(ET)
   })
 })
