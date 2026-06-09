@@ -4,7 +4,20 @@ export interface MapSave {
   version: 1
   cols: number
   rows: number
-  grid: number[]
+  grids: Record<string, number[]>
+  wallColor: string
+  wallOpacity: number
+  brushShape: 'square' | 'circle'
+  showGrid: boolean
+  show3D: boolean
+  stamps: Stamp[]
+}
+
+export interface DeserializedMap {
+  version: 1
+  cols: number
+  rows: number
+  grids: Map<number, Uint8Array>
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
@@ -14,7 +27,7 @@ export interface MapSave {
 }
 
 export function serialize(params: {
-  grid: Uint8Array
+  grids: Map<number, Uint8Array>
   cols: number
   rows: number
   wallColor: string
@@ -24,19 +37,25 @@ export function serialize(params: {
   show3D: boolean
   stamps: Stamp[]
 }): MapSave {
+  const grids: Record<string, number[]> = {}
+  for (const [z, grid] of params.grids) {
+    grids[String(z)] = Array.from(grid)
+  }
   return {
     version: 1,
     cols: params.cols,
     rows: params.rows,
-    grid: Array.from(params.grid),
+    grids,
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
     brushShape: params.brushShape,
     showGrid: params.showGrid,
     show3D: params.show3D,
     stamps: params.stamps.map(s => {
-      const { scale, mirrored, ...rest } = s
-      const out: Partial<Stamp> = { ...rest }
+      const { scale, mirrored, z, ...rest } = s
+      const out: Partial<Stamp> = { ...rest, z: 0 }
+      if (z !== 0) out.z = z
+      else delete out.z
       if (scale !== undefined && scale !== 1) out.scale = scale
       if (mirrored) out.mirrored = mirrored
       return out as Stamp
@@ -44,18 +63,33 @@ export function serialize(params: {
   }
 }
 
-export function deserialize(raw: unknown): MapSave {
+export function deserialize(raw: unknown): DeserializedMap {
   if (typeof raw !== 'object' || raw === null) throw new Error('Invalid save: not an object')
   const s = raw as Record<string, unknown>
   if (s['version'] !== 1) throw new Error(`Unsupported version: ${s['version']}`)
   if (typeof s['cols'] !== 'number' || s['cols'] < 1) throw new Error('Invalid cols')
   if (typeof s['rows'] !== 'number' || s['rows'] < 1) throw new Error('Invalid rows')
-  if (!Array.isArray(s['grid'])) throw new Error('Invalid grid')
   if (typeof s['wallColor'] !== 'string') throw new Error('Invalid wallColor')
   if (typeof s['wallOpacity'] !== 'number') throw new Error('Invalid wallOpacity')
   if (s['brushShape'] !== 'square' && s['brushShape'] !== 'circle') throw new Error('Invalid brushShape')
   if (typeof s['showGrid'] !== 'boolean') throw new Error('Invalid showGrid')
   const show3D = s['show3D'] === true
+
+  // Accept both new `grids` format and old `grid` format (backward compat)
+  const grids = new Map<number, Uint8Array>()
+  if (typeof s['grids'] === 'object' && s['grids'] !== null && !Array.isArray(s['grids'])) {
+    const raw = s['grids'] as Record<string, unknown>
+    for (const [key, val] of Object.entries(raw)) {
+      const z = parseInt(key, 10)
+      if (!Number.isFinite(z)) throw new Error(`Invalid grid key: ${key}`)
+      if (!Array.isArray(val)) throw new Error(`Invalid grid for Z=${key}`)
+      grids.set(z, new Uint8Array(val as number[]))
+    }
+  } else if (Array.isArray(s['grid'])) {
+    grids.set(0, new Uint8Array(s['grid'] as number[]))
+  } else {
+    throw new Error('Invalid grid')
+  }
 
   const rawStamps = Array.isArray(s['stamps']) ? s['stamps'] : []
   const stamps: Stamp[] = rawStamps.map((entry: unknown): Stamp => {
@@ -71,6 +105,7 @@ export function deserialize(raw: unknown): MapSave {
     const scale = typeof rawScale === 'number' && Number.isFinite(rawScale) && rawScale > 0
       ? rawScale
       : undefined
+    const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
 
     const stamp: Stamp = {
       id: o['id'] as string,
@@ -78,6 +113,7 @@ export function deserialize(raw: unknown): MapSave {
       col: o['col'] as number,
       row: o['row'] as number,
       rotation: o['rotation'] as Rotation,
+      z,
     }
     if (scale !== undefined && scale !== 1) stamp.scale = scale
     if (o['mirrored'] === true) stamp.mirrored = true
@@ -88,7 +124,7 @@ export function deserialize(raw: unknown): MapSave {
     version: 1,
     cols: s['cols'] as number,
     rows: s['rows'] as number,
-    grid: s['grid'] as number[],
+    grids,
     wallColor: s['wallColor'] as string,
     wallOpacity: s['wallOpacity'] as number,
     brushShape: s['brushShape'] as 'square' | 'circle',

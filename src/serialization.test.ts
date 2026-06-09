@@ -3,8 +3,10 @@ import { serialize, deserialize } from './serialization'
 import { WATER } from './constants'
 import { type Stamp } from './stamps'
 
+const GRIDS = new Map([[0, new Uint8Array([1, 0, 1, 1])]])
+
 const BASE = {
-  grid: new Uint8Array([1, 0, 1, 1]),
+  grids: GRIDS,
   cols: 2,
   rows: 2,
   wallColor: '#ff0000',
@@ -15,30 +17,50 @@ const BASE = {
   stamps: [] as Stamp[],
 }
 
-const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90 }
-const OBJECT_STAMP: Stamp = { id: 'def', type: 'archway', col: 3, row: 4, rotation: 0 }
+const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90, z: 0 }
+const STAMP_Z1: Stamp = { id: 'xyz', type: 'door', col: 0, row: 0, rotation: 0, z: 1 }
+const OBJECT_STAMP: Stamp = { id: 'def', type: 'archway', col: 3, row: 4, rotation: 0, z: 0 }
 
 describe('serialize', () => {
-  it('produces a JSON-safe object', () => {
+  it('produces a JSON-safe object with version 1', () => {
     const save = serialize(BASE)
     expect(save.version).toBe(1)
-    expect(save.grid).toEqual([1, 0, 1, 1])
     expect(JSON.parse(JSON.stringify(save))).toEqual(save)
   })
 
-  it('converts Uint8Array to plain array', () => {
+  it('converts grids Map to plain string-keyed object', () => {
     const save = serialize(BASE)
-    expect(Array.isArray(save.grid)).toBe(true)
+    expect(save.grids).toEqual({ '0': [1, 0, 1, 1] })
+  })
+
+  it('serializes multiple Z levels', () => {
+    const grids = new Map([
+      [0, new Uint8Array([1, 0, 1, 1])],
+      [-1, new Uint8Array([0, 1, 0, 0])],
+    ])
+    const save = serialize({ ...BASE, grids })
+    expect(save.grids['-1']).toEqual([0, 1, 0, 0])
+    expect(save.grids['0']).toEqual([1, 0, 1, 1])
   })
 
   it('includes stamps in output', () => {
     const save = serialize({ ...BASE, stamps: [STAMP] })
-    expect(save.stamps).toEqual([STAMP])
+    expect(save.stamps[0]).toMatchObject({ id: 'abc', type: 'door' })
   })
 
-  it('does not include brushSize in output', () => {
+  it('omits z from stamp when z === 0', () => {
+    const save = serialize({ ...BASE, stamps: [STAMP] })
+    expect(save.stamps[0]).not.toHaveProperty('z')
+  })
+
+  it('includes z in stamp when z !== 0', () => {
+    const save = serialize({ ...BASE, stamps: [STAMP_Z1] })
+    expect(save.stamps[0].z).toBe(1)
+  })
+
+  it('does not include grid (old field) in output', () => {
     const save = serialize(BASE)
-    expect('brushSize' in save).toBe(false)
+    expect('grid' in save).toBe(false)
   })
 })
 
@@ -46,7 +68,7 @@ describe('deserialize', () => {
   it('round-trips through JSON', () => {
     const json = JSON.stringify(serialize(BASE))
     const restored = deserialize(JSON.parse(json))
-    expect(restored.grid).toEqual([1, 0, 1, 1])
+    expect(restored.grids.get(0)).toEqual(new Uint8Array([1, 0, 1, 1]))
     expect(restored.wallColor).toBe('#ff0000')
     expect(restored.wallOpacity).toBe(0.5)
     expect(restored.brushShape).toBe('circle')
@@ -56,21 +78,73 @@ describe('deserialize', () => {
     expect(restored.stamps).toEqual([])
   })
 
-  it('round-trips stamps', () => {
-    const json = JSON.stringify(serialize({ ...BASE, stamps: [STAMP] }))
+  it('round-trips multiple Z levels', () => {
+    const grids = new Map([
+      [0, new Uint8Array([1, 0, 1, 1])],
+      [-1, new Uint8Array([0, 1, 0, 0])],
+    ])
+    const json = JSON.stringify(serialize({ ...BASE, grids }))
     const restored = deserialize(JSON.parse(json))
-    expect(restored.stamps).toEqual([STAMP])
+    expect(restored.grids.get(-1)).toEqual(new Uint8Array([0, 1, 0, 0]))
   })
 
-  it('defaults stamps to [] for old v1 saves without stamps field', () => {
-    const old = JSON.stringify({ ...serialize(BASE), stamps: undefined })
-    const restored = deserialize(JSON.parse(old))
+  it('loads old v1 saves with flat grid key as Z=0', () => {
+    const old = {
+      version: 1,
+      cols: 2,
+      rows: 2,
+      grid: [1, 0, 1, 1],
+      wallColor: '#000000',
+      wallOpacity: 1,
+      brushShape: 'square',
+      showGrid: false,
+      show3D: false,
+      stamps: [],
+    }
+    const restored = deserialize(old)
+    expect(restored.grids.get(0)).toEqual(new Uint8Array([1, 0, 1, 1]))
+  })
+
+  it('round-trips stamps with z=0 (z omitted in file)', () => {
+    const json = JSON.stringify(serialize({ ...BASE, stamps: [STAMP] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.stamps[0].z).toBe(0)
+  })
+
+  it('round-trips stamps with z=1', () => {
+    const json = JSON.stringify(serialize({ ...BASE, stamps: [STAMP_Z1] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.stamps[0].z).toBe(1)
+  })
+
+  it('defaults stamp z to 0 when field is absent (old save)', () => {
+    const old = {
+      version: 1,
+      cols: 2,
+      rows: 2,
+      grid: [0, 0, 0, 0],
+      wallColor: '#000000',
+      wallOpacity: 1,
+      brushShape: 'square',
+      showGrid: false,
+      show3D: false,
+      stamps: [{ id: 'a', type: 'door', col: 0, row: 0, rotation: 0 }],
+    }
+    const restored = deserialize(old)
+    expect(restored.stamps[0].z).toBe(0)
+  })
+
+  it('defaults stamps to [] for saves without stamps field', () => {
+    const save = serialize(BASE)
+    const { stamps: _, ...noStamps } = save
+    const restored = deserialize(noStamps)
     expect(restored.stamps).toEqual([])
   })
 
-  it('defaults show3D to false for old saves without show3D field', () => {
-    const { show3D: _, ...rest } = serialize({ ...BASE, show3D: true })
-    const restored = deserialize(rest)
+  it('defaults show3D to false for saves without show3D field', () => {
+    const save = serialize({ ...BASE, show3D: true })
+    const { show3D: _, ...noShow3D } = save
+    const restored = deserialize(noShow3D)
     expect(restored.show3D).toBe(false)
   })
 
@@ -80,7 +154,7 @@ describe('deserialize', () => {
     expect(restored.show3D).toBe(true)
   })
 
-  it('accepts old saves that include brushSize field', () => {
+  it('accepts saves that include legacy brushSize field', () => {
     const old = { ...serialize(BASE), brushSize: 3 }
     expect(() => deserialize(old)).not.toThrow()
   })
@@ -92,13 +166,13 @@ describe('deserialize', () => {
   })
 
   it('throws on unsupported version', () => {
-    const bad = { ...serialize(BASE), version: 2 as unknown as 1 }
+    const bad = { ...serialize(BASE), version: 99 }
     expect(() => deserialize(bad)).toThrow('Unsupported version')
   })
 
-  it('throws on missing grid', () => {
-    const { grid: _, ...rest } = serialize(BASE)
-    expect(() => deserialize(rest)).toThrow('Invalid grid')
+  it('throws when neither grid nor grids is present', () => {
+    const { grids: _, ...noGrids } = serialize(BASE)
+    expect(() => deserialize(noGrids)).toThrow('Invalid grid')
   })
 
   it('throws on invalid brushShape', () => {
@@ -117,7 +191,7 @@ describe('deserialize', () => {
   it('round-trips object stamp (archway)', () => {
     const json = JSON.stringify(serialize({ ...BASE, stamps: [OBJECT_STAMP] }))
     const restored = deserialize(JSON.parse(json))
-    expect(restored.stamps).toEqual([OBJECT_STAMP])
+    expect(restored.stamps[0]).toMatchObject({ type: 'archway', z: 0 })
   })
 
   it('throws on invalid stamp rotation', () => {
@@ -128,13 +202,13 @@ describe('deserialize', () => {
 
 describe('scale field', () => {
   it('serialize omits scale when it equals 1', () => {
-    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 1 }
+    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, z: 0, scale: 1 }
     const save = serialize({ ...BASE, stamps: [scaledStamp] })
     expect(save.stamps[0]).not.toHaveProperty('scale')
   })
 
   it('serialize includes scale when not 1', () => {
-    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 2.5 }
+    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, z: 0, scale: 2.5 }
     const save = serialize({ ...BASE, stamps: [scaledStamp] })
     expect(save.stamps[0].scale).toBe(2.5)
   })
@@ -146,7 +220,7 @@ describe('scale field', () => {
   })
 
   it('deserialize round-trips scale: 2', () => {
-    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 2 }
+    const scaledStamp: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, z: 0, scale: 2 }
     const json = JSON.stringify(serialize({ ...BASE, stamps: [scaledStamp] }))
     const restored = deserialize(JSON.parse(json))
     expect(restored.stamps[0].scale).toBe(2)
@@ -167,38 +241,36 @@ describe('scale field', () => {
 
 describe('Water tile round-trip', () => {
   it('preserves WATER tile value through serialize/deserialize', () => {
-    // grid: [WATER, FLOOR, WALL, FLOOR] — 2x2
-    const waterGrid = new Uint8Array([WATER, 1, 0, 1])
-    const save = serialize({ ...BASE, grid: waterGrid, cols: 2, rows: 2 })
-    expect(save.grid[0]).toBe(WATER)
-    const json = JSON.stringify(save)
-    const restored = deserialize(JSON.parse(json))
-    expect(restored.grid[0]).toBe(WATER)
+    const waterGrids = new Map([[0, new Uint8Array([WATER, 1, 0, 1])]])
+    const save = serialize({ ...BASE, grids: waterGrids })
+    expect(save.grids['0'][0]).toBe(WATER)
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+    expect(restored.grids.get(0)![0]).toBe(WATER)
   })
 })
 
 describe('stamp mirrored field', () => {
   it('serialize strips mirrored when false', () => {
-    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, mirrored: false }
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, z: 0, mirrored: false }
     const save = serialize({ ...BASE, stamps: [s] })
     expect(save.stamps[0]).not.toHaveProperty('mirrored')
   })
 
   it('serialize preserves mirrored: true', () => {
-    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, mirrored: true }
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, z: 0, mirrored: true }
     const save = serialize({ ...BASE, stamps: [s] })
     expect(save.stamps[0].mirrored).toBe(true)
   })
 
   it('deserialize round-trips mirrored: true', () => {
-    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, mirrored: true }
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, z: 0, mirrored: true }
     const json = JSON.stringify(serialize({ ...BASE, stamps: [s] }))
     const restored = deserialize(JSON.parse(json))
     expect(restored.stamps[0].mirrored).toBe(true)
   })
 
   it('deserialize treats missing mirrored as undefined', () => {
-    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0 }
+    const s: Stamp = { id: 'x', type: 'door', col: 0, row: 0, rotation: 0, z: 0 }
     const json = JSON.stringify(serialize({ ...BASE, stamps: [s] }))
     const restored = deserialize(JSON.parse(json))
     expect(restored.stamps[0].mirrored).toBeUndefined()
