@@ -484,6 +484,7 @@ export default function App() {
       return
     }
 
+    // Wall background — full opacity, drawn once
     if (wallOpacity > 0) {
       layer.add(new Konva.Rect({
         x: 0, y: 0,
@@ -494,65 +495,75 @@ export default function App() {
       }))
     }
 
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (getTile(activeGrid, cols, c, r) === FLOOR) {
-          layer.add(new Konva.Rect({
-            x: c * TILE_PX, y: r * TILE_PX,
-            width: TILE_PX, height: TILE_PX,
-            fill: FLOOR_COLOR,
-          }))
-        } else if (getTile(activeGrid, cols, c, r) === WATER) {
-          layer.add(new Konva.Rect({
-            x: c * TILE_PX, y: r * TILE_PX,
-            width: TILE_PX, height: TILE_PX,
-            fill: WATER_COLOR,
-          }))
-        }
-      }
-    }
+    // Render each Z level ≤ activeZ, lowest first, with halving opacity
+    const sortedZs = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
+    for (const z of sortedZs) {
+      const levelGrid = grids.get(z)!
+      const levelOpacity = Math.pow(0.5, activeZ - z)
+      const group = new Konva.Group({ opacity: levelOpacity })
 
-    if (show3D) {
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          if (getTile(activeGrid, cols, c, r) !== FLOOR) continue
-          const southWall = r + 1 >= rows || getTile(activeGrid, cols, c, r + 1) === WALL
-          const eastWall = c + 1 >= cols || getTile(activeGrid, cols, c + 1, r) === WALL
-          if (southWall) {
-            layer.add(new Konva.Rect({
-              x: c * TILE_PX, y: (r + 1) * TILE_PX,
-              width: TILE_PX, height: FACE_PX,
-              fill: FACE_COLOR,
-            }))
-          }
-          if (eastWall) {
-            layer.add(new Konva.Rect({
-              x: (c + 1) * TILE_PX, y: r * TILE_PX,
-              width: FACE_PX, height: TILE_PX,
-              fill: FACE_COLOR,
-            }))
-          }
-        }
-      }
-    }
-
-    if (showGrid) {
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (getTile(activeGrid, cols, c, r) === FLOOR) {
-            layer.add(new Konva.Rect({
+          if (getTile(levelGrid, cols, c, r) === FLOOR) {
+            group.add(new Konva.Rect({
               x: c * TILE_PX, y: r * TILE_PX,
               width: TILE_PX, height: TILE_PX,
-              stroke: 'rgba(0,0,0,0.2)',
-              strokeWidth: 0.5,
+              fill: FLOOR_COLOR,
+            }))
+          } else if (getTile(levelGrid, cols, c, r) === WATER) {
+            group.add(new Konva.Rect({
+              x: c * TILE_PX, y: r * TILE_PX,
+              width: TILE_PX, height: TILE_PX,
+              fill: WATER_COLOR,
             }))
           }
         }
       }
+
+      if (show3D) {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (getTile(levelGrid, cols, c, r) !== FLOOR) continue
+            const southWall = r + 1 >= rows || getTile(levelGrid, cols, c, r + 1) === WALL
+            const eastWall = c + 1 >= cols || getTile(levelGrid, cols, c + 1, r) === WALL
+            if (southWall) {
+              group.add(new Konva.Rect({
+                x: c * TILE_PX, y: (r + 1) * TILE_PX,
+                width: TILE_PX, height: FACE_PX,
+                fill: FACE_COLOR,
+              }))
+            }
+            if (eastWall) {
+              group.add(new Konva.Rect({
+                x: (c + 1) * TILE_PX, y: r * TILE_PX,
+                width: FACE_PX, height: TILE_PX,
+                fill: FACE_COLOR,
+              }))
+            }
+          }
+        }
+      }
+
+      if (showGrid) {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (getTile(levelGrid, cols, c, r) === FLOOR) {
+              group.add(new Konva.Rect({
+                x: c * TILE_PX, y: r * TILE_PX,
+                width: TILE_PX, height: TILE_PX,
+                stroke: 'rgba(0,0,0,0.2)',
+                strokeWidth: 0.5,
+              }))
+            }
+          }
+        }
+      }
+
+      layer.add(group)
     }
 
     layer.batchDraw()
-  }, [activeGrid, grids, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
+  }, [grids, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
 
   // Stamp layer
   useEffect(() => {
@@ -638,6 +649,10 @@ export default function App() {
         continue
       }
 
+      // Top-down: hide stamps above activeZ
+      if (stamp.z > activeZ) continue
+
+      const stampOpacity = Math.pow(0.5, activeZ - stamp.z)
       const sc = stamp.scale ?? 1
       const effectiveW = w * sc
       const effectiveH = h * sc
@@ -652,7 +667,7 @@ export default function App() {
         rotation: stamp.rotation,
         scaleX: stamp.mirrored ? -1 : 1,
         draggable: !isGhost,
-        opacity: isGhost ? 0.25 : 1,
+        opacity: isGhost ? 0.25 * stampOpacity : stampOpacity,
       })
       if (!isGhost) {
         node.on('mousedown', (e) => {
@@ -690,7 +705,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [stamps, selectedStampId, stampImages, cols, rows, showIso])
+  }, [stamps, selectedStampId, stampImages, cols, rows, showIso, activeZ])
 
   // Non-exported layer: dot pattern + ghost cursor preview
   useEffect(() => {
@@ -703,19 +718,24 @@ export default function App() {
       return
     }
 
-    if (wallOpacity > 0) {
-      const dotColor = isLightColor(wallColor)
-        ? `rgba(0,0,0,${0.2 * wallOpacity})`
-        : `rgba(255,255,255,${0.2 * wallOpacity})`
-      for (let r = 0; r < rows; r += 2) {
-        for (let c = 0; c < cols; c += 2) {
-          if (getTile(activeGrid, cols, c, r) === WALL) {
-            layer.add(new Konva.Circle({
-              x: c * TILE_PX + TILE_PX,
-              y: r * TILE_PX + TILE_PX,
-              radius: DOT_RADIUS,
-              fill: dotColor,
-            }))
+    if (!showIso && wallOpacity > 0) {
+      const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
+      for (const z of sortedZsForDots) {
+        const levelOpacity = 0.2 * wallOpacity * Math.pow(0.5, activeZ - z)
+        const dotColor = isLightColor(wallColor)
+          ? `rgba(0,0,0,${levelOpacity})`
+          : `rgba(255,255,255,${levelOpacity})`
+        const levelGrid = grids.get(z)!
+        for (let r = 0; r < rows; r += 2) {
+          for (let c = 0; c < cols; c += 2) {
+            if (getTile(levelGrid, cols, c, r) === WALL) {
+              layer.add(new Konva.Circle({
+                x: c * TILE_PX + TILE_PX,
+                y: r * TILE_PX + TILE_PX,
+                radius: DOT_RADIUS,
+                fill: dotColor,
+              }))
+            }
           }
         }
       }
@@ -765,7 +785,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
+  }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
