@@ -422,7 +422,7 @@ export default function App() {
     if (showIso) {
       const ITW = TILE_PX * 2
       const ITH = TILE_PX
-      // Iso view: wall background = iso diamond of canvas boundary
+
       if (wallOpacity > 0) {
         const tl = isoProject(0, 0, ITW, ITH)
         const tr = isoProject(cols, 0, ITW, ITH)
@@ -435,49 +435,61 @@ export default function App() {
           opacity: wallOpacity,
         }))
       }
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (getTile(activeGrid, cols, c, r) === FLOOR) {
-            layer.add(new Konva.Line({
-              points: isoFloorPoints(c, r, ITW, ITH),
-              closed: true,
-              fill: FLOOR_COLOR,
-              stroke: 'rgba(0,0,0,0.15)',
-              strokeWidth: 0.5,
-            }))
-          } else if (getTile(activeGrid, cols, c, r) === WATER) {
-            layer.add(new Konva.Line({
-              points: isoWaterPoints(c, r, ITW, ITH),
-              closed: true,
-              fill: WATER_COLOR,
-            }))
-          }
-        }
-      }
-      if (show3D) {
+
+      // Render all Z levels, lowest first (painter's algorithm)
+      const isoSortedZs = [...grids.keys()].sort((a, b) => a - b)
+      for (const z of isoSortedZs) {
+        const levelGrid = grids.get(z)!
+        const yOff = -z * Z_STEP_HEIGHT
+        const group = new Konva.Group({ y: yOff })
+
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            if (getTile(activeGrid, cols, c, r) !== FLOOR) continue
-            const southNeighbor = r + 1 < rows ? getTile(activeGrid, cols, c, r + 1) : null
-            const eastNeighbor = c + 1 < cols ? getTile(activeGrid, cols, c + 1, r) : null
-            const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
-            const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
-            if (southWall) {
-              layer.add(new Konva.Line({
-                points: isoFrontFacePoints(c, r, ITW, ITH, FACE_PX),
+            if (getTile(levelGrid, cols, c, r) === FLOOR) {
+              group.add(new Konva.Line({
+                points: isoFloorPoints(c, r, ITW, ITH),
                 closed: true,
-                fill: ISO_FRONT_FACE_COLOR,
+                fill: FLOOR_COLOR,
+                stroke: 'rgba(0,0,0,0.15)',
+                strokeWidth: 0.5,
               }))
-            }
-            if (eastWall) {
-              layer.add(new Konva.Line({
-                points: isoEastFacePoints(c, r, ITW, ITH, FACE_PX),
+            } else if (getTile(levelGrid, cols, c, r) === WATER) {
+              group.add(new Konva.Line({
+                points: isoWaterPoints(c, r, ITW, ITH),
                 closed: true,
-                fill: ISO_EAST_FACE_COLOR,
+                fill: WATER_COLOR,
               }))
             }
           }
         }
+
+        if (show3D) {
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              if (getTile(levelGrid, cols, c, r) !== FLOOR) continue
+              const southNeighbor = r + 1 < rows ? getTile(levelGrid, cols, c, r + 1) : null
+              const eastNeighbor = c + 1 < cols ? getTile(levelGrid, cols, c + 1, r) : null
+              const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
+              const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
+              if (southWall) {
+                group.add(new Konva.Line({
+                  points: isoFrontFacePoints(c, r, ITW, ITH, FACE_PX),
+                  closed: true,
+                  fill: ISO_FRONT_FACE_COLOR,
+                }))
+              }
+              if (eastWall) {
+                group.add(new Konva.Line({
+                  points: isoEastFacePoints(c, r, ITW, ITH, FACE_PX),
+                  closed: true,
+                  fill: ISO_EAST_FACE_COLOR,
+                }))
+              }
+            }
+          }
+        }
+
+        layer.add(group)
       }
 
       layer.batchDraw()
@@ -586,7 +598,8 @@ export default function App() {
           const bw = sz.cols * TILE_PX * 2 * sc
           const billboardH = imgEl.naturalWidth > 0 ? Math.round(bw * imgEl.naturalHeight / imgEl.naturalWidth) : h * sc
           const pivotX = isoCenter.x
-          const pivotY = isoBottom.y - billboardH / 2
+          const zOffsetY = -stamp.z * Z_STEP_HEIGHT
+          const pivotY = isoBottom.y - billboardH / 2 + zOffsetY
           const imgNode = new Konva.Image({
             image: imgEl,
             x: pivotX, y: pivotY,
@@ -619,9 +632,10 @@ export default function App() {
           const effectiveW = w * sc
           const effectiveH = h * sc
           const t = isoStampTransform(stamp.rotation)
+          const zOffsetY = -stamp.z * Z_STEP_HEIGHT
           // Group positioned at tile iso center; skewX is applied before the translate.
           const group = new Konva.Group({
-            x: isoCenter.x, y: isoCenter.y,
+            x: isoCenter.x, y: isoCenter.y + zOffsetY,
             rotation: t.rotation,
             scaleX: stamp.mirrored ? -t.scaleX : t.scaleX,
             scaleY: t.scaleY,
