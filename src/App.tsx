@@ -12,7 +12,6 @@ import {
 } from './stamps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
-import { shoreLinePoints, darkenHex, isoShoreLinePoints } from './water'
 import { applyTileLevelNoise, type TileFlip } from './noise'
 import { StampPicker, type Mode } from './StampPicker'
 
@@ -468,42 +467,6 @@ export default function App() {
         }
       }
 
-      // Iso shore lines: squiggle on each exposed Water diamond edge
-      {
-        const ISO_OFFSET = 4
-        const shoreColor = darkenHex(WATER_COLOR, 0.7)
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            if (getTile(grid, cols, c, r) !== WATER) continue
-            const topPt = isoProject(c, r, ITW, ITH)
-            const rightPt = isoProject(c + 1, r, ITW, ITH)
-            const bottomPt = isoProject(c + 1, r + 1, ITW, ITH)
-            const leftPt = isoProject(c, r + 1, ITW, ITH)
-            const ty = topPt.y + ISO_OFFSET
-            const ry = rightPt.y + ISO_OFFSET
-            const by = bottomPt.y + ISO_OFFSET
-            const ly = leftPt.y + ISO_OFFSET
-
-            const edgeDefs = [
-              { nc: c, nr: r - 1, x1: topPt.x, y1: ty, x2: rightPt.x, y2: ry },   // NE: north neighbor
-              { nc: c + 1, nr: r, x1: rightPt.x, y1: ry, x2: bottomPt.x, y2: by }, // SE: east neighbor
-              { nc: c, nr: r + 1, x1: bottomPt.x, y1: by, x2: leftPt.x, y2: ly },  // SW: south neighbor
-              { nc: c - 1, nr: r, x1: leftPt.x, y1: ly, x2: topPt.x, y2: ty },     // NW: west neighbor
-            ]
-            for (const { nc, nr, x1, y1, x2, y2 } of edgeDefs) {
-              if (getTile(grid, cols, nc, nr) !== WATER) {
-                layer.add(new Konva.Line({
-                  points: isoShoreLinePoints(x1, y1, x2, y2),
-                  stroke: shoreColor,
-                  strokeWidth: 1,
-                  listening: false,
-                }))
-              }
-            }
-          }
-        }
-      }
-
       layer.batchDraw()
       return
     }
@@ -532,35 +495,6 @@ export default function App() {
             width: TILE_PX, height: TILE_PX,
             fill: WATER_COLOR,
           }))
-        }
-      }
-    }
-
-    // Shore lines: squiggle on each exposed Water tile edge
-    {
-      const shoreColor = darkenHex(WATER_COLOR, 0.7)
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (getTile(grid, cols, c, r) !== WATER) continue
-          const x = c * TILE_PX
-          const y = r * TILE_PX
-          const neighbors = {
-            top: getTile(grid, cols, c, r - 1),
-            right: getTile(grid, cols, c + 1, r),
-            bottom: getTile(grid, cols, c, r + 1),
-            left: getTile(grid, cols, c - 1, r),
-          }
-          const edges = ['top', 'right', 'bottom', 'left'] as const
-          for (const edge of edges) {
-            if (neighbors[edge] !== WATER) {
-              layer.add(new Konva.Line({
-                points: shoreLinePoints(edge, x, y, TILE_PX),
-                stroke: shoreColor,
-                strokeWidth: 1,
-                listening: false,
-              }))
-            }
-          }
         }
       }
     }
@@ -864,13 +798,6 @@ export default function App() {
           points: shape.points, closed: true,
           fill: shape.fill, opacity: shape.opacity,
           stroke: shape.stroke, strokeWidth: shape.strokeWidth,
-        }))
-      } else if (shape.kind === 'polyline') {
-        offLayer.add(new Konva.Line({
-          points: shape.points,
-          stroke: shape.stroke,
-          strokeWidth: shape.strokeWidth,
-          listening: false,
         }))
       } else if (shape.kind === 'image') {
         const imgEl = stampImages.get(shape.stampType as any)
