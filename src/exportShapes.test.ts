@@ -398,11 +398,65 @@ describe('buildExportShapes – shore lines (top-down)', () => {
     expect(line!.strokeWidth).toBe(ET / 20)
   })
 
-  it('shore lines do not appear in ISO mode', () => {
+  it('top-down shore lines do not bleed into ISO mode (ISO uses its own shore pass)', () => {
+    // In ISO mode, an isolated water tile at (1,1) in a 3x3 grid has 4 exposed edges
+    // so there should be 4 polylines from the iso shore pass, not 0
     const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
     const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
-    const lines = shapes.filter(s => s.kind === 'polyline')
-    expect(lines).toHaveLength(0)
+    const lines = shapes.filter(s => s.kind === 'polyline') as PolylineSpec[]
+    expect(lines).toHaveLength(4)
+  })
+})
+
+// ── Shore lines (iso) ─────────────────────────────────────────────────────────
+
+describe('buildExportShapes – shore lines (iso)', () => {
+  it('isolated water tile in iso mode produces 4 polyline shapes (all 4 edges exposed)', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const lines = shapes.filter(s => s.kind === 'polyline') as PolylineSpec[]
+    expect(lines).toHaveLength(4)
+  })
+
+  it('water-to-water shared edge produces no shore line between the two tiles in iso mode', () => {
+    // Two adjacent water tiles share one internal edge → 4+4-2 = 6 exposed edges
+    let grid = createGrid(3, 3)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 1 }, { col: 2, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const lines = shapes.filter(s => s.kind === 'polyline') as PolylineSpec[]
+    expect(lines).toHaveLength(6)
+  })
+
+  it('iso shore line stroke color matches darkenHex(WATER_COLOR, 0.7)', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const line = shapes.find(s => s.kind === 'polyline') as PolylineSpec | undefined
+    expect(line).toBeDefined()
+    expect(line!.stroke).toBe(darkenHex(WATER_COLOR, 0.7))
+  })
+
+  it('iso shore line stroke color is darker than WATER_COLOR', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const line = shapes.find(s => s.kind === 'polyline') as PolylineSpec | undefined
+    const shoreR = parseInt(line!.stroke.slice(1, 3), 16)
+    const waterR = parseInt(WATER_COLOR.slice(1, 3), 16)
+    expect(shoreR).toBeLessThan(waterR)
+  })
+
+  it('iso shore line points length equals (steps+1)*2 = 18 (default steps=8)', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const line = shapes.find(s => s.kind === 'polyline') as PolylineSpec | undefined
+    expect(line!.points).toHaveLength((8 + 1) * 2)
+  })
+
+  it('iso shore line strokeWidth scales with tile size (T/TILE_PX)', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const line = shapes.find(s => s.kind === 'polyline') as PolylineSpec | undefined
+    // exportTile=ET=60, TILE_PX=20, so expectedStrokeWidth=3
+    expect(line!.strokeWidth).toBe(ET / 20)
   })
 })
 

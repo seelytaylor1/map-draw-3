@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { darkenHex, shoreLinePoints } from './water'
+import { darkenHex, shoreLinePoints, isoShoreLinePoints } from './water'
 import { WATER_COLOR } from './constants'
 
 // ── darkenHex ─────────────────────────────────────────────────────────────────
@@ -161,5 +161,42 @@ describe('shoreLinePoints', () => {
         expect(b[i]).toBeCloseTo(a[i] + 200, 10)  // y shifted by 200
       }
     }
+  })
+})
+
+// ── isoShoreLinePoints ────────────────────────────────────────────────────────
+
+describe('isoShoreLinePoints', () => {
+  it('returns (steps+1)*2 values (default steps=8)', () => {
+    const pts = isoShoreLinePoints(0, 0, 40, 20)
+    expect(pts).toHaveLength((8 + 1) * 2)
+  })
+
+  it('returns correct length for custom steps', () => {
+    const pts = isoShoreLinePoints(0, 0, 40, 20, 1.5, 4)
+    expect(pts).toHaveLength((4 + 1) * 2)
+  })
+
+  it('first point equals (x1, y1) — sin(0)=0 so no perpendicular offset', () => {
+    const pts = isoShoreLinePoints(10, 5, 50, 25)
+    expect(pts[0]).toBeCloseTo(10, 10)
+    expect(pts[1]).toBeCloseTo(5, 10)
+  })
+
+  it('last point equals (x2, y2) — sin(2π)=0 so no perpendicular offset', () => {
+    const pts = isoShoreLinePoints(10, 5, 50, 25)
+    expect(pts[pts.length - 2]).toBeCloseTo(50, 10)
+    expect(pts[pts.length - 1]).toBeCloseTo(25, 10)
+  })
+
+  it('middle points differ from the straight edge (squiggle is not a straight line)', () => {
+    // Use a horizontal edge so the perpendicular is vertical — easy to check
+    const pts = isoShoreLinePoints(0, 0, 80, 0, 1.5, 8)
+    // midpoint is at index 4 (step 4/8 = 0.5), sin(π) ≈ 0 but step 2 (sin(π/2)=1) should deviate
+    const midX = pts[4]  // step 2 x
+    const midY = pts[5]  // step 2 y
+    const linearY = 0    // straight line y at any point on a horizontal edge is 0
+    // step 2: t=2/8=0.25, sin(2π*0.25)=sin(π/2)=1, offset=amplitude*1=1.5 in perpendicular direction
+    expect(Math.abs(midY - linearY)).toBeGreaterThan(0.5)
   })
 })

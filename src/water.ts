@@ -45,6 +45,41 @@ export function shoreLinePoints(
 }
 
 /**
+ * Returns a flat polyline points array representing a sine-wave squiggle
+ * along an isometric diamond edge defined by two world-coordinate endpoints.
+ *
+ * @param x1        Start point x (world coords)
+ * @param y1        Start point y (world coords)
+ * @param x2        End point x (world coords)
+ * @param y2        End point y (world coords)
+ * @param amplitude Perpendicular oscillation magnitude in pixels (default 1.5)
+ * @param steps     Number of wave segments (default 8)
+ */
+export function isoShoreLinePoints(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  amplitude = 1.5,
+  steps = 8,
+): number[] {
+  const dx = x2 - x1
+  const dy = y2 - y1
+  const len = Math.sqrt(dx * dx + dy * dy)
+  const nx = -dy / len  // perpendicular unit vector (rotated 90° CCW)
+  const ny = dx / len
+  const pts: number[] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const bx = x1 + t * dx
+    const by = y1 + t * dy
+    const offset = amplitude * Math.sin(2 * Math.PI * t)
+    pts.push(bx + offset * nx, by + offset * ny)
+  }
+  return pts
+}
+
+/**
  * Darkens a hex color by multiplying each channel by `factor`.
  * factor = 0.7 → 30% darker.
  *

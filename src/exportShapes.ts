@@ -2,7 +2,7 @@ import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COL
 import { getTile } from './grid'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
-import { shoreLinePoints, darkenHex } from './water'
+import { shoreLinePoints, darkenHex, isoShoreLinePoints } from './water'
 
 export type RectSpec = {
   kind: 'rect'
@@ -282,6 +282,43 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
         scaleY: t.scaleY,
         skewX: t.skewX,
       })
+    }
+  }
+
+  // Iso shore lines: squiggle on each exposed Water diamond edge
+  {
+    const ISO_OFFSET = 4 * T / TILE_PX
+    const shoreColor = darkenHex(WATER_COLOR, 0.7)
+    const amp = 1.5 * T / TILE_PX
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (getTile(grid, cols, c, r) !== WATER) continue
+        const topPt = isoProject(c, r, ITW, ITH)
+        const rightPt = isoProject(c + 1, r, ITW, ITH)
+        const bottomPt = isoProject(c + 1, r + 1, ITW, ITH)
+        const leftPt = isoProject(c, r + 1, ITW, ITH)
+        const ty = topPt.y + ISO_OFFSET
+        const ry = rightPt.y + ISO_OFFSET
+        const by = bottomPt.y + ISO_OFFSET
+        const ly = leftPt.y + ISO_OFFSET
+
+        const edgeDefs = [
+          { nc: c, nr: r - 1, x1: topPt.x, y1: ty, x2: rightPt.x, y2: ry },
+          { nc: c + 1, nr: r, x1: rightPt.x, y1: ry, x2: bottomPt.x, y2: by },
+          { nc: c, nr: r + 1, x1: bottomPt.x, y1: by, x2: leftPt.x, y2: ly },
+          { nc: c - 1, nr: r, x1: leftPt.x, y1: ly, x2: topPt.x, y2: ty },
+        ]
+        for (const { nc, nr, x1, y1, x2, y2 } of edgeDefs) {
+          if (getTile(grid, cols, nc, nr) !== WATER) {
+            shapes.push({
+              kind: 'polyline',
+              points: isoShoreLinePoints(x1, y1, x2, y2, amp),
+              stroke: shoreColor,
+              strokeWidth: T / TILE_PX,
+            })
+          }
+        }
+      }
     }
   }
 
