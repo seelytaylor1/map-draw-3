@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
-import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoStampTransform } from './iso'
+import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoStampTransform } from './iso'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
@@ -434,13 +434,21 @@ export default function App() {
               stroke: 'rgba(0,0,0,0.15)',
               strokeWidth: 0.5,
             }))
+          } else if (getTile(grid, cols, c, r) === WATER) {
+            layer.add(new Konva.Line({
+              points: isoWaterPoints(c, r, ITW, ITH),
+              closed: true,
+              fill: WATER_COLOR,
+            }))
           }
         }
         if (show3D) {
           for (let c = 0; c < cols; c++) {
             if (getTile(grid, cols, c, r) !== FLOOR) continue
-            const southWall = r + 1 >= rows || getTile(grid, cols, c, r + 1) === WALL
-            const eastWall = c + 1 >= cols || getTile(grid, cols, c + 1, r) === WALL
+            const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
+            const eastNeighbor = c + 1 < cols ? getTile(grid, cols, c + 1, r) : null
+            const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
+            const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
             if (southWall) {
               layer.add(new Konva.Line({
                 points: isoFrontFacePoints(c, r, ITW, ITH, FACE_PX),

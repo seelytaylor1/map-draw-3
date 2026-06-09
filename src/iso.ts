@@ -32,6 +32,12 @@ export function isoEastFacePoints(col: number, row: number, tileW: number, tileH
   return [right.x, right.y, bottom.x, bottom.y, bottom.x, bottom.y + faceH, right.x, right.y + faceH]
 }
 
+export function isoWaterPoints(col: number, row: number, tileW: number, tileH: number, offsetY = 4): number[] {
+  const pts = isoFloorPoints(col, row, tileW, tileH)
+  // shift all y-values down by offsetY
+  return pts.map((v, i) => i % 2 === 1 ? v + offsetY : v)
+}
+
 // Parameters to project a flat stamp image onto the iso floor plane via Konva transform.
 // Derived from the 2:1 iso projection matrix [[1,-1],[0.5,0.5]] decomposed into R·S·SK.
 const ISO_ANGLE_DEG = Math.atan(0.5) * 180 / Math.PI  // ≈ 26.565°

@@ -1,6 +1,6 @@
 import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COLOR, FACE_PX, TILE_PX, WALL, WATER, WATER_COLOR } from './constants'
 import { getTile } from './grid'
-import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject, isoStampTransform } from './iso'
+import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 
 export type RectSpec = {
@@ -174,6 +174,12 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
           stroke: 'rgba(0,0,0,0.15)',
           strokeWidth: 0.5,
         })
+      } else if (getTile(grid, cols, c, r) === WATER) {
+        shapes.push({
+          kind: 'polygon',
+          points: isoWaterPoints(c, r, ITW, ITH),
+          fill: WATER_COLOR,
+        })
       }
     }
 
@@ -181,8 +187,10 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
       const faceT = Math.round(FACE_PX * T / TILE_PX)
       for (let c = 0; c < cols; c++) {
         if (getTile(grid, cols, c, r) !== FLOOR) continue
-        const southWall = r + 1 >= rows || getTile(grid, cols, c, r + 1) === WALL
-        const eastWall = c + 1 >= cols || getTile(grid, cols, c + 1, r) === WALL
+        const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
+        const eastNeighbor = c + 1 < cols ? getTile(grid, cols, c + 1, r) : null
+        const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
+        const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
         if (southWall) {
           shapes.push({
             kind: 'polygon',

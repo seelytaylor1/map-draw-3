@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints } from './iso'
+import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints } from './iso'
 
 describe('isoProject', () => {
   it('origin stays at origin', () => {
@@ -120,6 +120,42 @@ describe('isoUnproject', () => {
     const result = isoUnproject(midX, midY, tileW, tileH)
     expect(result.col).toBeCloseTo(1.5)
     expect(result.row).toBeCloseTo(0)
+  })
+})
+
+describe('isoWaterPoints', () => {
+  it('returns 8 values (same shape as floor points)', () => {
+    expect(isoWaterPoints(0, 0, 32, 32)).toHaveLength(8)
+  })
+
+  it('x-coordinates are unchanged from isoFloorPoints', () => {
+    const floor = isoFloorPoints(0, 0, 32, 32)
+    const water = isoWaterPoints(0, 0, 32, 32)
+    for (let i = 0; i < 8; i += 2) {
+      expect(water[i]).toBe(floor[i])
+    }
+  })
+
+  it('y-coordinates are shifted down by default offsetY=4', () => {
+    const floor = isoFloorPoints(0, 0, 32, 32)
+    const water = isoWaterPoints(0, 0, 32, 32)
+    for (let i = 1; i < 8; i += 2) {
+      expect(water[i]).toBe(floor[i] + 4)
+    }
+  })
+
+  it('y-coordinates respect a custom offsetY', () => {
+    const floor = isoFloorPoints(1, 1, 64, 32)
+    const water = isoWaterPoints(1, 1, 64, 32, 8)
+    for (let i = 1; i < 8; i += 2) {
+      expect(water[i]).toBe(floor[i] + 8)
+    }
+  })
+
+  it('offsetY=0 produces points identical to isoFloorPoints', () => {
+    const floor = isoFloorPoints(2, 3, 64, 32)
+    const water = isoWaterPoints(2, 3, 64, 32, 0)
+    expect(water).toEqual(floor)
   })
 })
 

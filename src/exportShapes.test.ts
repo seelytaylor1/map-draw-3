@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildExportShapes } from './exportShapes'
 import { createGrid, paintTiles } from './grid'
 import { FLOOR, FLOOR_COLOR, WATER, WATER_COLOR } from './constants'
-import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject } from './iso'
+import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject } from './iso'
 import { type Stamp } from './stamps'
 
 const ET = 60 // export tile size
@@ -181,6 +181,72 @@ describe('buildExportShapes – ISO mode', () => {
     const ISO_ANGLE = Math.atan(0.5) * 180 / Math.PI
     expect(img.rotation).toBeCloseTo(180 - ISO_ANGLE, 2)
     expect(img.skewX).toBeCloseTo(0.6, 4)
+  })
+
+  it('ISO water tile produces a polygon with WATER_COLOR fill', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const waterPoly = shapes.find(s => s.kind === 'polygon' && 'fill' in s && s.fill === WATER_COLOR) as any
+    expect(waterPoly).toBeDefined()
+  })
+
+  it('ISO water tile y-coordinates are offset +4 from floor tile y-coordinates', () => {
+    const floorPts = isoWaterPoints(1, 1, ITW, ITH, 0) // same as isoFloorPoints but with 0 offset
+    const waterPts = isoWaterPoints(1, 1, ITW, ITH, 4)
+    // every y value should be 4 more than the floor's
+    waterPts.forEach((v, i) => {
+      if (i % 2 === 1) expect(v).toBe(floorPts[i] + 4)
+      else expect(v).toBe(floorPts[i])
+    })
+  })
+
+  it('ISO water tile y-coordinates match isoWaterPoints(c,r,ITW,ITH)', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true })
+    const waterPoly = shapes.find(s => s.kind === 'polygon' && 'fill' in s && s.fill === WATER_COLOR) as any
+    expect(waterPoly.points).toEqual(isoWaterPoints(1, 1, ITW, ITH))
+  })
+
+  it('ISO water tile does not produce side face shapes (no 3D faces for water)', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true, show3D: true })
+    // Only the water polygon should appear (no floor, no side faces)
+    const polys = shapes.filter(s => s.kind === 'polygon') as any[]
+    expect(polys).toHaveLength(1)
+    expect(polys[0].fill).toBe(WATER_COLOR)
+  })
+
+  it('ISO + show3D: Floor tile with south Water neighbor produces front-face polygon', () => {
+    let grid = createGrid(3, 3)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 0 }], FLOOR)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 1 }], WATER)
+    const FACE = Math.round(8 * ET / 20)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true, show3D: true })
+    const polys = shapes.filter(s => s.kind === 'polygon') as any[]
+    const frontFace = polys.find(p => JSON.stringify(p.points) === JSON.stringify(isoFrontFacePoints(1, 0, ITW, ITH, FACE)))
+    expect(frontFace).toBeDefined()
+  })
+
+  it('ISO + show3D: Floor tile with east Water neighbor produces east-face polygon', () => {
+    let grid = createGrid(3, 3)
+    grid = paintTiles(grid, 3, [{ col: 0, row: 1 }], FLOOR)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 1 }], WATER)
+    const FACE = Math.round(8 * ET / 20)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true, show3D: true })
+    const polys = shapes.filter(s => s.kind === 'polygon') as any[]
+    const eastFace = polys.find(p => JSON.stringify(p.points) === JSON.stringify(isoEastFacePoints(0, 1, ITW, ITH, FACE)))
+    expect(eastFace).toBeDefined()
+  })
+
+  it('ISO + show3D off: Floor tile with south Water neighbor produces no side face', () => {
+    let grid = createGrid(3, 3)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 0 }], FLOOR)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true, show3D: false })
+    const polys = shapes.filter(s => s.kind === 'polygon') as any[]
+    // Should only have floor and water polygons, no front face
+    const frontFace = polys.find(p => JSON.stringify(p.points) === JSON.stringify(isoFrontFacePoints(1, 0, ITW, ITH, Math.round(8 * ET / 20))))
+    expect(frontFace).toBeUndefined()
   })
 })
 
