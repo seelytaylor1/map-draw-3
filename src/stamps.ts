@@ -18,6 +18,7 @@ export interface Stamp {
   col: number
   row: number
   rotation: Rotation
+  z: number
   scale?: number
   mirrored?: boolean
 }

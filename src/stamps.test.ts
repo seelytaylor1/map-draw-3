@@ -7,6 +7,7 @@ const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   col: 2,
   row: 3,
   rotation: 0,
+  z: 0,
   ...overrides,
 })
 
@@ -184,5 +185,21 @@ describe('isFloorStamp', () => {
 
   it('returns false for archway', () => {
     expect(isFloorStamp(stamp({ type: 'archway' } as any))).toBe(false)
+  })
+})
+
+describe('stamp z field', () => {
+  it('stamp factory preserves z field', () => {
+    const s = stamp({ z: 2 })
+    expect(s.z).toBe(2)
+  })
+
+  it('all stamp mutators preserve z', () => {
+    const s = stamp({ id: 'a', z: -1 })
+    const list = [s]
+    expect(rotateStamp(list, 'a')[0].z).toBe(-1)
+    expect(mirrorStamp(list, 'a')[0].z).toBe(-1)
+    expect(scaleStamp(list, 'a', 2)[0].z).toBe(-1)
+    expect(moveStamp(list, 'a', 5, 5)[0].z).toBe(-1)
   })
 })
