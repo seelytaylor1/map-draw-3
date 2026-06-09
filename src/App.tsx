@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, type TileState } from './constants'
+import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoStampTransform } from './iso'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
@@ -480,6 +480,12 @@ export default function App() {
             width: TILE_PX, height: TILE_PX,
             fill: FLOOR_COLOR,
           }))
+        } else if (getTile(grid, cols, c, r) === WATER) {
+          layer.add(new Konva.Rect({
+            x: c * TILE_PX, y: r * TILE_PX,
+            width: TILE_PX, height: TILE_PX,
+            fill: WATER_COLOR,
+          }))
         }
       }
     }
@@ -693,12 +699,13 @@ export default function App() {
       }
     }
 
+    const ghostFill = selectedPaintState === WATER ? 'rgba(107,174,214,0.45)' : GHOST_COLOR
     for (const t of ghostTiles) {
       if (t.col < 0 || t.row < 0 || t.col >= cols || t.row >= rows) continue
       layer.add(new Konva.Rect({
         x: t.col * TILE_PX, y: t.row * TILE_PX,
         width: TILE_PX, height: TILE_PX,
-        fill: GHOST_COLOR,
+        fill: ghostFill,
       }))
     }
 
@@ -736,7 +743,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso])
+  }, [grid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
 
   const handleWidthChange = (inches: number) => {
     if (!Number.isFinite(inches) || inches < 1 || inches > 36) return

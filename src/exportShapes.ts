@@ -1,4 +1,4 @@
-import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COLOR, FACE_PX, TILE_PX, WALL } from './constants'
+import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COLOR, FACE_PX, TILE_PX, WALL, WATER, WATER_COLOR } from './constants'
 import { getTile } from './grid'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
@@ -82,6 +82,8 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
     for (let c = 0; c < cols; c++) {
       if (getTile(grid, cols, c, r) === FLOOR) {
         shapes.push({ kind: 'rect', x: c * T, y: r * T, w: T, h: T, fill: FLOOR_COLOR })
+      } else if (getTile(grid, cols, c, r) === WATER) {
+        shapes.push({ kind: 'rect', x: c * T, y: r * T, w: T, h: T, fill: WATER_COLOR })
       }
     }
   }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildExportShapes } from './exportShapes'
 import { createGrid, paintTiles } from './grid'
-import { FLOOR, FLOOR_COLOR } from './constants'
+import { FLOOR, FLOOR_COLOR, WATER, WATER_COLOR } from './constants'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoProject } from './iso'
 import { type Stamp } from './stamps'
 
@@ -48,6 +48,36 @@ describe('buildExportShapes – top-down', () => {
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), wallOpacity: 0, wallColor: '#000000' })
     const bg = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === '#000000')
     expect(bg).toBeUndefined()
+  })
+})
+
+// ── Water tiles ───────────────────────────────────────────────────────────────
+
+describe('buildExportShapes – water tiles (top-down)', () => {
+  it('water tile at (1,1) produces a rect with WATER_COLOR fill', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid) })
+    const water = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === WATER_COLOR)
+    expect(water).toBeDefined()
+    expect(water).toMatchObject({ x: ET, y: ET, w: ET, h: ET })
+  })
+
+  it('water tile does not produce a FLOOR_COLOR rect', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid) })
+    const floor = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === FLOOR_COLOR)
+    expect(floor).toBeUndefined()
+  })
+
+  it('floor and water tiles can coexist in the same export', () => {
+    let grid = createGrid(3, 3)
+    grid = paintTiles(grid, 3, [{ col: 0, row: 0 }], FLOOR)
+    grid = paintTiles(grid, 3, [{ col: 1, row: 1 }], WATER)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid) })
+    const floorRect = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === FLOOR_COLOR)
+    const waterRect = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === WATER_COLOR)
+    expect(floorRect).toBeDefined()
+    expect(waterRect).toBeDefined()
   })
 })
 
