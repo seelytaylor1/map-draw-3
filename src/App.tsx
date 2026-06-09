@@ -146,7 +146,7 @@ export default function App() {
           if (roughBaseGrid.current !== null) {
             const savedGrid = roughBaseGrid.current
             roughBaseGrid.current = null
-            setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, savedGrid) } }))
+            setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, savedGrid) } }))
           }
         }
         if (areaPhaseRef.current === 'selecting') {
