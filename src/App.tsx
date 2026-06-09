@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL } from './constants'
+import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, type TileState } from './constants'
 import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoStampTransform } from './iso'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
@@ -77,7 +77,9 @@ export default function App() {
   const roughEndRef = useRef<Tile | null>(null)
   const roughPreviewRef = useRef<TileFlip[]>([])
   const roughSeedRef = useRef<number>(0)
-  const paintMode = useRef<typeof FLOOR | typeof WALL>(FLOOR)
+  const [selectedPaintState, setSelectedPaintState] = useState<TileState>(FLOOR)
+  const selectedPaintStateRef = useRef<TileState>(FLOOR)
+  const paintMode = useRef<TileState>(FLOOR)
   const areaPhaseRef = useRef<'idle' | 'selecting'>('idle')
   const areaStartRef = useRef<Tile | null>(null)
   const areaEndRef = useRef<Tile | null>(null)
@@ -244,7 +246,7 @@ export default function App() {
       }
 
       // Area select start
-      paintMode.current = e.evt.button === 2 ? WALL : FLOOR
+      paintMode.current = e.evt.button === 2 ? WALL : selectedPaintStateRef.current
       setAreaStart(tile); areaStartRef.current = tile
       setAreaEnd(tile); areaEndRef.current = tile
       setAreaPhase('selecting'); areaPhaseRef.current = 'selecting'
@@ -940,6 +942,29 @@ export default function App() {
             {roughPhase === 'placed2' && 'Move to adjust edges · Click 3: commit · Esc: cancel'}
           </div>
         )}
+
+        {/* Paint state selector: Floor | Water | Erase */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {([
+            { label: '▫ Floor', value: FLOOR as TileState },
+            { label: '~ Water', value: WATER as TileState },
+            { label: '✕ Erase', value: WALL as TileState },
+          ] as { label: string; value: TileState }[]).map(({ label, value }) => (
+            <button
+              key={value}
+              onClick={() => { setSelectedPaintState(value); selectedPaintStateRef.current = value }}
+              style={{
+                flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                background: selectedPaintState === value ? '#555' : 'transparent',
+                color: '#eee',
+                border: selectedPaintState === value ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+                borderRadius: 4,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 

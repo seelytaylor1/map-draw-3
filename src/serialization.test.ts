@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { serialize, deserialize } from './serialization'
+import { WATER } from './constants'
 import { type Stamp } from './stamps'
 
 const BASE = {
@@ -161,6 +162,18 @@ describe('scale field', () => {
     const raw = { ...serialize(BASE), stamps: [{ id: 'abc', type: 'door', col: 1, row: 2, rotation: 0, scale: 0 }] }
     const restored = deserialize(raw)
     expect(restored.stamps[0].scale).toBeUndefined()
+  })
+})
+
+describe('Water tile round-trip', () => {
+  it('preserves WATER tile value through serialize/deserialize', () => {
+    // grid: [WATER, FLOOR, WALL, FLOOR] — 2x2
+    const waterGrid = new Uint8Array([WATER, 1, 0, 1])
+    const save = serialize({ ...BASE, grid: waterGrid, cols: 2, rows: 2 })
+    expect(save.grid[0]).toBe(WATER)
+    const json = JSON.stringify(save)
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.grid[0]).toBe(WATER)
   })
 })
 

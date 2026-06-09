@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createGrid, paintTiles, resizeGrid, getTile, squareBrushTiles, rectTiles, circleBrushTiles } from './grid'
-import { FLOOR, WALL } from './constants'
+import { FLOOR, WALL, WATER } from './constants'
 
 describe('createGrid', () => {
   it('creates all-Wall grid', () => {
@@ -15,6 +15,27 @@ describe('paintTiles', () => {
     const g = createGrid(5, 5)
     const next = paintTiles(g, 5, [{ col: 1, row: 2 }], FLOOR)
     expect(getTile(next, 5, 1, 2)).toBe(FLOOR)
+  })
+
+  it('sets tiles to Water', () => {
+    const g = createGrid(5, 5)
+    const next = paintTiles(g, 5, [{ col: 3, row: 1 }], WATER)
+    expect(getTile(next, 5, 3, 1)).toBe(WATER)
+  })
+
+  it('paints Water directly onto a Wall tile', () => {
+    const g = createGrid(5, 5)
+    // All tiles start as Wall; paint Water directly without needing Floor first
+    expect(getTile(g, 5, 0, 0)).toBe(WALL)
+    const next = paintTiles(g, 5, [{ col: 0, row: 0 }], WATER)
+    expect(getTile(next, 5, 0, 0)).toBe(WATER)
+  })
+
+  it('paints Water onto an existing Floor tile', () => {
+    const g = createGrid(5, 5)
+    const withFloor = paintTiles(g, 5, [{ col: 2, row: 2 }], FLOOR)
+    const withWater = paintTiles(withFloor, 5, [{ col: 2, row: 2 }], WATER)
+    expect(getTile(withWater, 5, 2, 2)).toBe(WATER)
   })
 
   it('sets tiles to Wall (erase)', () => {
