@@ -80,3 +80,22 @@ export function getTile(grid: Uint8Array, cols: number, col: number, row: number
   if (col < 0 || row < 0 || col >= cols || row * cols + col >= grid.length) return WALL
   return grid[row * cols + col] as TileState
 }
+
+export function getGrid(
+  grids: Map<number, Uint8Array>,
+  z: number,
+  cols: number,
+  rows: number,
+): Uint8Array {
+  return grids.get(z) ?? createGrid(cols, rows)
+}
+
+export function setGrid(
+  grids: Map<number, Uint8Array>,
+  z: number,
+  grid: Uint8Array,
+): Map<number, Uint8Array> {
+  const next = new Map(grids)
+  next.set(z, grid)
+  return next
+}

@@ -13,3 +13,5 @@ export const WATER_COLOR = '#6baed6'
 export const FACE_COLOR = '#6a5040'
 export const ISO_FRONT_FACE_COLOR = '#5a4030'
 export const ISO_EAST_FACE_COLOR = '#7a5a44'
+
+export const Z_STEP_HEIGHT = TILE_PX / 2 + FACE_PX  // 18px at current constants

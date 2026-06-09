@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createGrid, paintTiles, resizeGrid, getTile, squareBrushTiles, rectTiles, circleBrushTiles } from './grid'
+import { createGrid, paintTiles, resizeGrid, getTile, squareBrushTiles, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
 import { FLOOR, WALL, WATER } from './constants'
 
 describe('createGrid', () => {
@@ -156,5 +156,59 @@ describe('resizeGrid', () => {
     expect(getTile(big, 5, 1, 1)).toBe(FLOOR)
     // original tile (0,0) still Wall
     expect(getTile(big, 5, 0, 0)).toBe(WALL)
+  })
+})
+
+describe('getGrid', () => {
+  it('returns existing grid for a present Z level', () => {
+    const g = createGrid(3, 3)
+    const grids = new Map([[0, g]])
+    expect(getGrid(grids, 0, 3, 3)).toBe(g)
+  })
+
+  it('returns a new all-Wall grid when Z level is absent', () => {
+    const grids = new Map<number, Uint8Array>()
+    const result = getGrid(grids, 5, 4, 4)
+    expect(result.length).toBe(16)
+    expect(result.every(v => v === 0)).toBe(true)
+  })
+
+  it('does not insert the new grid into the map', () => {
+    const grids = new Map<number, Uint8Array>()
+    getGrid(grids, 2, 2, 2)
+    expect(grids.size).toBe(0)
+  })
+})
+
+describe('setGrid', () => {
+  it('returns a new Map with the Z level set', () => {
+    const g = createGrid(2, 2)
+    const grids = new Map<number, Uint8Array>()
+    const result = setGrid(grids, 1, g)
+    expect(result.get(1)).toBe(g)
+  })
+
+  it('does not mutate the original Map', () => {
+    const grids = new Map<number, Uint8Array>()
+    setGrid(grids, 0, createGrid(2, 2))
+    expect(grids.size).toBe(0)
+  })
+
+  it('replaces an existing entry', () => {
+    const g1 = createGrid(2, 2)
+    const g2 = createGrid(2, 2)
+    const grids = new Map([[0, g1]])
+    const result = setGrid(grids, 0, g2)
+    expect(result.get(0)).toBe(g2)
+    expect(result.size).toBe(1)
+  })
+
+  it('preserves other entries', () => {
+    const g0 = createGrid(2, 2)
+    const g1 = createGrid(2, 2)
+    const grids = new Map([[0, g0]])
+    const result = setGrid(grids, 1, g1)
+    expect(result.get(0)).toBe(g0)
+    expect(result.get(1)).toBe(g1)
   })
 })
