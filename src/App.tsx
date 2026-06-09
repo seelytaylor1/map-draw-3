@@ -719,10 +719,11 @@ export default function App() {
     }
 
     if (wallOpacity > 0) {
+      const isLight = isLightColor(wallColor)
       const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
       for (const z of sortedZsForDots) {
         const levelOpacity = 0.2 * wallOpacity * Math.pow(0.5, activeZ - z)
-        const dotColor = isLightColor(wallColor)
+        const dotColor = isLight
           ? `rgba(0,0,0,${levelOpacity})`
           : `rgba(255,255,255,${levelOpacity})`
         const levelGrid = grids.get(z)!
