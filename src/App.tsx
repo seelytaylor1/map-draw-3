@@ -245,7 +245,7 @@ export default function App() {
           col: tile.col,
           row: tile.row,
           rotation: 0,
-          z: 0,
+          z: activeZRef.current,
         }
         setHistory(h => push(h, { ...h.present, stamps: addStamp(h.present.stamps, newStamp) }))
         setSelectedStampId(newStamp.id)
