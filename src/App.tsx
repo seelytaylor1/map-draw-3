@@ -936,7 +936,7 @@ export default function App() {
         <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Z Level</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
-            onClick={() => { setActiveZ(z => z - 1); activeZRef.current -= 1 }}
+            onClick={() => setActiveZ(z => z - 1)}
             style={{
               width: 28, padding: '4px 0', fontSize: 13, cursor: 'pointer',
               background: 'transparent', color: '#eee',
@@ -949,7 +949,7 @@ export default function App() {
             {activeZ}
           </span>
           <button
-            onClick={() => { setActiveZ(z => z + 1); activeZRef.current += 1 }}
+            onClick={() => setActiveZ(z => z + 1)}
             style={{
               width: 28, padding: '4px 0', fontSize: 13, cursor: 'pointer',
               background: 'transparent', color: '#eee',
