@@ -442,7 +442,9 @@ export default function App() {
             }))
           }
         }
-        if (show3D) {
+      }
+      if (show3D) {
+        for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             if (getTile(grid, cols, c, r) !== FLOOR) continue
             const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null

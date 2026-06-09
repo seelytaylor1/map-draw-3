@@ -181,9 +181,11 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
         })
       }
     }
+  }
 
-    if (show3D) {
-      const faceT = Math.round(FACE_PX * T / TILE_PX)
+  if (show3D) {
+    const faceT = Math.round(FACE_PX * T / TILE_PX)
+    for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (getTile(grid, cols, c, r) !== FLOOR) continue
         const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
