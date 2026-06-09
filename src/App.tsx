@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
 import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoStampTransform } from './iso'
-import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles } from './grid'
+import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
@@ -29,7 +29,7 @@ type RoughPhase = 'idle' | 'placed1' | 'placed2'
 
 interface Tile { col: number; row: number }
 
-type AppSnapshot = { grid: Uint8Array; stamps: Stamp[] }
+type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[] }
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
   if (shape === 'square') {
@@ -50,9 +50,9 @@ export default function App() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grid: createGrid(DEFAULT_COLS, DEFAULT_ROWS), stamps: [] }),
+    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [] }),
   )
-  const { grid, stamps } = history.present
+  const { grids, stamps } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
@@ -63,6 +63,9 @@ export default function App() {
   const [areaPhase, setAreaPhase] = useState<'idle' | 'selecting'>('idle')
   const [areaStart, setAreaStart] = useState<Tile | null>(null)
   const [areaEnd, setAreaEnd] = useState<Tile | null>(null)
+
+  const [activeZ, setActiveZ] = useState(0)
+  const activeZRef = useRef(0)
 
   const [roughPhase, setRoughPhase] = useState<RoughPhase>('idle')
   const [roughStart, setRoughStart] = useState<Tile | null>(null)
@@ -86,6 +89,8 @@ export default function App() {
   const brushShapeRef = useRef<BrushShape>('square')
   const isPanningRef = useRef(false)
   const panLastRef = useRef({ x: 0, y: 0 })
+
+  const activeGrid = getGrid(grids, activeZ, cols, rows)
 
   const [wallColor, setWallColor] = useState('#000000')
   const [wallOpacity, setWallOpacity] = useState(1)
@@ -141,7 +146,7 @@ export default function App() {
           if (roughBaseGrid.current !== null) {
             const savedGrid = roughBaseGrid.current
             roughBaseGrid.current = null
-            setHistory(h => ({ ...h, present: { ...h.present, grid: savedGrid } }))
+            setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, savedGrid) } }))
           }
         }
         if (areaPhaseRef.current === 'selecting') {
@@ -207,11 +212,12 @@ export default function App() {
           const maxC = Math.max(start.col, end.col)
           const minR = Math.min(start.row, end.row)
           const maxR = Math.max(start.row, end.row)
+          const az = activeZRef.current
           const captured = roughPreviewRef.current
           const savedBase = roughBaseGrid.current
           roughBaseGrid.current = null
           setHistory(h => {
-            const originalGrid = savedBase ?? h.present.grid
+            const originalGrid = savedBase ?? getGrid(h.present.grids, az, cols, rows)
             const rectTileList: Tile[] = []
             for (let r = minR; r <= maxR; r++)
               for (let c = minC; c <= maxC; c++)
@@ -219,8 +225,8 @@ export default function App() {
             let next = paintTiles(originalGrid, cols, rectTileList, FLOOR)
             if (captured.length > 0)
               next = paintTiles(next, cols, captured.map(f => ({ col: f.col, row: f.row })), WALL)
-            const baseHistory = { ...h, present: { ...h.present, grid: originalGrid } }
-            return push(baseHistory, { ...h.present, grid: next })
+            const baseHistory = { ...h, present: { ...h.present, grids: setGrid(h.present.grids, az, originalGrid) } }
+            return push(baseHistory, { ...h.present, grids: setGrid(h.present.grids, az, next) })
           })
           setRoughPhase('idle')
           roughPhaseRef.current = 'idle'
@@ -239,6 +245,7 @@ export default function App() {
           col: tile.col,
           row: tile.row,
           rotation: 0,
+          z: 0,
         }
         setHistory(h => push(h, { ...h.present, stamps: addStamp(h.present.stamps, newStamp) }))
         setSelectedStampId(newStamp.id)
@@ -331,17 +338,21 @@ export default function App() {
       setRoughPhase('placed2')
       roughPhaseRef.current = 'placed2'
       setHistory(h => {
-        if (roughBaseGrid.current === null) roughBaseGrid.current = h.present.grid
+        if (roughBaseGrid.current === null) roughBaseGrid.current = getGrid(h.present.grids, activeZRef.current, cols, rows)
         const next = paintTiles(roughBaseGrid.current, cols, rectTileList, FLOOR)
-        return { ...h, present: { ...h.present, grid: next } }
+        return { ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, next) } }
       })
       return
     }
 
     if (areaPhaseRef.current === 'selecting' && areaStartRef.current && areaEndRef.current) {
       const tiles = getAreaTiles(areaStartRef.current, areaEndRef.current, brushShapeRef.current)
+      const az = activeZRef.current
       const tileValue = paintMode.current
-      setHistory(h => push(h, { ...h.present, grid: paintTiles(h.present.grid, cols, tiles, tileValue) }))
+      setHistory(h => push(h, {
+        ...h.present,
+        grids: setGrid(h.present.grids, az, paintTiles(getGrid(h.present.grids, az, cols, rows), cols, tiles, tileValue)),
+      }))
       setAreaPhase('idle'); areaPhaseRef.current = 'idle'
       setAreaStart(null); areaStartRef.current = null
       setAreaEnd(null); areaEndRef.current = null
@@ -426,7 +437,7 @@ export default function App() {
       }
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          if (getTile(grid, cols, c, r) === FLOOR) {
+          if (getTile(activeGrid, cols, c, r) === FLOOR) {
             layer.add(new Konva.Line({
               points: isoFloorPoints(c, r, ITW, ITH),
               closed: true,
@@ -434,7 +445,7 @@ export default function App() {
               stroke: 'rgba(0,0,0,0.15)',
               strokeWidth: 0.5,
             }))
-          } else if (getTile(grid, cols, c, r) === WATER) {
+          } else if (getTile(activeGrid, cols, c, r) === WATER) {
             layer.add(new Konva.Line({
               points: isoWaterPoints(c, r, ITW, ITH),
               closed: true,
@@ -446,9 +457,9 @@ export default function App() {
       if (show3D) {
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            if (getTile(grid, cols, c, r) !== FLOOR) continue
-            const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
-            const eastNeighbor = c + 1 < cols ? getTile(grid, cols, c + 1, r) : null
+            if (getTile(activeGrid, cols, c, r) !== FLOOR) continue
+            const southNeighbor = r + 1 < rows ? getTile(activeGrid, cols, c, r + 1) : null
+            const eastNeighbor = c + 1 < cols ? getTile(activeGrid, cols, c + 1, r) : null
             const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
             const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
             if (southWall) {
@@ -485,13 +496,13 @@ export default function App() {
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        if (getTile(grid, cols, c, r) === FLOOR) {
+        if (getTile(activeGrid, cols, c, r) === FLOOR) {
           layer.add(new Konva.Rect({
             x: c * TILE_PX, y: r * TILE_PX,
             width: TILE_PX, height: TILE_PX,
             fill: FLOOR_COLOR,
           }))
-        } else if (getTile(grid, cols, c, r) === WATER) {
+        } else if (getTile(activeGrid, cols, c, r) === WATER) {
           layer.add(new Konva.Rect({
             x: c * TILE_PX, y: r * TILE_PX,
             width: TILE_PX, height: TILE_PX,
@@ -504,9 +515,9 @@ export default function App() {
     if (show3D) {
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          if (getTile(grid, cols, c, r) !== FLOOR) continue
-          const southWall = r + 1 >= rows || getTile(grid, cols, c, r + 1) === WALL
-          const eastWall = c + 1 >= cols || getTile(grid, cols, c + 1, r) === WALL
+          if (getTile(activeGrid, cols, c, r) !== FLOOR) continue
+          const southWall = r + 1 >= rows || getTile(activeGrid, cols, c, r + 1) === WALL
+          const eastWall = c + 1 >= cols || getTile(activeGrid, cols, c + 1, r) === WALL
           if (southWall) {
             layer.add(new Konva.Rect({
               x: c * TILE_PX, y: (r + 1) * TILE_PX,
@@ -528,7 +539,7 @@ export default function App() {
     if (showGrid) {
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          if (getTile(grid, cols, c, r) === FLOOR) {
+          if (getTile(activeGrid, cols, c, r) === FLOOR) {
             layer.add(new Konva.Rect({
               x: c * TILE_PX, y: r * TILE_PX,
               width: TILE_PX, height: TILE_PX,
@@ -541,7 +552,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grid, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
+  }, [activeGrid, grids, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
 
   // Stamp layer
   useEffect(() => {
@@ -698,7 +709,7 @@ export default function App() {
         : `rgba(255,255,255,${0.2 * wallOpacity})`
       for (let r = 0; r < rows; r += 2) {
         for (let c = 0; c < cols; c += 2) {
-          if (getTile(grid, cols, c, r) === WALL) {
+          if (getTile(activeGrid, cols, c, r) === WALL) {
             layer.add(new Konva.Circle({
               x: c * TILE_PX + TILE_PX,
               y: r * TILE_PX + TILE_PX,
@@ -754,13 +765,19 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
+  }, [activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
 
   const handleWidthChange = (inches: number) => {
     if (!Number.isFinite(inches) || inches < 1 || inches > 36) return
     const newCols = Math.round(inches * TILES_PER_INCH)
     if (newCols === cols) return
-    setHistory(h => createHistory({ grid: resizeGrid(h.present.grid, cols, rows, newCols, rows), stamps: h.present.stamps }))
+    setHistory(h => {
+      const newGrids = new Map<number, Uint8Array>()
+      for (const [z, g] of h.present.grids) {
+        newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
+      }
+      return createHistory({ grids: newGrids, stamps: h.present.stamps })
+    })
     setCols(newCols)
   }
 
@@ -768,7 +785,13 @@ export default function App() {
     if (!Number.isFinite(inches) || inches < 1 || inches > 36) return
     const newRows = Math.round(inches * TILES_PER_INCH)
     if (newRows === rows) return
-    setHistory(h => createHistory({ grid: resizeGrid(h.present.grid, cols, rows, cols, newRows), stamps: h.present.stamps }))
+    setHistory(h => {
+      const newGrids = new Map<number, Uint8Array>()
+      for (const [z, g] of h.present.grids) {
+        newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
+      }
+      return createHistory({ grids: newGrids, stamps: h.present.stamps })
+    })
     setRows(newRows)
   }
 
@@ -776,7 +799,9 @@ export default function App() {
     if (!stampImages) return
 
     const layout = buildExportShapes({
-      grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, stamps, exportTile: 60,
+      grid: activeGrid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
+      stamps: stamps.filter(s => s.z === activeZ),
+      exportTile: 60,
     })
 
     const container = document.createElement('div')
@@ -841,10 +866,10 @@ export default function App() {
         a.click()
       },
     })
-  }, [grid, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages])
 
   const handleSave = () => {
-    const save = serialize({ grid, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -857,7 +882,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grid: new Uint8Array(save.grid), stamps: save.stamps }))
+      setHistory(createHistory({ grids: save.grids, stamps: save.stamps }))
       setCols(save.cols)
       setRows(save.rows)
       setWallColor(save.wallColor)
@@ -937,7 +962,7 @@ export default function App() {
               if (roughBaseGrid.current !== null) {
                 const savedGrid = roughBaseGrid.current
                 roughBaseGrid.current = null
-                setHistory(h => ({ ...h, present: { ...h.present, grid: savedGrid } }))
+                setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, savedGrid) } }))
               }
             } else {
               setMode('rough')
