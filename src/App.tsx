@@ -767,6 +767,8 @@ export default function App() {
     layer.batchDraw()
   }, [activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
 
+  useEffect(() => { activeZRef.current = activeZ }, [activeZ])
+
   const handleWidthChange = (inches: number) => {
     if (!Number.isFinite(inches) || inches < 1 || inches > 36) return
     const newCols = Math.round(inches * TILES_PER_INCH)
@@ -929,6 +931,35 @@ export default function App() {
         display: 'flex', flexDirection: 'column', gap: 8,
         fontSize: 12, userSelect: 'none', minWidth: 190,
       }}>
+
+        {/* ── Z LEVEL ── */}
+        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Z Level</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => { setActiveZ(z => z - 1); activeZRef.current -= 1 }}
+            style={{
+              width: 28, padding: '4px 0', fontSize: 13, cursor: 'pointer',
+              background: 'transparent', color: '#eee',
+              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+            }}
+          >
+            −
+          </button>
+          <span style={{ flex: 1, textAlign: 'center', color: '#eee', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+            {activeZ}
+          </span>
+          <button
+            onClick={() => { setActiveZ(z => z + 1); activeZRef.current += 1 }}
+            style={{
+              width: 28, padding: '4px 0', fontSize: 13, cursor: 'pointer',
+              background: 'transparent', color: '#eee',
+              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+            }}
+          >
+            +
+          </button>
+        </div>
+        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
         {/* ── TOOLS ── */}
         <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tools</div>
