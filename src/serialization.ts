@@ -53,9 +53,8 @@ export function serialize(params: {
     show3D: params.show3D,
     stamps: params.stamps.map(s => {
       const { scale, mirrored, z, ...rest } = s
-      const out: Partial<Stamp> = { ...rest, z: 0 }
+      const out: Partial<Stamp> = { ...rest }
       if (z !== 0) out.z = z
-      else delete out.z
       if (scale !== undefined && scale !== 1) out.scale = scale
       if (mirrored) out.mirrored = mirrored
       return out as Stamp
