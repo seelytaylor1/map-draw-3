@@ -12,6 +12,7 @@ import {
 } from './stamps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
+import { shoreLinePoints, darkenHex } from './water'
 import { applyTileLevelNoise, type TileFlip } from './noise'
 import { StampPicker, type Mode } from './StampPicker'
 
@@ -498,6 +499,35 @@ export default function App() {
       }
     }
 
+    // Shore lines: squiggle on each exposed Water tile edge
+    {
+      const shoreColor = darkenHex(WATER_COLOR, 0.7)
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (getTile(grid, cols, c, r) !== WATER) continue
+          const x = c * TILE_PX
+          const y = r * TILE_PX
+          const neighbors = {
+            top: getTile(grid, cols, c, r - 1),
+            right: getTile(grid, cols, c + 1, r),
+            bottom: getTile(grid, cols, c, r + 1),
+            left: getTile(grid, cols, c - 1, r),
+          }
+          const edges = ['top', 'right', 'bottom', 'left'] as const
+          for (const edge of edges) {
+            if (neighbors[edge] !== WATER) {
+              layer.add(new Konva.Line({
+                points: shoreLinePoints(edge, x, y, TILE_PX),
+                stroke: shoreColor,
+                strokeWidth: 1,
+                listening: false,
+              }))
+            }
+          }
+        }
+      }
+    }
+
     if (show3D) {
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
@@ -797,6 +827,13 @@ export default function App() {
           points: shape.points, closed: true,
           fill: shape.fill, opacity: shape.opacity,
           stroke: shape.stroke, strokeWidth: shape.strokeWidth,
+        }))
+      } else if (shape.kind === 'polyline') {
+        offLayer.add(new Konva.Line({
+          points: shape.points,
+          stroke: shape.stroke,
+          strokeWidth: shape.strokeWidth,
+          listening: false,
         }))
       } else if (shape.kind === 'image') {
         const imgEl = stampImages.get(shape.stampType as any)

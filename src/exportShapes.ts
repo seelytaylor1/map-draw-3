@@ -2,6 +2,7 @@ import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COL
 import { getTile } from './grid'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
+import { shoreLinePoints, darkenHex } from './water'
 
 export type RectSpec = {
   kind: 'rect'
@@ -33,7 +34,14 @@ export type ImageSpec = {
   mirrored?: boolean
 }
 
-export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec
+export type PolylineSpec = {
+  kind: 'polyline'
+  points: number[]
+  stroke: string
+  strokeWidth: number
+}
+
+export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec | PolylineSpec
 
 export type ExportLayout = {
   canvasW: number
@@ -84,6 +92,36 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
         shapes.push({ kind: 'rect', x: c * T, y: r * T, w: T, h: T, fill: FLOOR_COLOR })
       } else if (getTile(grid, cols, c, r) === WATER) {
         shapes.push({ kind: 'rect', x: c * T, y: r * T, w: T, h: T, fill: WATER_COLOR })
+      }
+    }
+  }
+
+  // Shore lines: squiggle on each exposed Water tile edge
+  {
+    const shoreColor = darkenHex(WATER_COLOR, 0.7)
+    const sw = T / TILE_PX  // scale stroke width with tile size
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (getTile(grid, cols, c, r) !== WATER) continue
+        const x = c * T
+        const y = r * T
+        const neighbors = {
+          top: getTile(grid, cols, c, r - 1),
+          right: getTile(grid, cols, c + 1, r),
+          bottom: getTile(grid, cols, c, r + 1),
+          left: getTile(grid, cols, c - 1, r),
+        }
+        const edges = ['top', 'right', 'bottom', 'left'] as const
+        for (const edge of edges) {
+          if (neighbors[edge] !== WATER) {
+            shapes.push({
+              kind: 'polyline',
+              points: shoreLinePoints(edge, x, y, T),
+              stroke: shoreColor,
+              strokeWidth: sw,
+            })
+          }
+        }
       }
     }
   }
