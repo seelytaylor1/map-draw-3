@@ -718,7 +718,7 @@ export default function App() {
       return
     }
 
-    if (!showIso && wallOpacity > 0) {
+    if (wallOpacity > 0) {
       const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
       for (const z of sortedZsForDots) {
         const levelOpacity = 0.2 * wallOpacity * Math.pow(0.5, activeZ - z)
