@@ -1,4 +1,4 @@
-export type StampType = 'door' | 'trap' | 'star' | 'bars' | 'stairs'
+export type StampType = 'door' | 'trap' | 'star' | 'bars'
 export type ObjectStampType =
   | 'archway'
   | 'bigpillar'
@@ -23,7 +23,7 @@ export interface Stamp {
   mirrored?: boolean
 }
 
-export const STAMP_TYPES: StampType[] = ['door', 'trap', 'star', 'bars', 'stairs']
+export const STAMP_TYPES: StampType[] = ['door', 'trap', 'star', 'bars']
 export const OBJECT_STAMP_TYPES: ObjectStampType[] = [
   'archway',
   'bigpillar',
@@ -46,7 +46,7 @@ export function isFloorStamp(s: Stamp): s is Stamp & { type: StampType } {
 }
 
 export function stampSize(type: StampType | ObjectStampType): { cols: number; rows: number } {
-  if (type === 'stairs' || type === 'wood-doubledoor') return { cols: 2, rows: 1 }
+  if (type === 'wood-doubledoor') return { cols: 2, rows: 1 }
   return { cols: 1, rows: 1 }
 }
 

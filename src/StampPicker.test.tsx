@@ -9,7 +9,6 @@ vi.mock('./stamps/door.svg?url', () => ({ default: 'door.svg' }))
 vi.mock('./stamps/trap.svg?url', () => ({ default: 'trap.svg' }))
 vi.mock('./stamps/star.svg?url', () => ({ default: 'star.svg' }))
 vi.mock('./stamps/bars.svg?url', () => ({ default: 'bars.svg' }))
-vi.mock('./stamps/stairs.svg?url', () => ({ default: 'stairs.svg' }))
 vi.mock('./stamps/archway.svg?url', () => ({ default: 'archway.svg' }))
 
 afterEach(cleanup)

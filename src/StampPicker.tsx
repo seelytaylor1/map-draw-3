@@ -3,7 +3,6 @@ import doorUrl from './stamps/door.svg?url'
 import trapUrl from './stamps/trap.svg?url'
 import starUrl from './stamps/star.svg?url'
 import barsUrl from './stamps/bars.svg?url'
-import stairsUrl from './stamps/stairs.svg?url'
 import archwayUrl from './stamps/archway.svg?url'
 
 export type Mode = 'paint' | 'rough' | 'steps' | StampType | ObjectStampType
@@ -13,7 +12,6 @@ const FLOOR_STAMP_URLS: Record<StampType, string> = {
   trap: trapUrl,
   star: starUrl,
   bars: barsUrl,
-  stairs: stairsUrl,
 }
 
 export const FLOOR_STAMP_LABELS: Record<StampType, string> = {
@@ -21,7 +19,6 @@ export const FLOOR_STAMP_LABELS: Record<StampType, string> = {
   trap: 'Trap',
   star: 'Star',
   bars: 'Bars',
-  stairs: 'Stairs',
 }
 
 const OBJECT_STAMP_URLS: Record<ObjectStampType, string> = {
@@ -60,7 +57,7 @@ export function StampPicker({ mode, showIso, onModeChange }: Props) {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <img src={FLOOR_STAMP_URLS[type]} alt={FLOOR_STAMP_LABELS[type]} style={{ width: 20, height: type === 'stairs' ? 10 : 20, imageRendering: 'crisp-edges' }} />
+            <img src={FLOOR_STAMP_URLS[type]} alt={FLOOR_STAMP_LABELS[type]} style={{ width: 20, height: 20, imageRendering: 'crisp-edges' }} />
           </button>
         ))}
       </div>

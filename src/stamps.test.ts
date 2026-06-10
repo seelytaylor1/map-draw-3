@@ -18,8 +18,8 @@ describe('stampSize', () => {
     }
   })
 
-  it('returns 2×1 for stairs', () => {
-    expect(stampSize('stairs')).toEqual({ cols: 2, rows: 1 })
+  it('returns 2×1 for wood-doubledoor', () => {
+    expect(stampSize('wood-doubledoor')).toEqual({ cols: 2, rows: 1 })
   })
 
   it('returns 1×1 for archway', () => {

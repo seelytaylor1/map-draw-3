@@ -4,7 +4,6 @@ import doorUrl from '../stamps/door.svg?url'
 import trapUrl from '../stamps/trap.svg?url'
 import starUrl from '../stamps/star.svg?url'
 import barsUrl from '../stamps/bars.svg?url'
-import stairsUrl from '../stamps/stairs.svg?url'
 import archwayUrl from '../stamps/archway.svg?url'
 
 const STAMP_URLS: Record<StampType, string> = {
@@ -12,7 +11,6 @@ const STAMP_URLS: Record<StampType, string> = {
   trap: trapUrl,
   star: starUrl,
   bars: barsUrl,
-  stairs: stairsUrl,
 }
 
 const OBJECT_STAMP_URLS: Record<ObjectStampType, string> = {
