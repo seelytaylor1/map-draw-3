@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { serialize, deserialize } from './serialization'
 import { WATER } from './constants'
 import { type Stamp } from './stamps'
+import { type StepRun } from './steps'
 
 const GRIDS = new Map([[0, new Uint8Array([1, 0, 1, 1])]])
 
@@ -15,6 +16,7 @@ const BASE = {
   showGrid: true,
   show3D: false,
   stamps: [] as Stamp[],
+  steps: [] as StepRun[],
 }
 
 const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90, z: 0 }
@@ -274,5 +276,44 @@ describe('stamp mirrored field', () => {
     const json = JSON.stringify(serialize({ ...BASE, stamps: [s] }))
     const restored = deserialize(JSON.parse(json))
     expect(restored.stamps[0].mirrored).toBeUndefined()
+  })
+})
+
+describe('steps round-trip', () => {
+  const STEP: StepRun = { id: 's1', col: 5, row: 6, z: -1, direction: 'W' }
+
+  it('serialize includes steps in output', () => {
+    const save = serialize({ ...BASE, steps: [STEP] })
+    expect(save.steps).toEqual([STEP])
+  })
+
+  it('round-trips steps through JSON', () => {
+    const json = JSON.stringify(serialize({ ...BASE, steps: [STEP] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.steps).toEqual([STEP])
+  })
+
+  it('defaults steps to [] for saves without steps field (old save)', () => {
+    const save = serialize(BASE)
+    const { steps: _, ...noSteps } = save
+    const restored = deserialize(noSteps)
+    expect(restored.steps).toEqual([])
+  })
+
+  it('throws on invalid step direction', () => {
+    const bad = { ...serialize(BASE), steps: [{ ...STEP, direction: 'Q' }] }
+    expect(() => deserialize(bad)).toThrow('Invalid step direction')
+  })
+
+  it('throws on missing step id', () => {
+    const { id: _, ...noId } = STEP
+    const bad = { ...serialize(BASE), steps: [noId] }
+    expect(() => deserialize(bad)).toThrow('Invalid step id')
+  })
+
+  it('defaults step z to 0 when absent', () => {
+    const bad = { ...serialize(BASE), steps: [{ id: 's', col: 1, row: 1, direction: 'N' }] }
+    const restored = deserialize(bad)
+    expect(restored.steps[0].z).toBe(0)
   })
 })
