@@ -48,6 +48,16 @@ function uvToGrid(run: StepRun, u: number, v: number): { col: number; row: numbe
   }
 }
 
+// Grid-space center of each tread — painter depth anchors for render sorting.
+export function stepTreadCenters(run: StepRun): { col: number; row: number }[] {
+  const centers: { col: number; row: number }[] = []
+  for (let i = 0; i < STEP_TREAD_COUNT; i++) {
+    const uMid = ((i + 0.5) * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
+    centers.push(uvToGrid(run, uMid, 0.5))
+  }
+  return centers
+}
+
 export interface StepSideFace {
   points: number[]            // closed quad, 4 points as flat [x, y, ...]
   side: 'south' | 'east'      // which exposed slab side this face represents

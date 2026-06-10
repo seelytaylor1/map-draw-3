@@ -3,10 +3,15 @@ import { buildIsoScene, type IsoSceneParams } from './isoScene'
 import { createGrid, paintTiles } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
-import { type StepRun } from './steps'
+import { STEP_TREAD_COUNT, isoStepTreads, type StepRun } from './steps'
 
 const TILE_W = 40
 const TILE_H = 20
+
+// shift points down to the z=1 plane (one Z_STEP_HEIGHT up on screen)
+function offset(points: number[]): number[] {
+  return points.map((v, i) => (i % 2 === 1 ? v - Z_STEP_HEIGHT : v))
+}
 
 function params(overrides: Partial<IsoSceneParams> = {}): IsoSceneParams {
   return {
@@ -129,5 +134,50 @@ describe('buildIsoScene: multiple z levels', () => {
     const br = isoProject(8, 8, TILE_W, TILE_H)
     expect(shapes[0].points[0]).toBe(tl.x)
     expect(shapes[0].points[5]).toBe(br.y)
+  })
+})
+
+describe('buildIsoScene: step runs', () => {
+  const RUN: StepRun = { id: 'run1', col: 3, row: 3, z: 1, direction: 'E' }
+
+  it('treads interleave with same-level tiles by painter depth', () => {
+    // z=1: tile behind the stairs (2,3) diag 6, tile in front (5,3) diag 9.
+    // Tread center diagonals run 6.67 .. 8.33 — strictly between the two.
+    const grids = new Map([[1, gridWith([{ col: 2, row: 3 }, { col: 5, row: 3 }])]])
+    const shapes = buildIsoScene(params({ grids, steps: [RUN] }))
+    const behindIdx = shapes.findIndex(s => JSON.stringify(s.points) === JSON.stringify(offset(isoFloorPoints(2, 3, TILE_W, TILE_H))))
+    const frontIdx = shapes.findIndex(s => JSON.stringify(s.points) === JSON.stringify(offset(isoFloorPoints(5, 3, TILE_W, TILE_H))))
+    const treadIdxs = shapes.flatMap((s, i) => (s.stepId === 'run1' ? [i] : []))
+    expect(treadIdxs.length).toBeGreaterThan(0)
+    expect(behindIdx).toBeGreaterThan(-1)
+    expect(frontIdx).toBeGreaterThan(-1)
+    expect(Math.min(...treadIdxs)).toBeGreaterThan(behindIdx)
+    expect(Math.max(...treadIdxs)).toBeLessThan(frontIdx)
+  })
+
+  it('every tread shape carries its run id', () => {
+    const shapes = buildIsoScene(params({ steps: [RUN], grids: new Map([[1, gridWith([])]]) }))
+    expect(shapes.length).toBe(STEP_TREAD_COUNT * 2) // riser + top per tread, no 3D
+    expect(shapes.every(s => s.stepId === 'run1')).toBe(true)
+  })
+
+  it('with 3D each tread emits side face, riser, then top', () => {
+    const shapes = buildIsoScene(params({ steps: [RUN], grids: new Map([[1, gridWith([])]]), show3D: true }))
+    expect(shapes.length).toBe(STEP_TREAD_COUNT * 3)
+    expect(shapes[0].fill).toBe(ISO_FRONT_FACE_COLOR) // side face (south, E run)
+    expect(shapes[1].fill).toBe(ISO_FRONT_FACE_COLOR) // riser
+    expect(shapes[2].fill).toBe(FLOOR_COLOR)          // top
+  })
+
+  it('selected run treads get the selection stroke', () => {
+    const shapes = buildIsoScene(params({ steps: [RUN], grids: new Map([[1, gridWith([])]]), selectedStepId: 'run1' }))
+    const tops = shapes.filter(s => s.fill === FLOOR_COLOR)
+    expect(tops.every(s => s.stroke === '#ffff00')).toBe(true)
+  })
+
+  it('tread points carry the z=1 vertical offset', () => {
+    const shapes = buildIsoScene(params({ steps: [RUN], grids: new Map([[1, gridWith([])]]) }))
+    const localTreads = isoStepTreads(RUN, TILE_W, TILE_H)
+    expect(shapes[1].points).toEqual(localTreads[0].top.map((v, i) => (i % 2 === 1 ? v - Z_STEP_HEIGHT : v)))
   })
 })

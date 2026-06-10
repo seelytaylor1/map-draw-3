@@ -1,7 +1,7 @@
 import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
-import { type StepRun } from './steps'
+import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
 
 export interface IsoSceneParams {
   grids: Map<number, Uint8Array>
@@ -89,6 +89,33 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
         }
       }
     }
+    for (const run of p.steps) {
+      if (run.z !== z) continue
+      const treads = isoStepTreads(run, p.tileW, p.tileH)
+      const sideFaces = p.show3D ? isoStepSideFaces(run, p.tileW, p.tileH, FACE_PX) : null
+      const centers = stepTreadCenters(run)
+      const selected = run.id === p.selectedStepId
+      treads.forEach((tread, i) => {
+        const shapes: IsoShape[] = []
+        if (sideFaces) {
+          shapes.push({
+            points: sideFaces[i].points,
+            fill: sideFaces[i].side === 'south' ? ISO_FRONT_FACE_COLOR : ISO_EAST_FACE_COLOR,
+            stepId: run.id,
+          })
+        }
+        shapes.push({ points: tread.front, fill: ISO_FRONT_FACE_COLOR, stepId: run.id })
+        shapes.push({
+          points: tread.top,
+          fill: FLOOR_COLOR,
+          stroke: selected ? '#ffff00' : 'rgba(0,0,0,0.25)',
+          strokeWidth: selected ? 1.5 : 0.5,
+          stepId: run.id,
+        })
+        items.push({ depth: centers[i].col + centers[i].row, shapes })
+      })
+    }
+
     items.sort((a, b) => a.depth - b.depth)
     for (const item of items) {
       for (const shape of item.shapes) {

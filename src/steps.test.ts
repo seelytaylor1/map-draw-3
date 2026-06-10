@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STEP_TREAD_COUNT, addStepRun, isoStepSideFaces, isoStepTreads, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
+import { STEP_TREAD_COUNT, addStepRun, isoStepSideFaces, isoStepTreads, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, stepTreadCenters, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { isoProject } from './iso'
 import { Z_STEP_HEIGHT } from './constants'
 
@@ -267,5 +267,22 @@ describe('topDownStepFaceRect', () => {
     expect(topDownStepFaceRect(run({ col: 3, row: 4, direction: 'N' }), 20, 8)).toEqual(
       { x: 80, y: 60, width: 8, height: 40 },
     )
+  })
+})
+
+describe('stepTreadCenters', () => {
+  it('direction E: centers march east through the footprint at half-row', () => {
+    const centers = stepTreadCenters(run({ col: 3, row: 4, direction: 'E' }))
+    expect(centers.length).toBe(STEP_TREAD_COUNT)
+    expect(centers[0].col).toBeCloseTo(3 + 1 / 6, 10)
+    expect(centers[0].row).toBeCloseTo(4.5, 10)
+    expect(centers[5].col).toBeCloseTo(3 + 11 / 6, 10)
+  })
+
+  it('direction N: centers march north at half-col', () => {
+    const centers = stepTreadCenters(run({ col: 3, row: 4, direction: 'N' }))
+    expect(centers[0].col).toBeCloseTo(3.5, 10)
+    expect(centers[0].row).toBeCloseTo(5 - 1 / 6, 10)
+    expect(centers[5].row).toBeCloseTo(5 - 11 / 6, 10)
   })
 })
