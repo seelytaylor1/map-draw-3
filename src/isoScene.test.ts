@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildIsoScene, type IsoSceneParams } from './isoScene'
 import { createGrid, paintTiles } from './grid'
-import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoWaterPoints } from './iso'
-import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WATER, WATER_COLOR } from './constants'
+import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
+import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
 import { type StepRun } from './steps'
 
 const TILE_W = 40
@@ -95,5 +95,39 @@ describe('buildIsoScene: tile emission', () => {
   it('no faces at all when show3D is off', () => {
     const grids = new Map([[0, gridWith([{ col: 3, row: 3 }])]])
     expect(buildIsoScene(params({ grids, show3D: false })).length).toBe(1)
+  })
+})
+
+describe('buildIsoScene: multiple z levels', () => {
+  it('emits all lower-level shapes before any higher-level shapes', () => {
+    const grids = new Map([
+      [1, gridWith([{ col: 0, row: 0 }])],
+      [0, gridWith([{ col: 7, row: 7 }])],
+    ])
+    const shapes = buildIsoScene(params({ grids }))
+    expect(shapes.length).toBe(2)
+    // z=0 tile first even though its diagonal (14) is far greater than z=1 tile (0)
+    expect(shapes[0].points).toEqual(isoFloorPoints(7, 7, TILE_W, TILE_H))
+  })
+
+  it('bakes the z vertical offset into shape points', () => {
+    const grids = new Map([[1, gridWith([{ col: 2, row: 2 }])]])
+    const shapes = buildIsoScene(params({ grids }))
+    const flat = isoFloorPoints(2, 2, TILE_W, TILE_H)
+    shapes[0].points.forEach((v, i) => {
+      expect(v).toBe(i % 2 === 1 ? flat[i] - Z_STEP_HEIGHT : flat[i])
+    })
+  })
+
+  it('emits the wall background diamond first when wallOpacity > 0', () => {
+    const grids = new Map([[0, gridWith([{ col: 0, row: 0 }])]])
+    const shapes = buildIsoScene(params({ grids, wallColor: '#112233', wallOpacity: 0.8 }))
+    expect(shapes.length).toBe(2)
+    expect(shapes[0].fill).toBe('#112233')
+    expect(shapes[0].opacity).toBe(0.8)
+    const tl = isoProject(0, 0, TILE_W, TILE_H)
+    const br = isoProject(8, 8, TILE_W, TILE_H)
+    expect(shapes[0].points[0]).toBe(tl.x)
+    expect(shapes[0].points[5]).toBe(br.y)
   })
 })

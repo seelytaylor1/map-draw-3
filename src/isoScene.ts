@@ -1,6 +1,6 @@
 import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
 import { getTile } from './grid'
-import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoWaterPoints } from './iso'
+import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { type StepRun } from './steps'
 
 export interface IsoSceneParams {
@@ -33,12 +33,30 @@ interface Renderable {
   shapes: IsoShape[]
 }
 
+function offsetY(points: number[], yOff: number): number[] {
+  if (yOff === 0) return points
+  return points.map((v, i) => (i % 2 === 1 ? v + yOff : v))
+}
+
 export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
-  void Z_STEP_HEIGHT
   const out: IsoShape[] = []
+
+  if (p.wallOpacity > 0) {
+    const tl = isoProject(0, 0, p.tileW, p.tileH)
+    const tr = isoProject(p.cols, 0, p.tileW, p.tileH)
+    const br = isoProject(p.cols, p.rows, p.tileW, p.tileH)
+    const bl = isoProject(0, p.rows, p.tileW, p.tileH)
+    out.push({
+      points: [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y],
+      fill: p.wallColor,
+      opacity: p.wallOpacity,
+    })
+  }
+
   const zs = [...p.grids.keys()].sort((a, b) => a - b)
   for (const z of zs) {
     const grid = p.grids.get(z)!
+    const yOff = -z * Z_STEP_HEIGHT
     const items: Renderable[] = []
     for (let r = 0; r < p.rows; r++) {
       for (let c = 0; c < p.cols; c++) {
@@ -72,7 +90,11 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
       }
     }
     items.sort((a, b) => a.depth - b.depth)
-    for (const item of items) out.push(...item.shapes)
+    for (const item of items) {
+      for (const shape of item.shapes) {
+        out.push({ ...shape, points: offsetY(shape.points, yOff) })
+      }
+    }
   }
   return out
 }
