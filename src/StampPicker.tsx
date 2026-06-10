@@ -6,7 +6,7 @@ import barsUrl from './stamps/bars.svg?url'
 import stairsUrl from './stamps/stairs.svg?url'
 import archwayUrl from './stamps/archway.svg?url'
 
-export type Mode = 'paint' | 'rough' | StampType | ObjectStampType
+export type Mode = 'paint' | 'rough' | 'steps' | StampType | ObjectStampType
 
 const FLOOR_STAMP_URLS: Record<StampType, string> = {
   door: doorUrl,
@@ -39,7 +39,7 @@ interface Props {
 }
 
 export function StampPicker({ mode, showIso, onModeChange }: Props) {
-  const isStampMode = mode !== 'paint' && mode !== 'rough'
+  const isStampMode = mode !== 'paint' && mode !== 'rough' && mode !== 'steps'
   const isFloorMode = isStampMode && (STAMP_TYPES as string[]).includes(mode)
   const isObjectMode = isStampMode && (OBJECT_STAMP_TYPES as string[]).includes(mode)
 

@@ -10,6 +10,7 @@ import {
   addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
+import { addStepRun, isoStepTreads, removeStepRun, rotateStepRun, stepRunTiles, topDownStepRects, type StepRun } from './steps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -29,7 +30,7 @@ type RoughPhase = 'idle' | 'placed1' | 'placed2'
 
 interface Tile { col: number; row: number }
 
-type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[] }
+type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[] }
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
   if (shape === 'square') {
@@ -50,14 +51,15 @@ export default function App() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [] }),
+    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [] }),
   )
-  const { grids, stamps } = history.present
+  const { grids, stamps, steps } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
   const [mode, setMode] = useState<Mode>('paint')
   const [selectedStampId, setSelectedStampId] = useState<string | null>(null)
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
   const [hoverTile, setHoverTile] = useState<Tile | null>(null)
   const [brushShape, setBrushShape] = useState<BrushShape>('square')
   const [areaPhase, setAreaPhase] = useState<'idle' | 'selecting'>('idle')
@@ -134,8 +136,18 @@ export default function App() {
         setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))
         return
       }
+      if (e.key === 'Delete' && selectedStepId) {
+        setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, selectedStepId) }))
+        setSelectedStepId(null)
+        return
+      }
+      if ((e.key === 'r' || e.key === 'R') && selectedStepId) {
+        setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))
+        return
+      }
       if (e.key === 'Escape') {
         setSelectedStampId(null)
+        setSelectedStepId(null)
         if (roughPhase !== 'idle') {
           setRoughPhase('idle')
           roughPhaseRef.current = 'idle'
@@ -158,7 +170,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedStampId, roughPhase])
+  }, [selectedStampId, selectedStepId, roughPhase])
 
   const stageToTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
     const rect = stage.container().getBoundingClientRect()
@@ -235,6 +247,20 @@ export default function App() {
           setRoughEnd(null); roughEndRef.current = null
           setRoughPreview([]); roughPreviewRef.current = []
         }
+        return
+      }
+
+      if (mode === 'steps') {
+        const newRun: StepRun = {
+          id: crypto.randomUUID(),
+          col: tile.col,
+          row: tile.row,
+          z: activeZRef.current,
+          direction: 'E',
+        }
+        setHistory(h => push(h, { ...h.present, steps: addStepRun(h.present.steps, newRun) }))
+        setSelectedStampId(null)
+        setSelectedStepId(newRun.id)
         return
       }
 
@@ -614,6 +640,7 @@ export default function App() {
               setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
               setSelectedStampId(null)
             } else {
+              setSelectedStepId(null)
               setSelectedStampId(stamp.id)
             }
           })
@@ -648,6 +675,7 @@ export default function App() {
               setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
               setSelectedStampId(null)
             } else {
+              setSelectedStepId(null)
               setSelectedStampId(stamp.id)
             }
           })
@@ -718,8 +746,65 @@ export default function App() {
       }
     }
 
+    for (const run of steps) {
+      const select = (e: Konva.KonvaEventObject<MouseEvent>) => {
+        e.cancelBubble = true
+        if (e.evt.button === 2 && run.id === selectedStepId) {
+          setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, run.id) }))
+          setSelectedStepId(null)
+        } else {
+          setSelectedStampId(null)
+          setSelectedStepId(run.id)
+        }
+      }
+
+      if (showIso) {
+        const group = new Konva.Group({ y: -run.z * Z_STEP_HEIGHT })
+        for (const tread of isoStepTreads(run, TILE_PX * 2, TILE_PX)) {
+          group.add(new Konva.Line({ points: tread.front, closed: true, fill: ISO_FRONT_FACE_COLOR }))
+          group.add(new Konva.Line({
+            points: tread.top,
+            closed: true,
+            fill: FLOOR_COLOR,
+            stroke: run.id === selectedStepId ? '#ffff00' : 'rgba(0,0,0,0.25)',
+            strokeWidth: run.id === selectedStepId ? 1.5 : 0.5,
+          }))
+        }
+        group.on('mousedown', select)
+        layer.add(group)
+        continue
+      }
+
+      // Top-down: hide steps above activeZ, fade like their level
+      if (run.z > activeZ) continue
+      const group = new Konva.Group({ opacity: Math.pow(0.5, activeZ - run.z) })
+      for (const rect of topDownStepRects(run)) {
+        group.add(new Konva.Rect({
+          x: rect.x * TILE_PX, y: rect.y * TILE_PX,
+          width: rect.width * TILE_PX, height: rect.height * TILE_PX,
+          fill: FLOOR_COLOR,
+          stroke: 'rgba(0,0,0,0.35)',
+          strokeWidth: 1,
+        }))
+      }
+      if (run.id === selectedStepId) {
+        const tiles = stepRunTiles(run)
+        const minC = Math.min(...tiles.map(t => t.col))
+        const minR = Math.min(...tiles.map(t => t.row))
+        const maxC = Math.max(...tiles.map(t => t.col))
+        const maxR = Math.max(...tiles.map(t => t.row))
+        group.add(new Konva.Rect({
+          x: minC * TILE_PX - 1, y: minR * TILE_PX - 1,
+          width: (maxC - minC + 1) * TILE_PX + 2, height: (maxR - minR + 1) * TILE_PX + 2,
+          stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+        }))
+      }
+      group.on('mousedown', select)
+      layer.add(group)
+    }
+
     layer.batchDraw()
-  }, [stamps, selectedStampId, stampImages, cols, rows, showIso, activeZ])
+  }, [stamps, steps, selectedStampId, selectedStepId, stampImages, cols, rows, showIso, activeZ])
 
   // Non-exported layer: dot pattern + ghost cursor preview
   useEffect(() => {
@@ -813,7 +898,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps })
     })
     setCols(newCols)
   }
@@ -827,7 +912,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps })
     })
     setRows(newRows)
   }
@@ -906,7 +991,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps, steps })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -919,7 +1004,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grids: save.grids, stamps: save.stamps }))
+      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps }))
       setCols(save.cols)
       setRows(save.rows)
       setWallColor(save.wallColor)
@@ -929,6 +1014,7 @@ export default function App() {
       setShowGrid(save.showGrid)
       setShow3D(save.show3D)
       setSelectedStampId(null)
+      setSelectedStepId(null)
       setLoadError(null)
       pendingFitRef.current = true
     } catch (err) {
@@ -1051,6 +1137,23 @@ export default function App() {
             {roughPhase === 'placed2' && 'Move to adjust edges · Click 3: commit · Esc: cancel'}
           </div>
         )}
+        <button
+          onClick={() => setMode(mode === 'steps' ? 'paint' : 'steps')}
+          style={{
+            padding: '4px 0', fontSize: 11, cursor: 'pointer',
+            background: mode === 'steps' ? '#555' : 'transparent',
+            color: '#eee',
+            border: mode === 'steps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+            borderRadius: 4,
+          }}
+        >
+          ≣ Steps
+        </button>
+        {mode === 'steps' && (
+          <div style={{ fontSize: 11, color: '#aaa' }}>
+            Click: place steps descending Z{activeZ} → Z{activeZ - 1}
+          </div>
+        )}
 
         {/* Paint state selector: Floor | Water | Erase */}
         <div style={{ display: 'flex', gap: 6 }}>
@@ -1122,6 +1225,23 @@ export default function App() {
             </div>
           )
         })()}
+        {selectedStepId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <button
+              onClick={() => setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))}
+              style={{
+                padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                background: 'transparent', color: '#eee',
+                border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+              }}
+            >
+              ↻ Rotate Steps
+            </button>
+            <div style={{ fontSize: 11, color: '#aaa' }}>
+              R: rotate · Del: delete · Esc: deselect
+            </div>
+          </div>
+        )}
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
