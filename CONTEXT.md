@@ -52,7 +52,10 @@ The render mode for Object Stamps in Iso View. The SVG is drawn upright, facing 
 The default editing view. All drawing tools are active in this view. Only the Active Z Level and Z Levels below it are rendered. The Active Z Level renders at full opacity. Each Z Level below the active one is rendered progressively more faded (Z−1 at reduced opacity, Z−2 more so, etc.). Z Levels above the Active Z Level are hidden entirely.
 
 ## Iso View
-A preview-only isometric projection of the Map. Drawing tools are disabled. The view is a render pass that applies a coordinate transform to the current Map state. Not a separate data model. All Z Levels are rendered simultaneously. Each Z Level is offset vertically by its Z value × the Z Step Height, so higher Z Levels appear higher on screen.
+A preview-only isometric projection of the Map. Drawing tools are disabled. The view is a render pass that applies a coordinate transform to the current Map state. Not a separate data model. All Z Levels are rendered simultaneously. Each Z Level is offset vertically by its Z value × the Z Step Height, so higher Z Levels appear higher on screen. Draw order comes from the Iso Scene, not from layer stacking.
+
+## Iso Scene
+The painter-sorted list of draw commands that defines Iso View rendering (`buildIsoScene`). Z Levels emit lowest-first; within a level, every solid — a Tile (top plus its faces) or a single Tread — is a renderable sorted by painter depth, the col+row diagonal of its center. Greater diagonal means nearer the viewer, drawn later. This is why a Floor tile in front of a Step Run occludes it and tiles behind it are occluded. Pure and unit-tested; the app shell only converts the commands to canvas nodes.
 
 ## Z Step Height
 The vertical pixel offset between adjacent Z Levels in Iso View. Equal to TILE_PX / 2 + FACE_PX (18px at current constants). Derived at render time — not stored.
@@ -70,10 +73,7 @@ The physical output dimensions of the Map, configured in inches. Resizing crops 
 A render pass that produces a PNG at 300dpi by re-rendering the Map at full resolution (60px per tile) into an off-screen canvas. The working viewport renders at screen resolution.
 
 ## Water
-A third TileState (value 2) that can be painted directly onto any tile, including Wall. Painted and erased with the Brush in the same way as Floor — the toolbar paint-mode selector is a three-state control: Floor | Water | Erase. Left-click paints the selected state; right-click always erases to Wall regardless of selected mode. Water tiles render with a fixed default color (muted blue). In Top-Down View, Water looks different from Floor by color alone — no inset or shadow. In Iso View, the Water diamond is shifted 4px downward relative to Floor, giving the appearance of a lower elevation. When the 3D Effect is enabled, Floor tiles adjacent to Water render their side face (acting as a stone bank). Water tile edges that border a non-Water tile or the grid boundary display a Shore Line. Water tiles that border other Water tiles on a given edge do not display a Shore Line on that edge.
-
-## Shore Line
-A static squiggle drawn along exposed Water tile edges — edges that border a non-Water tile (Wall, Floor) or the grid boundary. Rendered in both Top-Down View and Iso View. Each exposed edge produces an independent squiggle segment. The squiggle is a decorative stroke on top of the Water fill, approximating a sine wave along the edge length.
+A third TileState (value 2) that can be painted directly onto any tile, including Wall. Painted and erased with the Brush in the same way as Floor — the toolbar paint-mode selector is a three-state control: Floor | Water | Erase. Left-click paints the selected state; right-click always erases to Wall regardless of selected mode. Water tiles render with a fixed default color (muted blue). In Top-Down View, Water looks different from Floor by color alone — no inset or shadow. In Iso View, the Water diamond is shifted 4px downward relative to Floor, giving the appearance of a lower elevation. When the 3D Effect is enabled, Floor tiles adjacent to Water render their side face (acting as a stone bank); in the Iso Scene the Water surface draws after the bank, covering its submerged portion.
 
 ## Step Run
 A first-class placed element that geometrically connects two adjacent Z Levels. Occupies a fixed 2×1 tile footprint starting at its origin tile and extending in its descent direction (N/E/S/W); the origin tile sits flush with the floor of the run's Z Level and the run descends to Z−1. Placed with the Steps tool at the Active Z Level with direction E; selectable, rotatable (cycles descent direction N→E→S→W), and deletable. Not a Stamp — it lives in its own `steps` list with its own geometry renderer.
