@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STEP_TREAD_COUNT, addStepRun, isoStepTreads, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, type StepRun } from './steps'
+import { STEP_TREAD_COUNT, addStepRun, isoStepTreads, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepRects, type StepRun } from './steps'
 import { isoProject } from './iso'
 import { Z_STEP_HEIGHT } from './constants'
 
@@ -144,5 +144,50 @@ describe('isoStepTreads descent', () => {
     const start = isoProject(3, 5, TILE_W, TILE_H) // u=0 maps to row+1 edge
     expect(north[0].top[0]).toBe(start.x)
     expect(north[0].top[1]).toBe(start.y)
+  })
+})
+
+describe('topDownStepRects', () => {
+  it('returns STEP_TREAD_COUNT rects', () => {
+    expect(topDownStepRects(run()).length).toBe(STEP_TREAD_COUNT)
+  })
+
+  it('direction E: rects tile the 2x1 strip from origin eastward, in tile units', () => {
+    const rects = topDownStepRects(run({ col: 3, row: 4, direction: 'E' }))
+    const w = 2 / STEP_TREAD_COUNT
+    rects.forEach((r, i) => {
+      expect(r.x).toBeCloseTo(3 + i * w, 10)
+      expect(r.y).toBe(4)
+      expect(r.width).toBeCloseTo(w, 10)
+      expect(r.height).toBe(1)
+    })
+  })
+
+  it('direction W: rects tile westward from the origin tile east edge', () => {
+    const rects = topDownStepRects(run({ col: 3, row: 4, direction: 'W' }))
+    const w = 2 / STEP_TREAD_COUNT
+    expect(rects[0].x).toBeCloseTo(4 - w, 10)
+    expect(rects[0].y).toBe(4)
+    const last = rects[rects.length - 1]
+    expect(last.x).toBeCloseTo(2, 10)
+  })
+
+  it('direction S: rects descend southward, full tile wide', () => {
+    const rects = topDownStepRects(run({ col: 3, row: 4, direction: 'S' }))
+    const h = 2 / STEP_TREAD_COUNT
+    rects.forEach((r, i) => {
+      expect(r.x).toBe(3)
+      expect(r.y).toBeCloseTo(4 + i * h, 10)
+      expect(r.width).toBe(1)
+      expect(r.height).toBeCloseTo(h, 10)
+    })
+  })
+
+  it('direction N: rects ascend northward from the origin tile south edge', () => {
+    const rects = topDownStepRects(run({ col: 3, row: 4, direction: 'N' }))
+    const h = 2 / STEP_TREAD_COUNT
+    expect(rects[0].y).toBeCloseTo(5 - h, 10)
+    const last = rects[rects.length - 1]
+    expect(last.y).toBeCloseTo(3, 10)
   })
 })

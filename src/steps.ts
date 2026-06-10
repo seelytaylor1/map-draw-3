@@ -48,6 +48,32 @@ function uvToGrid(run: StepRun, u: number, v: number): { col: number; row: numbe
   }
 }
 
+export interface TreadRect {
+  x: number      // tile units
+  y: number
+  width: number
+  height: number
+}
+
+// Tread rectangles in tile units for Top-Down View, derived from the same
+// run-local frame as isoStepTreads so the two views cannot drift.
+export function topDownStepRects(run: StepRun): TreadRect[] {
+  const rects: TreadRect[] = []
+  for (let i = 0; i < STEP_TREAD_COUNT; i++) {
+    const u0 = (i * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
+    const u1 = ((i + 1) * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
+    const a = uvToGrid(run, u0, 0)
+    const b = uvToGrid(run, u1, 1)
+    rects.push({
+      x: Math.min(a.col, b.col),
+      y: Math.min(a.row, b.row),
+      width: Math.abs(b.col - a.col),
+      height: Math.abs(b.row - a.row),
+    })
+  }
+  return rects
+}
+
 // Geometry is local to the run's Z level group (same frame as isoFloorPoints at that level).
 // Tread 0 sits flush with the upper floor; each riser drops Z_STEP_HEIGHT / STEP_TREAD_COUNT,
 // so the final riser lands exactly on the Z−1 floor plane.
