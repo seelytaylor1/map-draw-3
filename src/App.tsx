@@ -10,7 +10,7 @@ import {
   addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
-import { addStepRun, isoStepTreads, removeStepRun, rotateStepRun, stepRunTiles, topDownStepRects, type StepRun } from './steps'
+import { addStepRun, isoStepSideFaces, isoStepTreads, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -760,6 +760,15 @@ export default function App() {
 
       if (showIso) {
         const group = new Konva.Group({ y: -run.z * Z_STEP_HEIGHT })
+        if (show3D) {
+          for (const face of isoStepSideFaces(run, TILE_PX * 2, TILE_PX, FACE_PX)) {
+            group.add(new Konva.Line({
+              points: face.points,
+              closed: true,
+              fill: face.side === 'south' ? ISO_FRONT_FACE_COLOR : ISO_EAST_FACE_COLOR,
+            }))
+          }
+        }
         for (const tread of isoStepTreads(run, TILE_PX * 2, TILE_PX)) {
           group.add(new Konva.Line({ points: tread.front, closed: true, fill: ISO_FRONT_FACE_COLOR }))
           group.add(new Konva.Line({
@@ -778,6 +787,10 @@ export default function App() {
       // Top-down: hide steps above activeZ, fade like their level
       if (run.z > activeZ) continue
       const group = new Konva.Group({ opacity: Math.pow(0.5, activeZ - run.z) })
+      if (show3D) {
+        const band = topDownStepFaceRect(run, TILE_PX, FACE_PX)
+        group.add(new Konva.Rect({ ...band, fill: FACE_COLOR }))
+      }
       for (const rect of topDownStepRects(run)) {
         group.add(new Konva.Rect({
           x: rect.x * TILE_PX, y: rect.y * TILE_PX,
@@ -804,7 +817,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [stamps, steps, selectedStampId, selectedStepId, stampImages, cols, rows, showIso, activeZ])
+  }, [stamps, steps, selectedStampId, selectedStepId, stampImages, cols, rows, showIso, activeZ, show3D])
 
   // Non-exported layer: dot pattern + ghost cursor preview
   useEffect(() => {

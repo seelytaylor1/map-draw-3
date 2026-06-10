@@ -48,6 +48,51 @@ function uvToGrid(run: StepRun, u: number, v: number): { col: number; row: numbe
   }
 }
 
+export interface StepSideFace {
+  points: number[]            // closed quad, 4 points as flat [x, y, ...]
+  side: 'south' | 'east'      // which exposed slab side this face represents
+}
+
+// 3D Effect side faces for a step run in Iso View. The viewer sees south and
+// east slab faces; in the run-local frame the v=1 edge is always the exposed
+// one (south for E/W runs, east for N/S runs). One face per tread, stepped to
+// the tread's elevation, faceH tall — matching the Extruded Side Faces look.
+export function isoStepSideFaces(run: StepRun, tileW: number, tileH: number, faceH: number): StepSideFace[] {
+  const side = run.direction === 'E' || run.direction === 'W' ? 'south' : 'east'
+  const drop = Z_STEP_HEIGHT / STEP_TREAD_COUNT
+  const faces: StepSideFace[] = []
+  for (let i = 0; i < STEP_TREAD_COUNT; i++) {
+    const u0 = (i * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
+    const u1 = ((i + 1) * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
+    const d = i * drop
+    const ga = uvToGrid(run, u0, 1)
+    const gb = uvToGrid(run, u1, 1)
+    const a = isoProject(ga.col, ga.row, tileW, tileH)
+    const b = isoProject(gb.col, gb.row, tileW, tileH)
+    faces.push({
+      side,
+      points: [a.x, a.y + d, b.x, b.y + d, b.x, b.y + d + faceH, a.x, a.y + d + faceH],
+    })
+  }
+  return faces
+}
+
+// 3D Effect band for Top-Down View: a facePx-thick strip along the run's
+// exposed edge (south for E/W runs, east for N/S runs), in pixels.
+export function topDownStepFaceRect(
+  run: StepRun,
+  tilePx: number,
+  facePx: number,
+): { x: number; y: number; width: number; height: number } {
+  const len = STEP_RUN_LENGTH * tilePx
+  switch (run.direction) {
+    case 'E': return { x: run.col * tilePx, y: (run.row + 1) * tilePx, width: len, height: facePx }
+    case 'W': return { x: (run.col - 1) * tilePx, y: (run.row + 1) * tilePx, width: len, height: facePx }
+    case 'S': return { x: (run.col + 1) * tilePx, y: run.row * tilePx, width: facePx, height: len }
+    case 'N': return { x: (run.col + 1) * tilePx, y: (run.row - 1) * tilePx, width: facePx, height: len }
+  }
+}
+
 export interface TreadRect {
   x: number      // tile units
   y: number

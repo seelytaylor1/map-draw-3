@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STEP_TREAD_COUNT, addStepRun, isoStepTreads, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepRects, type StepRun } from './steps'
+import { STEP_TREAD_COUNT, addStepRun, isoStepSideFaces, isoStepTreads, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { isoProject } from './iso'
 import { Z_STEP_HEIGHT } from './constants'
 
@@ -189,5 +189,64 @@ describe('topDownStepRects', () => {
     expect(rects[0].y).toBeCloseTo(5 - h, 10)
     const last = rects[rects.length - 1]
     expect(last.y).toBeCloseTo(3, 10)
+  })
+})
+
+describe('isoStepSideFaces', () => {
+  const TILE_W = 40
+  const TILE_H = 20
+  const FACE = 8
+  const drop = Z_STEP_HEIGHT / STEP_TREAD_COUNT
+
+  it('returns one face per tread', () => {
+    const faces = isoStepSideFaces(run(), TILE_W, TILE_H, FACE)
+    expect(faces.length).toBe(STEP_TREAD_COUNT)
+  })
+
+  it('direction E: south-side faces along the run edge, stepped to tread elevation, faceH tall', () => {
+    const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E' }), TILE_W, TILE_H, FACE)
+    const u1 = 2 / STEP_TREAD_COUNT
+    expect(faces[0].side).toBe('south')
+    const a = isoProject(0, 1, TILE_W, TILE_H)
+    const b = isoProject(u1, 1, TILE_W, TILE_H)
+    expect(faces[0].points).toEqual([a.x, a.y, b.x, b.y, b.x, b.y + FACE, a.x, a.y + FACE])
+    // tread 2 face sits two riser drops lower
+    const a2 = isoProject(2 * u1, 1, TILE_W, TILE_H)
+    expect(faces[2].points[1]).toBeCloseTo(a2.y + 2 * drop, 10)
+  })
+
+  it('direction W: faces are south-side', () => {
+    expect(isoStepSideFaces(run({ direction: 'W' }), TILE_W, TILE_H, FACE)[0].side).toBe('south')
+  })
+
+  it('directions N and S: faces are east-side', () => {
+    expect(isoStepSideFaces(run({ direction: 'N' }), TILE_W, TILE_H, FACE)[0].side).toBe('east')
+    expect(isoStepSideFaces(run({ direction: 'S' }), TILE_W, TILE_H, FACE)[0].side).toBe('east')
+  })
+})
+
+describe('topDownStepFaceRect', () => {
+  it('direction E: band runs under the south edge of the strip', () => {
+    expect(topDownStepFaceRect(run({ col: 3, row: 4, direction: 'E' }), 20, 8)).toEqual(
+      { x: 60, y: 100, width: 40, height: 8 },
+    )
+  })
+
+  it('direction W: band covers both tiles west of origin', () => {
+    expect(topDownStepFaceRect(run({ col: 3, row: 4, direction: 'W' }), 20, 8)).toEqual(
+      { x: 40, y: 100, width: 40, height: 8 },
+    )
+  })
+
+  it('direction S: band runs along the east edge of the strip', () => {
+    expect(topDownStepFaceRect(run({ col: 3, row: 4, direction: 'S' }), 20, 8)).toEqual(
+      { x: 80, y: 80, width: 8, height: 40 },
+    )
+  })
+
+  it('direction N: band covers both tiles north of origin east edge', () => {
+    expect(topDownStepFaceRect(run({ col: 3, row: 4, direction: 'N' }), 20, 8)).toEqual(
+      { x: 80, y: 60, width: 8, height: 40 },
+    )
   })
 })
