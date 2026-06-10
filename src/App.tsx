@@ -603,6 +603,47 @@ export default function App() {
       layer.add(group)
     }
 
+    // Render Z levels above activeZ as non-interactive ghosts for cross-level alignment
+    const aboveZs = [...zSet].filter(z => z > activeZ).sort((a, b) => a - b)
+    for (const z of aboveZs) {
+      const levelGrid = grids.get(z) ?? createGrid(cols, rows)
+      const ghostOpacity = 0.25 * Math.pow(0.6, z - activeZ - 1)
+      const group = new Konva.Group({ opacity: ghostOpacity, listening: false })
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (getTile(levelGrid, cols, c, r) === FLOOR) {
+            group.add(new Konva.Rect({
+              x: c * TILE_PX, y: r * TILE_PX,
+              width: TILE_PX, height: TILE_PX,
+              fill: FLOOR_COLOR,
+            }))
+          } else if (getTile(levelGrid, cols, c, r) === WATER) {
+            group.add(new Konva.Rect({
+              x: c * TILE_PX, y: r * TILE_PX,
+              width: TILE_PX, height: TILE_PX,
+              fill: WATER_COLOR,
+            }))
+          }
+        }
+      }
+
+      for (const run of steps) {
+        if (run.z !== z) continue
+        for (const rect of topDownStepRects(run)) {
+          group.add(new Konva.Rect({
+            x: rect.x * TILE_PX, y: rect.y * TILE_PX,
+            width: rect.width * TILE_PX, height: rect.height * TILE_PX,
+            fill: FLOOR_COLOR,
+            stroke: 'rgba(0,0,0,0.35)',
+            strokeWidth: 1,
+          }))
+        }
+      }
+
+      layer.add(group)
+    }
+
     layer.batchDraw()
   }, [grids, steps, selectedStepId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
 
@@ -694,10 +735,11 @@ export default function App() {
         continue
       }
 
-      // Top-down: hide stamps above activeZ
-      if (stamp.z > activeZ) continue
-
-      const stampOpacity = Math.pow(0.5, activeZ - stamp.z)
+      // Top-down: stamps above activeZ render as non-interactive ghosts for alignment reference
+      const isAbove = stamp.z > activeZ
+      const stampOpacity = isAbove
+        ? 0.25 * Math.pow(0.6, stamp.z - activeZ - 1)
+        : Math.pow(0.5, activeZ - stamp.z)
       const sc = stamp.scale ?? 1
       const effectiveW = w * sc
       const effectiveH = h * sc
@@ -711,10 +753,11 @@ export default function App() {
         offsetX: effectiveW / 2, offsetY: effectiveH / 2,
         rotation: stamp.rotation,
         scaleX: stamp.mirrored ? -1 : 1,
-        draggable: !isGhost,
-        opacity: isGhost ? 0.25 * stampOpacity : stampOpacity,
+        draggable: !isGhost && !isAbove,
+        listening: !isAbove,
+        opacity: isAbove ? stampOpacity : (isGhost ? 0.25 * stampOpacity : stampOpacity),
       })
-      if (!isGhost) {
+      if (!isGhost && !isAbove) {
         node.on('mousedown', (e) => {
           e.cancelBubble = true
           if (e.evt.button === 2 && stamp.id === selectedStampId) {
@@ -732,7 +775,7 @@ export default function App() {
       }
       layer.add(node)
 
-      if (!isGhost && stamp.id === selectedStampId) {
+      if (!isGhost && !isAbove && stamp.id === selectedStampId) {
         layer.add(new Konva.Rect({
           x,
           y,
