@@ -219,6 +219,25 @@ describe('isoStepSideFaces', () => {
     expect(isoStepSideFaces(run({ direction: 'W' }), TILE_W, TILE_H, FACE)[0].side).toBe('south')
   })
 
+  it('no face extends below the Z-1 floor plane', () => {
+    const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E' }), TILE_W, TILE_H, FACE)
+    const u1 = 2 / STEP_TREAD_COUNT
+    faces.forEach((face, i) => {
+      // bottom corners (indices 5 and 7) relative to the flat projection of their edge
+      const a = isoProject(i * u1, 1, TILE_W, TILE_H)
+      const b = isoProject((i + 1) * u1, 1, TILE_W, TILE_H)
+      expect(face.points[5] - b.y).toBeLessThanOrEqual(Z_STEP_HEIGHT + 1e-10)
+      expect(face.points[7] - a.y).toBeLessThanOrEqual(Z_STEP_HEIGHT + 1e-10)
+    })
+  })
+
+  it('last face bottom sits exactly on the Z-1 floor plane', () => {
+    const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E' }), TILE_W, TILE_H, FACE)
+    const last = faces[faces.length - 1]
+    const edgeEnd = isoProject(2, 1, TILE_W, TILE_H)
+    expect(last.points[5]).toBeCloseTo(edgeEnd.y + Z_STEP_HEIGHT, 10)
+  })
+
   it('directions N and S: faces are east-side', () => {
     expect(isoStepSideFaces(run({ direction: 'N' }), TILE_W, TILE_H, FACE)[0].side).toBe('east')
     expect(isoStepSideFaces(run({ direction: 'S' }), TILE_W, TILE_H, FACE)[0].side).toBe('east')
