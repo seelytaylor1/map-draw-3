@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
-import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoStampTransform } from './iso'
+import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
+import { isoProject, isoUnproject, isoStampTransform } from './iso'
+import { buildIsoScene } from './isoScene'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
@@ -10,7 +11,7 @@ import {
   addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
-import { addStepRun, isoStepSideFaces, isoStepTreads, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
+import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -446,78 +447,35 @@ export default function App() {
     layer.destroyChildren()
 
     if (showIso) {
-      const ITW = TILE_PX * 2
-      const ITH = TILE_PX
-
-      if (wallOpacity > 0) {
-        const tl = isoProject(0, 0, ITW, ITH)
-        const tr = isoProject(cols, 0, ITW, ITH)
-        const br = isoProject(cols, rows, ITW, ITH)
-        const bl = isoProject(0, rows, ITW, ITH)
-        layer.add(new Konva.Line({
-          points: [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y],
+      // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
+      const shapes = buildIsoScene({
+        grids, steps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId,
+        tileW: TILE_PX * 2, tileH: TILE_PX,
+      })
+      for (const shape of shapes) {
+        const node = new Konva.Line({
+          points: shape.points,
           closed: true,
-          fill: wallColor,
-          opacity: wallOpacity,
-        }))
-      }
-
-      // Render all Z levels, lowest first (painter's algorithm)
-      const isoSortedZs = [...grids.keys()].sort((a, b) => a - b)
-      for (const z of isoSortedZs) {
-        const levelGrid = grids.get(z)!
-        const yOff = -z * Z_STEP_HEIGHT
-        const group = new Konva.Group({ y: yOff })
-
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            if (getTile(levelGrid, cols, c, r) === FLOOR) {
-              group.add(new Konva.Line({
-                points: isoFloorPoints(c, r, ITW, ITH),
-                closed: true,
-                fill: FLOOR_COLOR,
-                stroke: 'rgba(0,0,0,0.15)',
-                strokeWidth: 0.5,
-              }))
-            } else if (getTile(levelGrid, cols, c, r) === WATER) {
-              group.add(new Konva.Line({
-                points: isoWaterPoints(c, r, ITW, ITH),
-                closed: true,
-                fill: WATER_COLOR,
-              }))
+          fill: shape.fill,
+          opacity: shape.opacity,
+          stroke: shape.stroke,
+          strokeWidth: shape.strokeWidth,
+        })
+        if (shape.stepId) {
+          const sid = shape.stepId
+          node.on('mousedown', (e) => {
+            e.cancelBubble = true
+            if (e.evt.button === 2 && sid === selectedStepId) {
+              setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, sid) }))
+              setSelectedStepId(null)
+            } else {
+              setSelectedStampId(null)
+              setSelectedStepId(sid)
             }
-          }
+          })
         }
-
-        if (show3D) {
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              if (getTile(levelGrid, cols, c, r) !== FLOOR) continue
-              const southNeighbor = r + 1 < rows ? getTile(levelGrid, cols, c, r + 1) : null
-              const eastNeighbor = c + 1 < cols ? getTile(levelGrid, cols, c + 1, r) : null
-              const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
-              const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
-              if (southWall) {
-                group.add(new Konva.Line({
-                  points: isoFrontFacePoints(c, r, ITW, ITH, FACE_PX),
-                  closed: true,
-                  fill: ISO_FRONT_FACE_COLOR,
-                }))
-              }
-              if (eastWall) {
-                group.add(new Konva.Line({
-                  points: isoEastFacePoints(c, r, ITW, ITH, FACE_PX),
-                  closed: true,
-                  fill: ISO_EAST_FACE_COLOR,
-                }))
-              }
-            }
-          }
-        }
-
-        layer.add(group)
+        layer.add(node)
       }
-
       layer.batchDraw()
       return
     }
@@ -534,9 +492,11 @@ export default function App() {
     }
 
     // Render each Z level ≤ activeZ, lowest first, with halving opacity
-    const sortedZs = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
+    const zSet = new Set(grids.keys())
+    for (const run of steps) zSet.add(run.z)
+    const sortedZs = [...zSet].filter(z => z <= activeZ).sort((a, b) => a - b)
     for (const z of sortedZs) {
-      const levelGrid = grids.get(z)!
+      const levelGrid = grids.get(z) ?? createGrid(cols, rows)
       const levelOpacity = Math.pow(0.5, activeZ - z)
       const group = new Konva.Group({ opacity: levelOpacity })
 
@@ -597,11 +557,54 @@ export default function App() {
         }
       }
 
+      // Steps belong to their level's group so they fade with it and stay
+      // under higher-level floors.
+      for (const run of steps) {
+        if (run.z !== z) continue
+        const stepGroup = new Konva.Group()
+        if (show3D) {
+          const band = topDownStepFaceRect(run, TILE_PX, FACE_PX)
+          stepGroup.add(new Konva.Rect({ ...band, fill: FACE_COLOR }))
+        }
+        for (const rect of topDownStepRects(run)) {
+          stepGroup.add(new Konva.Rect({
+            x: rect.x * TILE_PX, y: rect.y * TILE_PX,
+            width: rect.width * TILE_PX, height: rect.height * TILE_PX,
+            fill: FLOOR_COLOR,
+            stroke: 'rgba(0,0,0,0.35)',
+            strokeWidth: 1,
+          }))
+        }
+        if (run.id === selectedStepId) {
+          const tiles = stepRunTiles(run)
+          const minC = Math.min(...tiles.map(t => t.col))
+          const minR = Math.min(...tiles.map(t => t.row))
+          const maxC = Math.max(...tiles.map(t => t.col))
+          const maxR = Math.max(...tiles.map(t => t.row))
+          stepGroup.add(new Konva.Rect({
+            x: minC * TILE_PX - 1, y: minR * TILE_PX - 1,
+            width: (maxC - minC + 1) * TILE_PX + 2, height: (maxR - minR + 1) * TILE_PX + 2,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
+        stepGroup.on('mousedown', (e) => {
+          e.cancelBubble = true
+          if (e.evt.button === 2 && run.id === selectedStepId) {
+            setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, run.id) }))
+            setSelectedStepId(null)
+          } else {
+            setSelectedStampId(null)
+            setSelectedStepId(run.id)
+          }
+        })
+        group.add(stepGroup)
+      }
+
       layer.add(group)
     }
 
     layer.batchDraw()
-  }, [grids, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
+  }, [grids, steps, selectedStepId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
 
   // Stamp layer
   useEffect(() => {
@@ -746,78 +749,8 @@ export default function App() {
       }
     }
 
-    for (const run of steps) {
-      const select = (e: Konva.KonvaEventObject<MouseEvent>) => {
-        e.cancelBubble = true
-        if (e.evt.button === 2 && run.id === selectedStepId) {
-          setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, run.id) }))
-          setSelectedStepId(null)
-        } else {
-          setSelectedStampId(null)
-          setSelectedStepId(run.id)
-        }
-      }
-
-      if (showIso) {
-        const group = new Konva.Group({ y: -run.z * Z_STEP_HEIGHT })
-        if (show3D) {
-          for (const face of isoStepSideFaces(run, TILE_PX * 2, TILE_PX, FACE_PX)) {
-            group.add(new Konva.Line({
-              points: face.points,
-              closed: true,
-              fill: face.side === 'south' ? ISO_FRONT_FACE_COLOR : ISO_EAST_FACE_COLOR,
-            }))
-          }
-        }
-        for (const tread of isoStepTreads(run, TILE_PX * 2, TILE_PX)) {
-          group.add(new Konva.Line({ points: tread.front, closed: true, fill: ISO_FRONT_FACE_COLOR }))
-          group.add(new Konva.Line({
-            points: tread.top,
-            closed: true,
-            fill: FLOOR_COLOR,
-            stroke: run.id === selectedStepId ? '#ffff00' : 'rgba(0,0,0,0.25)',
-            strokeWidth: run.id === selectedStepId ? 1.5 : 0.5,
-          }))
-        }
-        group.on('mousedown', select)
-        layer.add(group)
-        continue
-      }
-
-      // Top-down: hide steps above activeZ, fade like their level
-      if (run.z > activeZ) continue
-      const group = new Konva.Group({ opacity: Math.pow(0.5, activeZ - run.z) })
-      if (show3D) {
-        const band = topDownStepFaceRect(run, TILE_PX, FACE_PX)
-        group.add(new Konva.Rect({ ...band, fill: FACE_COLOR }))
-      }
-      for (const rect of topDownStepRects(run)) {
-        group.add(new Konva.Rect({
-          x: rect.x * TILE_PX, y: rect.y * TILE_PX,
-          width: rect.width * TILE_PX, height: rect.height * TILE_PX,
-          fill: FLOOR_COLOR,
-          stroke: 'rgba(0,0,0,0.35)',
-          strokeWidth: 1,
-        }))
-      }
-      if (run.id === selectedStepId) {
-        const tiles = stepRunTiles(run)
-        const minC = Math.min(...tiles.map(t => t.col))
-        const minR = Math.min(...tiles.map(t => t.row))
-        const maxC = Math.max(...tiles.map(t => t.col))
-        const maxR = Math.max(...tiles.map(t => t.row))
-        group.add(new Konva.Rect({
-          x: minC * TILE_PX - 1, y: minR * TILE_PX - 1,
-          width: (maxC - minC + 1) * TILE_PX + 2, height: (maxR - minR + 1) * TILE_PX + 2,
-          stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
-        }))
-      }
-      group.on('mousedown', select)
-      layer.add(group)
-    }
-
     layer.batchDraw()
-  }, [stamps, steps, selectedStampId, selectedStepId, stampImages, cols, rows, showIso, activeZ, show3D])
+  }, [stamps, selectedStampId, stampImages, cols, rows, showIso, activeZ])
 
   // Non-exported layer: dot pattern + ghost cursor preview
   useEffect(() => {
