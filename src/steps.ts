@@ -25,3 +25,21 @@ export function stepRunTiles(run: StepRun): { col: number; row: number }[] {
   }
   return tiles
 }
+
+const DIRECTION_CYCLE: Record<StepDirection, StepDirection> = { N: 'E', E: 'S', S: 'W', W: 'N' }
+
+export function addStepRun(steps: StepRun[], run: StepRun): StepRun[] {
+  return [...steps, run]
+}
+
+export function removeStepRun(steps: StepRun[], id: string): StepRun[] {
+  return steps.filter(s => s.id !== id)
+}
+
+export function moveStepRun(steps: StepRun[], id: string, col: number, row: number): StepRun[] {
+  return steps.map(s => s.id === id ? { ...s, col, row } : s)
+}
+
+export function rotateStepRun(steps: StepRun[], id: string): StepRun[] {
+  return steps.map(s => s.id === id ? { ...s, direction: DIRECTION_CYCLE[s.direction] } : s)
+}
