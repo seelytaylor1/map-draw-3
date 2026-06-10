@@ -181,3 +181,29 @@ describe('buildIsoScene: step runs', () => {
     expect(shapes[1].points).toEqual(localTreads[0].top.map((v, i) => (i % 2 === 1 ? v - Z_STEP_HEIGHT : v)))
   })
 })
+
+describe('buildIsoScene: steps across levels', () => {
+  it('the entire landing level draws before any tread of the level above', () => {
+    const grids = new Map([
+      [0, gridWith([{ col: 7, row: 7 }, { col: 4, row: 3 }])], // includes max-diagonal tile
+      [1, gridWith([{ col: 2, row: 3 }])],
+    ])
+    const run: StepRun = { id: 'r', col: 3, row: 3, z: 1, direction: 'E' }
+    const shapes = buildIsoScene(params({ grids, steps: [run] }))
+    const lastZ0 = shapes.map((s, i) => ({ s, i })).filter(({ s }) => !s.stepId && JSON.stringify(s.points).includes(JSON.stringify(isoFloorPoints(7, 7, TILE_W, TILE_H)[0])))
+    const firstTread = shapes.findIndex(s => s.stepId === 'r')
+    expect(lastZ0.length).toBeGreaterThan(0)
+    expect(firstTread).toBeGreaterThan(lastZ0[lastZ0.length - 1].i)
+  })
+
+  it('a run on a z level with no painted grid still renders', () => {
+    const grids = new Map([[0, gridWith([{ col: 3, row: 3 }])]])
+    const run: StepRun = { id: 'lonely', col: 3, row: 3, z: 2, direction: 'S' }
+    const shapes = buildIsoScene(params({ grids, steps: [run] }))
+    const treads = shapes.filter(s => s.stepId === 'lonely')
+    expect(treads.length).toBe(STEP_TREAD_COUNT * 2)
+    // offset for z=2 baked in
+    const local = isoStepTreads(run, TILE_W, TILE_H)
+    expect(treads[1].points).toEqual(local[0].top.map((v, i) => (i % 2 === 1 ? v - 2 * Z_STEP_HEIGHT : v)))
+  })
+})

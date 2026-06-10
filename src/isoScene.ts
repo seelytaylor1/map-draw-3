@@ -53,12 +53,14 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
     })
   }
 
-  const zs = [...p.grids.keys()].sort((a, b) => a - b)
+  const zSet = new Set(p.grids.keys())
+  for (const run of p.steps) zSet.add(run.z)
+  const zs = [...zSet].sort((a, b) => a - b)
   for (const z of zs) {
-    const grid = p.grids.get(z)!
+    const grid = p.grids.get(z)
     const yOff = -z * Z_STEP_HEIGHT
     const items: Renderable[] = []
-    for (let r = 0; r < p.rows; r++) {
+    if (grid) for (let r = 0; r < p.rows; r++) {
       for (let c = 0; c < p.cols; c++) {
         const state = getTile(grid, p.cols, c, r)
         if (state === FLOOR) {
