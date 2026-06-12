@@ -88,10 +88,13 @@ describe('list mutations', () => {
   })
 
   it('rotateRun cycles direction N→E→S→W→N', () => {
-    const list = [run({ id: 'a', direction: 'N' })]
-    expect(rotateRun(list, 'a')[0].direction).toBe('E')
-    const list2 = [run({ id: 'a', direction: 'W' })]
-    expect(rotateRun(list2, 'a')[0].direction).toBe('N')
+    const directions: Array<'N' | 'E' | 'S' | 'W'> = ['N', 'E', 'S', 'W']
+    for (let i = 0; i < directions.length; i++) {
+      const from = directions[i]
+      const to = directions[(i + 1) % 4]
+      const list = [run({ id: 'a', direction: from })]
+      expect(rotateRun(list, 'a')[0].direction).toBe(to)
+    }
   })
 
   it('moveRun updates col/row of the matching id only', () => {
@@ -99,6 +102,12 @@ describe('list mutations', () => {
     const result = moveRun(list, 'a', 7, 8)
     expect(result[0]).toEqual({ id: 'a', col: 7, row: 8, z: 0, direction: 'E' })
     expect(result[1]).toEqual(list[1])
+    expect(list[0].col).toBe(0) // original not mutated
+  })
+
+  it('rotateRun preserves all fields except direction', () => {
+    const list = [run({ id: 'x', col: 9, row: 2, z: -3, direction: 'E' })]
+    expect(rotateRun(list, 'x')[0]).toEqual({ id: 'x', col: 9, row: 2, z: -3, direction: 'S' })
   })
 
   it('rotateRun does not mutate original', () => {
