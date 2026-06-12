@@ -1086,7 +1086,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps, steps, ramps })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, stamps, steps, ramps })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1108,6 +1108,7 @@ export default function App() {
       brushShapeRef.current = save.brushShape
       setShowGrid(save.showGrid)
       setShow3D(save.show3D)
+      setIsoFaceColor(save.isoFaceColor)
       setSelectedStampId(null)
       setSelectedStepId(null)
       setSelectedRampId(null)

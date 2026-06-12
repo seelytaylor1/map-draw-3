@@ -16,6 +16,7 @@ const BASE = {
   brushShape: 'circle' as const,
   showGrid: true,
   show3D: false,
+  isoFaceColor: '#6a5040',
   stamps: [] as Stamp[],
   steps: [] as StepRun[],
   ramps: [] as RampRun[],

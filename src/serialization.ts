@@ -15,6 +15,7 @@ export interface MapSave {
   brushShape: 'square' | 'circle'
   showGrid: boolean
   show3D: boolean
+  isoFaceColor?: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -30,6 +31,7 @@ export interface DeserializedMap {
   brushShape: 'square' | 'circle'
   showGrid: boolean
   show3D: boolean
+  isoFaceColor: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -44,6 +46,7 @@ export function serialize(params: {
   brushShape: 'square' | 'circle'
   showGrid: boolean
   show3D: boolean
+  isoFaceColor: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -62,6 +65,7 @@ export function serialize(params: {
     brushShape: params.brushShape,
     showGrid: params.showGrid,
     show3D: params.show3D,
+    isoFaceColor: params.isoFaceColor,
     stamps: params.stamps.map(s => {
       const { scale, mirrored, z, ...rest } = s
       const out: Partial<Stamp> = { ...rest }
@@ -86,6 +90,7 @@ export function deserialize(raw: unknown): DeserializedMap {
   if (s['brushShape'] !== 'square' && s['brushShape'] !== 'circle') throw new Error('Invalid brushShape')
   if (typeof s['showGrid'] !== 'boolean') throw new Error('Invalid showGrid')
   const show3D = s['show3D'] === true
+  const isoFaceColor = typeof s['isoFaceColor'] === 'string' ? s['isoFaceColor'] : '#6a5040'
 
   // Accept both new `grids` format and old `grid` format (backward compat)
   const grids = new Map<number, Uint8Array>()
@@ -178,6 +183,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     brushShape: s['brushShape'] as 'square' | 'circle',
     showGrid: s['showGrid'] as boolean,
     show3D,
+    isoFaceColor,
     stamps,
     steps,
     ramps,
