@@ -103,6 +103,7 @@ export default function App() {
   const [showGrid, setShowGrid] = useState(false)
   const [show3D, setShow3D] = useState(false)
   const [showIso, setShowIso] = useState(false)
+  const [isoFaceColor, setIsoFaceColor] = useState('#6a5040')
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const stageRef = useRef<Konva.Stage>(null)
@@ -477,7 +478,7 @@ export default function App() {
 
     if (showIso) {
       // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
-      const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(FACE_COLOR)
+      const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
       const shapes = buildIsoScene({
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
@@ -746,7 +747,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
+  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor])
 
   // Stamp layer
   useEffect(() => {
@@ -1010,8 +1011,10 @@ export default function App() {
   const handleExport = useCallback(() => {
     if (!stampImages) return
 
+    const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
     const layout = buildExportShapes({
       grid: activeGrid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
+      frontFaceColor, eastFaceColor,
       stamps: stamps.filter(s => s.z === activeZ),
       exportTile: 60,
     })
@@ -1078,7 +1081,7 @@ export default function App() {
         a.click()
       },
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor])
 
   const handleSave = () => {
     const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps, steps, ramps })
