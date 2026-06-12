@@ -17,7 +17,10 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 
 ## Releases
 
-No install required. Download `index.html` from the [latest release](../../releases/latest) and open it in any browser — no server, no setup.
+No install required — two ways to use it:
+
+- **Live in browser**: [seelytaylor1.github.io/map-draw-3](https://seelytaylor1.github.io/map-draw-3/) — always the latest build
+- **Download**: grab `index.html` from the [latest release](../../releases/latest) and open it locally in any browser
 
 ## Requirements
 
