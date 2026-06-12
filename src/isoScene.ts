@@ -1,4 +1,4 @@
-import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
+import { FACE_PX, FLOOR, FLOOR_COLOR, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
@@ -18,6 +18,8 @@ export interface IsoSceneParams {
   tileW: number
   tileH: number
   facePx?: number
+  frontFaceColor: string
+  eastFaceColor: string
 }
 
 export interface IsoShape {
@@ -83,10 +85,10 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
             const southExposed = r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === WATER
             const eastExposed = c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === WATER
             if (southExposed) {
-              shapes.push({ points: isoFrontFacePoints(c, r, p.tileW, p.tileH, facePx), fill: ISO_FRONT_FACE_COLOR })
+              shapes.push({ points: isoFrontFacePoints(c, r, p.tileW, p.tileH, facePx), fill: p.frontFaceColor })
             }
             if (eastExposed) {
-              shapes.push({ points: isoEastFacePoints(c, r, p.tileW, p.tileH, facePx), fill: ISO_EAST_FACE_COLOR })
+              shapes.push({ points: isoEastFacePoints(c, r, p.tileW, p.tileH, facePx), fill: p.eastFaceColor })
             }
           }
           items.push({ depth: c + r + 1, shapes })
@@ -109,11 +111,11 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
         if (sideFaces) {
           shapes.push({
             points: sideFaces[i].points,
-            fill: sideFaces[i].side === 'south' ? ISO_FRONT_FACE_COLOR : ISO_EAST_FACE_COLOR,
+            fill: sideFaces[i].side === 'south' ? p.frontFaceColor : p.eastFaceColor,
             stepId: run.id,
           })
         }
-        shapes.push({ points: tread.front, fill: ISO_FRONT_FACE_COLOR, stepId: run.id })
+        shapes.push({ points: tread.front, fill: p.frontFaceColor, stepId: run.id })
         shapes.push({
           points: tread.top,
           fill: FLOOR_COLOR,
@@ -132,7 +134,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
         const face = isoRampSideFace(run, p.tileW, p.tileH)
         shapes.push({
           points: face.points,
-          fill: face.side === 'south' ? ISO_FRONT_FACE_COLOR : ISO_EAST_FACE_COLOR,
+          fill: face.side === 'south' ? p.frontFaceColor : p.eastFaceColor,
           rampId: run.id,
         })
       }

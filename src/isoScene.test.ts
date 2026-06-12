@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { buildIsoScene, type IsoSceneParams } from './isoScene'
 import { createGrid, paintTiles } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
-import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
+import { FACE_PX, FLOOR, FLOOR_COLOR, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
 import { STEP_TREAD_COUNT, isoStepTreads, type StepRun } from './steps'
 import { isoRampSurface, type RampRun } from './ramps'
+import { deriveFaceColors } from './faceColors'
 
 const TILE_W = 40
 const TILE_H = 20
 
-// shift points down to the z=1 plane (one Z_STEP_HEIGHT up on screen)
+const { front: FRONT_COLOR, east: EAST_COLOR } = deriveFaceColors('#6a5040')
+
 function offset(points: number[]): number[] {
   return points.map((v, i) => (i % 2 === 1 ? v - Z_STEP_HEIGHT : v))
 }
@@ -28,6 +30,8 @@ function params(overrides: Partial<IsoSceneParams> = {}): IsoSceneParams {
     selectedRampId: null,
     tileW: TILE_W,
     tileH: TILE_H,
+    frontFaceColor: FRONT_COLOR,
+    eastFaceColor: EAST_COLOR,
     ...overrides,
   }
 }
@@ -73,9 +77,9 @@ describe('buildIsoScene: tile emission', () => {
     expect(shapes.length).toBe(3)
     expect(shapes[0].points).toEqual(isoFloorPoints(3, 3, TILE_W, TILE_H))
     expect(shapes[1].points).toEqual(isoFrontFacePoints(3, 3, TILE_W, TILE_H, FACE_PX))
-    expect(shapes[1].fill).toBe(ISO_FRONT_FACE_COLOR)
+    expect(shapes[1].fill).toBe(FRONT_COLOR)
     expect(shapes[2].points).toEqual(isoEastFacePoints(3, 3, TILE_W, TILE_H, FACE_PX))
-    expect(shapes[2].fill).toBe(ISO_EAST_FACE_COLOR)
+    expect(shapes[2].fill).toBe(EAST_COLOR)
   })
 
   it('no face on an edge shared with another floor tile', () => {
@@ -167,8 +171,8 @@ describe('buildIsoScene: step runs', () => {
   it('with 3D each tread emits side face, riser, then top', () => {
     const shapes = buildIsoScene(params({ steps: [RUN], grids: new Map([[1, gridWith([])]]), show3D: true }))
     expect(shapes.length).toBe(STEP_TREAD_COUNT * 3)
-    expect(shapes[0].fill).toBe(ISO_FRONT_FACE_COLOR) // side face (south, E run)
-    expect(shapes[1].fill).toBe(ISO_FRONT_FACE_COLOR) // riser
+    expect(shapes[0].fill).toBe(FRONT_COLOR) // side face (south, E run)
+    expect(shapes[1].fill).toBe(FRONT_COLOR) // riser
     expect(shapes[2].fill).toBe(FLOOR_COLOR)          // top
   })
 
@@ -232,7 +236,7 @@ describe('buildIsoScene: ramps', () => {
     const shapes = buildIsoScene(params({ ramps: [RAMP], grids: new Map([[1, gridWith([])]]), show3D: true }))
     const rampShapes = shapes.filter(s => s.rampId === 'ramp1')
     expect(rampShapes.length).toBe(2)
-    expect(rampShapes[0].fill).toBe(ISO_FRONT_FACE_COLOR) // south wedge for an E run, drawn first
+    expect(rampShapes[0].fill).toBe(FRONT_COLOR) // south wedge for an E run, drawn first
     expect(rampShapes[1].fill).toBe(FLOOR_COLOR)          // surface on top
   })
 
