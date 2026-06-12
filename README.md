@@ -15,6 +15,12 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 - **Save/Load**: Export and import maps as JSON files
 - **High-Res Export**: Generate 300dpi PNG output
 
+## Releases
+
+No install required. After every commit, a standalone build is generated at `dist/index.html` — download that file and open it in any browser.
+
+The latest build is always available in the `dist/` folder of this repository.
+
 ## Requirements
 
 - **Node.js** 16+ and **npm** 7+
@@ -47,7 +53,7 @@ The app will open at `http://localhost:5173` (or another port if 5173 is busy).
 npm run build
 ```
 
-Outputs optimized files to the `dist/` directory.
+Outputs a single self-contained `dist/index.html` with all assets inlined — open it directly in any browser, no server needed.
 
 ### Preview Production Build
 ```bash
