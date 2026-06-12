@@ -4,6 +4,7 @@ import { Stage, Layer } from 'react-konva'
 import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
 import { isoProject, isoUnproject, isoStampTransform } from './iso'
 import { buildIsoScene } from './isoScene'
+import { deriveFaceColors } from './faceColors'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
@@ -476,9 +477,10 @@ export default function App() {
 
     if (showIso) {
       // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
+      const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(FACE_COLOR)
       const shapes = buildIsoScene({
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
-        tileW: TILE_PX * 2, tileH: TILE_PX,
+        tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
       })
       for (const shape of shapes) {
         const node = new Konva.Line({

@@ -4,6 +4,7 @@ import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
+import { deriveFaceColors } from './faceColors'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -143,6 +144,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
   const canvasH = (cols + rows) * T / 2
   const offsetX = rows * T
 
+  const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(FACE_COLOR)
   const isoShapes = buildIsoScene({
     grids: new Map([[0, grid]]),
     steps: [],
@@ -151,6 +153,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
     selectedStepId: null, selectedRampId: null,
     tileW: ITW, tileH: ITH,
     facePx: Math.round(FACE_PX * T / TILE_PX),
+    frontFaceColor, eastFaceColor,
   })
 
   const shapes: ShapeSpec[] = isoShapes.map(s => ({
