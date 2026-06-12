@@ -53,15 +53,17 @@ export type BuildExportParams = {
   showGrid: boolean
   wallColor: string
   wallOpacity: number
+  frontFaceColor: string
+  eastFaceColor: string
   stamps: Stamp[]
   exportTile: number
 }
 
 export function buildExportShapes(params: BuildExportParams): ExportLayout {
-  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, stamps, exportTile: T } = params
+  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, exportTile: T } = params
 
   if (showIso) {
-    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stamps, T })
+    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
   }
   return buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
 }
@@ -132,10 +134,11 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
   return { canvasW, canvasH, offsetX: 0, shapes }
 }
 
-function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stamps, T }: {
+function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean
   wallColor: string; wallOpacity: number
+  frontFaceColor: string; eastFaceColor: string
   stamps: Stamp[]; T: number
 }): ExportLayout {
   const ITW = T * 2
@@ -144,16 +147,15 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
   const canvasH = (cols + rows) * T / 2
   const offsetX = rows * T
 
-  const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(FACE_COLOR)
   const isoShapes = buildIsoScene({
     grids: new Map([[0, grid]]),
     steps: [],
     ramps: [],
     cols, rows, show3D, wallColor, wallOpacity,
+    frontFaceColor, eastFaceColor,
     selectedStepId: null, selectedRampId: null,
     tileW: ITW, tileH: ITH,
     facePx: Math.round(FACE_PX * T / TILE_PX),
-    frontFaceColor, eastFaceColor,
   })
 
   const shapes: ShapeSpec[] = isoShapes.map(s => ({

@@ -18,10 +18,12 @@ import { isoProject, isoUnproject } from './iso'
 import { buildExportShapes } from './exportShapes'
 import { createGrid } from './grid'
 import type { ImageSpec } from './exportShapes'
+import { deriveFaceColors } from './faceColors'
 
 const T = 60     // export tile size — same as handleExport uses
 const ITW = T * 2
 const ITH = T
+const { front: FRONT_COLOR, east: EAST_COLOR } = deriveFaceColors('#6a5040')
 
 function baseParams(cols = 4, rows = 4) {
   return {
@@ -32,6 +34,8 @@ function baseParams(cols = 4, rows = 4) {
     showGrid: false,
     wallColor: '#000000',
     wallOpacity: 0,
+    frontFaceColor: FRONT_COLOR,
+    eastFaceColor: EAST_COLOR,
     stamps: [] as any[],
     exportTile: T,
   }

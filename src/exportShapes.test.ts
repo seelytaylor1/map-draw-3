@@ -4,8 +4,10 @@ import { createGrid, paintTiles } from './grid'
 import { FLOOR, FLOOR_COLOR, WATER, WATER_COLOR } from './constants'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject } from './iso'
 import { type Stamp } from './stamps'
+import { deriveFaceColors } from './faceColors'
 
 const ET = 60 // export tile size
+const { front: FRONT_COLOR, east: EAST_COLOR } = deriveFaceColors('#6a5040')
 
 function baseParams(cols: number, rows: number, grid?: Uint8Array) {
   return {
@@ -17,6 +19,8 @@ function baseParams(cols: number, rows: number, grid?: Uint8Array) {
     showGrid: false,
     wallColor: '#000000',
     wallOpacity: 0,
+    frontFaceColor: FRONT_COLOR,
+    eastFaceColor: EAST_COLOR,
     stamps: [],
     exportTile: ET,
   }
