@@ -980,6 +980,8 @@ export default function App() {
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
+  useEffect(() => { setShow3D(showIso) }, [showIso])
+
   const handleWidthChange = (inches: number) => {
     if (!Number.isFinite(inches) || inches < 1 || inches > 36) return
     const newCols = Math.round(inches * TILES_PER_INCH)
@@ -1389,18 +1391,6 @@ export default function App() {
             # Grid
           </button>
           <button
-            onClick={() => setShow3D(v => !v)}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-              background: show3D ? '#555' : 'transparent',
-              color: '#eee',
-              border: show3D ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-            }}
-          >
-            ◫ 3D
-          </button>
-          <button
             onClick={() => setShowIso(v => !v)}
             style={{
               flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
@@ -1465,6 +1455,18 @@ export default function App() {
           />
           <span style={{ color: '#aaa', fontSize: 11 }}>{wallColor}</span>
         </div>
+
+        {showIso && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ width: 52, color: '#aaa', fontSize: 11 }}>Face</label>
+            <input
+              type="color" value={isoFaceColor}
+              onChange={e => setIsoFaceColor(e.target.value)}
+              style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
+            />
+            <span style={{ color: '#aaa', fontSize: 11 }}>{isoFaceColor}</span>
+          </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <label style={{ width: 52, color: '#aaa', fontSize: 11 }}>Opacity</label>
