@@ -4,7 +4,6 @@ import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
-import { deriveFaceColors } from './faceColors'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
