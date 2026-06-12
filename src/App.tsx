@@ -12,6 +12,7 @@ import {
   type Stamp,
 } from './stamps'
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
+import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -31,7 +32,7 @@ type RoughPhase = 'idle' | 'placed1' | 'placed2'
 
 interface Tile { col: number; row: number }
 
-type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[] }
+type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[] }
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
   if (shape === 'square') {
@@ -52,15 +53,16 @@ export default function App() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [] }),
+    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [] }),
   )
-  const { grids, stamps, steps } = history.present
+  const { grids, stamps, steps, ramps } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
   const [mode, setMode] = useState<Mode>('paint')
   const [selectedStampId, setSelectedStampId] = useState<string | null>(null)
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
+  const [selectedRampId, setSelectedRampId] = useState<string | null>(null)
   const [hoverTile, setHoverTile] = useState<Tile | null>(null)
   const [brushShape, setBrushShape] = useState<BrushShape>('square')
   const [areaPhase, setAreaPhase] = useState<'idle' | 'selecting'>('idle')
@@ -146,9 +148,19 @@ export default function App() {
         setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))
         return
       }
+      if (e.key === 'Delete' && selectedRampId) {
+        setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, selectedRampId) }))
+        setSelectedRampId(null)
+        return
+      }
+      if ((e.key === 'r' || e.key === 'R') && selectedRampId) {
+        setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))
+        return
+      }
       if (e.key === 'Escape') {
         setSelectedStampId(null)
         setSelectedStepId(null)
+        setSelectedRampId(null)
         if (roughPhase !== 'idle') {
           setRoughPhase('idle')
           roughPhaseRef.current = 'idle'
@@ -171,7 +183,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedStampId, selectedStepId, roughPhase])
+  }, [selectedStampId, selectedStepId, selectedRampId, roughPhase])
 
   const stageToTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
     const rect = stage.container().getBoundingClientRect()
@@ -261,7 +273,23 @@ export default function App() {
         }
         setHistory(h => push(h, { ...h.present, steps: addStepRun(h.present.steps, newRun) }))
         setSelectedStampId(null)
+        setSelectedRampId(null)
         setSelectedStepId(newRun.id)
+        return
+      }
+
+      if (mode === 'ramps') {
+        const newRun: RampRun = {
+          id: crypto.randomUUID(),
+          col: tile.col,
+          row: tile.row,
+          z: activeZRef.current,
+          direction: 'E',
+        }
+        setHistory(h => push(h, { ...h.present, ramps: addRampRun(h.present.ramps, newRun) }))
+        setSelectedStampId(null)
+        setSelectedStepId(null)
+        setSelectedRampId(newRun.id)
         return
       }
 
@@ -449,7 +477,7 @@ export default function App() {
     if (showIso) {
       // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
       const shapes = buildIsoScene({
-        grids, steps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId,
+        grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX,
       })
       for (const shape of shapes) {
@@ -470,7 +498,22 @@ export default function App() {
               setSelectedStepId(null)
             } else {
               setSelectedStampId(null)
+              setSelectedRampId(null)
               setSelectedStepId(sid)
+            }
+          })
+        }
+        if (shape.rampId) {
+          const rid = shape.rampId
+          node.on('mousedown', (e) => {
+            e.cancelBubble = true
+            if (e.evt.button === 2 && rid === selectedRampId) {
+              setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, rid) }))
+              setSelectedRampId(null)
+            } else {
+              setSelectedStampId(null)
+              setSelectedStepId(null)
+              setSelectedRampId(rid)
             }
           })
         }
@@ -494,6 +537,7 @@ export default function App() {
     // Render each Z level ≤ activeZ, lowest first, with halving opacity
     const zSet = new Set(grids.keys())
     for (const run of steps) zSet.add(run.z)
+    for (const run of ramps) zSet.add(run.z)
     const sortedZs = [...zSet].filter(z => z <= activeZ).sort((a, b) => a - b)
     for (const z of sortedZs) {
       const levelGrid = grids.get(z) ?? createGrid(cols, rows)
@@ -594,10 +638,53 @@ export default function App() {
             setSelectedStepId(null)
           } else {
             setSelectedStampId(null)
+            setSelectedRampId(null)
             setSelectedStepId(run.id)
           }
         })
         group.add(stepGroup)
+      }
+
+      // Ramps render like steps: a single footprint rect with an exposed-edge face.
+      for (const run of ramps) {
+        if (run.z !== z) continue
+        const rampGroup = new Konva.Group()
+        if (show3D) {
+          const band = topDownRampFaceRect(run, TILE_PX, FACE_PX)
+          rampGroup.add(new Konva.Rect({ ...band, fill: FACE_COLOR }))
+        }
+        const rect = topDownRampRect(run)
+        rampGroup.add(new Konva.Rect({
+          x: rect.x * TILE_PX, y: rect.y * TILE_PX,
+          width: rect.width * TILE_PX, height: rect.height * TILE_PX,
+          fill: FLOOR_COLOR,
+          stroke: 'rgba(0,0,0,0.35)',
+          strokeWidth: 1,
+        }))
+        if (run.id === selectedRampId) {
+          const tiles = rampRunTiles(run)
+          const minC = Math.min(...tiles.map(t => t.col))
+          const minR = Math.min(...tiles.map(t => t.row))
+          const maxC = Math.max(...tiles.map(t => t.col))
+          const maxR = Math.max(...tiles.map(t => t.row))
+          rampGroup.add(new Konva.Rect({
+            x: minC * TILE_PX - 1, y: minR * TILE_PX - 1,
+            width: (maxC - minC + 1) * TILE_PX + 2, height: (maxR - minR + 1) * TILE_PX + 2,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
+        rampGroup.on('mousedown', (e) => {
+          e.cancelBubble = true
+          if (e.evt.button === 2 && run.id === selectedRampId) {
+            setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
+            setSelectedRampId(null)
+          } else {
+            setSelectedStampId(null)
+            setSelectedStepId(null)
+            setSelectedRampId(run.id)
+          }
+        })
+        group.add(rampGroup)
       }
 
       layer.add(group)
@@ -641,11 +728,23 @@ export default function App() {
         }
       }
 
+      for (const run of ramps) {
+        if (run.z !== z) continue
+        const rect = topDownRampRect(run)
+        group.add(new Konva.Rect({
+          x: rect.x * TILE_PX, y: rect.y * TILE_PX,
+          width: rect.width * TILE_PX, height: rect.height * TILE_PX,
+          fill: FLOOR_COLOR,
+          stroke: 'rgba(0,0,0,0.35)',
+          strokeWidth: 1,
+        }))
+      }
+
       layer.add(group)
     }
 
     layer.batchDraw()
-  }, [grids, steps, selectedStepId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
+  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso])
 
   // Stamp layer
   useEffect(() => {
@@ -887,7 +986,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps })
     })
     setCols(newCols)
   }
@@ -901,7 +1000,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps })
     })
     setRows(newRows)
   }
@@ -980,7 +1079,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps, steps })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, stamps, steps, ramps })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -993,7 +1092,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps }))
+      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps }))
       setCols(save.cols)
       setRows(save.rows)
       setWallColor(save.wallColor)
@@ -1004,6 +1103,7 @@ export default function App() {
       setShow3D(save.show3D)
       setSelectedStampId(null)
       setSelectedStepId(null)
+      setSelectedRampId(null)
       setLoadError(null)
       pendingFitRef.current = true
     } catch (err) {
@@ -1143,6 +1243,23 @@ export default function App() {
             Click: place steps descending Z{activeZ} → Z{activeZ - 1}
           </div>
         )}
+        <button
+          onClick={() => setMode(mode === 'ramps' ? 'paint' : 'ramps')}
+          style={{
+            padding: '4px 0', fontSize: 11, cursor: 'pointer',
+            background: mode === 'ramps' ? '#555' : 'transparent',
+            color: '#eee',
+            border: mode === 'ramps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+            borderRadius: 4,
+          }}
+        >
+          ◣ Ramp
+        </button>
+        {mode === 'ramps' && (
+          <div style={{ fontSize: 11, color: '#aaa' }}>
+            Click: place ramp descending Z{activeZ} → Z{activeZ - 1}
+          </div>
+        )}
 
         {/* Paint state selector: Floor | Water | Erase */}
         <div style={{ display: 'flex', gap: 6 }}>
@@ -1225,6 +1342,23 @@ export default function App() {
               }}
             >
               ↻ Rotate Steps
+            </button>
+            <div style={{ fontSize: 11, color: '#aaa' }}>
+              R: rotate · Del: delete · Esc: deselect
+            </div>
+          </div>
+        )}
+        {selectedRampId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <button
+              onClick={() => setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))}
+              style={{
+                padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                background: 'transparent', color: '#eee',
+                border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+              }}
+            >
+              ↻ Rotate Ramp
             </button>
             <div style={{ fontSize: 11, color: '#aaa' }}>
               R: rotate · Del: delete · Esc: deselect

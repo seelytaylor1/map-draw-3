@@ -2,16 +2,19 @@ import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR,
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
+import { isoRampSideFace, isoRampSurface, rampCenter, type RampRun } from './ramps'
 
 export interface IsoSceneParams {
   grids: Map<number, Uint8Array>
   steps: StepRun[]
+  ramps: RampRun[]
   cols: number
   rows: number
   show3D: boolean
   wallColor: string
   wallOpacity: number
   selectedStepId?: string | null
+  selectedRampId?: string | null
   tileW: number
   tileH: number
 }
@@ -23,6 +26,7 @@ export interface IsoShape {
   stroke?: string
   strokeWidth?: number
   stepId?: string
+  rampId?: string
 }
 
 // A renderable is one solid drawn as a unit: a tile (top + its faces) or a
@@ -55,6 +59,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
 
   const zSet = new Set(p.grids.keys())
   for (const run of p.steps) zSet.add(run.z)
+  for (const run of p.ramps) zSet.add(run.z)
   const zs = [...zSet].sort((a, b) => a - b)
   for (const z of zs) {
     const grid = p.grids.get(z)
@@ -116,6 +121,28 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
         })
         items.push({ depth: centers[i].col + centers[i].row, shapes })
       })
+    }
+    for (const run of p.ramps) {
+      if (run.z !== z) continue
+      const selected = run.id === p.selectedRampId
+      const shapes: IsoShape[] = []
+      if (p.show3D) {
+        const face = isoRampSideFace(run, p.tileW, p.tileH)
+        shapes.push({
+          points: face.points,
+          fill: face.side === 'south' ? ISO_FRONT_FACE_COLOR : ISO_EAST_FACE_COLOR,
+          rampId: run.id,
+        })
+      }
+      shapes.push({
+        points: isoRampSurface(run, p.tileW, p.tileH),
+        fill: FLOOR_COLOR,
+        stroke: selected ? '#ffff00' : 'rgba(0,0,0,0.25)',
+        strokeWidth: selected ? 1.5 : 0.5,
+        rampId: run.id,
+      })
+      const center = rampCenter(run)
+      items.push({ depth: center.col + center.row, shapes })
     }
 
     items.sort((a, b) => a.depth - b.depth)

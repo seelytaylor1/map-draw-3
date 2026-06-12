@@ -4,6 +4,7 @@ import { createGrid, paintTiles } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { FACE_PX, FLOOR, FLOOR_COLOR, ISO_EAST_FACE_COLOR, ISO_FRONT_FACE_COLOR, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
 import { STEP_TREAD_COUNT, isoStepTreads, type StepRun } from './steps'
+import { isoRampSurface, type RampRun } from './ramps'
 
 const TILE_W = 40
 const TILE_H = 20
@@ -17,12 +18,14 @@ function params(overrides: Partial<IsoSceneParams> = {}): IsoSceneParams {
   return {
     grids: new Map(),
     steps: [] as StepRun[],
+    ramps: [] as RampRun[],
     cols: 8,
     rows: 8,
     show3D: false,
     wallColor: '#000000',
     wallOpacity: 0,
     selectedStepId: null,
+    selectedRampId: null,
     tileW: TILE_W,
     tileH: TILE_H,
     ...overrides,
@@ -205,5 +208,48 @@ describe('buildIsoScene: steps across levels', () => {
     // offset for z=2 baked in
     const local = isoStepTreads(run, TILE_W, TILE_H)
     expect(treads[1].points).toEqual(local[0].top.map((v, i) => (i % 2 === 1 ? v - 2 * Z_STEP_HEIGHT : v)))
+  })
+})
+
+describe('buildIsoScene: ramps', () => {
+  const RAMP: RampRun = { id: 'ramp1', col: 3, row: 3, z: 1, direction: 'E' }
+
+  it('emits a single surface shape carrying the ramp id', () => {
+    const shapes = buildIsoScene(params({ ramps: [RAMP], grids: new Map([[1, gridWith([])]]) }))
+    const rampShapes = shapes.filter(s => s.rampId === 'ramp1')
+    expect(rampShapes.length).toBe(1) // surface only, no 3D
+    expect(rampShapes[0].fill).toBe(FLOOR_COLOR)
+  })
+
+  it('surface points carry the z=1 vertical offset', () => {
+    const shapes = buildIsoScene(params({ ramps: [RAMP], grids: new Map([[1, gridWith([])]]) }))
+    const surface = shapes.find(s => s.rampId === 'ramp1' && s.fill === FLOOR_COLOR)!
+    const local = isoRampSurface(RAMP, TILE_W, TILE_H)
+    expect(surface.points).toEqual(local.map((v, i) => (i % 2 === 1 ? v - Z_STEP_HEIGHT : v)))
+  })
+
+  it('with 3D emits the wedge side face beneath the surface', () => {
+    const shapes = buildIsoScene(params({ ramps: [RAMP], grids: new Map([[1, gridWith([])]]), show3D: true }))
+    const rampShapes = shapes.filter(s => s.rampId === 'ramp1')
+    expect(rampShapes.length).toBe(2)
+    expect(rampShapes[0].fill).toBe(ISO_FRONT_FACE_COLOR) // south wedge for an E run, drawn first
+    expect(rampShapes[1].fill).toBe(FLOOR_COLOR)          // surface on top
+  })
+
+  it('selected ramp surface gets the selection stroke', () => {
+    const shapes = buildIsoScene(params({ ramps: [RAMP], grids: new Map([[1, gridWith([])]]), selectedRampId: 'ramp1' }))
+    const surface = shapes.find(s => s.rampId === 'ramp1' && s.fill === FLOOR_COLOR)!
+    expect(surface.stroke).toBe('#ffff00')
+  })
+
+  it('interleaves with same-level tiles by painter depth', () => {
+    // tile behind (2,3) diag 6, tile in front (5,3) diag 9; ramp center diag ~7.5
+    const grids = new Map([[1, gridWith([{ col: 2, row: 3 }, { col: 5, row: 3 }])]])
+    const shapes = buildIsoScene(params({ grids, ramps: [RAMP] }))
+    const behindIdx = shapes.findIndex(s => JSON.stringify(s.points) === JSON.stringify(offset(isoFloorPoints(2, 3, TILE_W, TILE_H))))
+    const frontIdx = shapes.findIndex(s => JSON.stringify(s.points) === JSON.stringify(offset(isoFloorPoints(5, 3, TILE_W, TILE_H))))
+    const rampIdx = shapes.findIndex(s => s.rampId === 'ramp1')
+    expect(rampIdx).toBeGreaterThan(behindIdx)
+    expect(rampIdx).toBeLessThan(frontIdx)
   })
 })

@@ -1,7 +1,9 @@
 import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type ObjectStampType, type Rotation } from './stamps'
 import { type StepDirection, type StepRun } from './steps'
+import { type RampDirection, type RampRun } from './ramps'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
+const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
 
 export interface MapSave {
   version: 1
@@ -15,6 +17,7 @@ export interface MapSave {
   show3D: boolean
   stamps: Stamp[]
   steps: StepRun[]
+  ramps: RampRun[]
 }
 
 export interface DeserializedMap {
@@ -29,6 +32,7 @@ export interface DeserializedMap {
   show3D: boolean
   stamps: Stamp[]
   steps: StepRun[]
+  ramps: RampRun[]
 }
 
 export function serialize(params: {
@@ -42,6 +46,7 @@ export function serialize(params: {
   show3D: boolean
   stamps: Stamp[]
   steps: StepRun[]
+  ramps: RampRun[]
 }): MapSave {
   const grids: Record<string, number[]> = {}
   for (const [z, grid] of params.grids) {
@@ -66,6 +71,7 @@ export function serialize(params: {
       return out as Stamp
     }),
     steps: params.steps.map(s => ({ ...s })),
+    ramps: params.ramps.map(r => ({ ...r })),
   }
 }
 
@@ -144,6 +150,24 @@ export function deserialize(raw: unknown): DeserializedMap {
     }
   })
 
+  const rawRamps = Array.isArray(s['ramps']) ? s['ramps'] : []
+  const ramps: RampRun[] = rawRamps.map((entry: unknown): RampRun => {
+    if (typeof entry !== 'object' || entry === null) throw new Error('Invalid ramp entry')
+    const o = entry as Record<string, unknown>
+    if (typeof o['id'] !== 'string') throw new Error('Invalid ramp id')
+    if (typeof o['col'] !== 'number') throw new Error('Invalid ramp col')
+    if (typeof o['row'] !== 'number') throw new Error('Invalid ramp row')
+    if (!RAMP_DIRECTIONS.includes(o['direction'] as RampDirection)) throw new Error('Invalid ramp direction')
+    const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
+    return {
+      id: o['id'] as string,
+      col: o['col'] as number,
+      row: o['row'] as number,
+      z,
+      direction: o['direction'] as RampDirection,
+    }
+  })
+
   return {
     version: 1,
     cols: s['cols'] as number,
@@ -156,5 +180,6 @@ export function deserialize(raw: unknown): DeserializedMap {
     show3D,
     stamps,
     steps,
+    ramps,
   }
 }

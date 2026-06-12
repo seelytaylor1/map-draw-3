@@ -3,6 +3,7 @@ import { serialize, deserialize } from './serialization'
 import { WATER } from './constants'
 import { type Stamp } from './stamps'
 import { type StepRun } from './steps'
+import { type RampRun } from './ramps'
 
 const GRIDS = new Map([[0, new Uint8Array([1, 0, 1, 1])]])
 
@@ -17,6 +18,7 @@ const BASE = {
   show3D: false,
   stamps: [] as Stamp[],
   steps: [] as StepRun[],
+  ramps: [] as RampRun[],
 }
 
 const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90, z: 0 }
@@ -315,5 +317,44 @@ describe('steps round-trip', () => {
     const bad = { ...serialize(BASE), steps: [{ id: 's', col: 1, row: 1, direction: 'N' }] }
     const restored = deserialize(bad)
     expect(restored.steps[0].z).toBe(0)
+  })
+})
+
+describe('ramps round-trip', () => {
+  const RAMP: RampRun = { id: 'r1', col: 5, row: 6, z: -1, direction: 'W' }
+
+  it('serialize includes ramps in output', () => {
+    const save = serialize({ ...BASE, ramps: [RAMP] })
+    expect(save.ramps).toEqual([RAMP])
+  })
+
+  it('round-trips ramps through JSON', () => {
+    const json = JSON.stringify(serialize({ ...BASE, ramps: [RAMP] }))
+    const restored = deserialize(JSON.parse(json))
+    expect(restored.ramps).toEqual([RAMP])
+  })
+
+  it('defaults ramps to [] for saves without ramps field (old save)', () => {
+    const save = serialize(BASE)
+    const { ramps: _, ...noRamps } = save
+    const restored = deserialize(noRamps)
+    expect(restored.ramps).toEqual([])
+  })
+
+  it('throws on invalid ramp direction', () => {
+    const bad = { ...serialize(BASE), ramps: [{ ...RAMP, direction: 'Q' }] }
+    expect(() => deserialize(bad)).toThrow('Invalid ramp direction')
+  })
+
+  it('throws on missing ramp id', () => {
+    const { id: _, ...noId } = RAMP
+    const bad = { ...serialize(BASE), ramps: [noId] }
+    expect(() => deserialize(bad)).toThrow('Invalid ramp id')
+  })
+
+  it('defaults ramp z to 0 when absent', () => {
+    const bad = { ...serialize(BASE), ramps: [{ id: 'r', col: 1, row: 1, direction: 'N' }] }
+    const restored = deserialize(bad)
+    expect(restored.ramps[0].z).toBe(0)
   })
 })

@@ -5,7 +5,7 @@ import starUrl from './stamps/star.svg?url'
 import barsUrl from './stamps/bars.svg?url'
 import archwayUrl from './stamps/archway.svg?url'
 
-export type Mode = 'paint' | 'rough' | 'steps' | StampType | ObjectStampType
+export type Mode = 'paint' | 'rough' | 'steps' | 'ramps' | StampType | ObjectStampType
 
 const FLOOR_STAMP_URLS: Record<StampType, string> = {
   door: doorUrl,
