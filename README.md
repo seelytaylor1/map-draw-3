@@ -17,9 +17,7 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 
 ## Releases
 
-No install required. After every commit, a standalone build is generated at `dist/index.html` — download that file and open it in any browser.
-
-The latest build is always available in the `dist/` folder of this repository.
+No install required. Download `index.html` from the [latest release](../../releases/latest) and open it in any browser — no server, no setup.
 
 ## Requirements
 
