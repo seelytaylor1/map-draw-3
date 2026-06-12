@@ -17,6 +17,7 @@ export interface IsoSceneParams {
   selectedRampId?: string | null
   tileW: number
   tileH: number
+  facePx?: number
 }
 
 export interface IsoShape {
@@ -43,6 +44,7 @@ function offsetY(points: number[], yOff: number): number[] {
 }
 
 export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
+  const facePx = p.facePx ?? FACE_PX
   const out: IsoShape[] = []
 
   if (p.wallOpacity > 0) {
@@ -81,10 +83,10 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
             const southExposed = r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === WATER
             const eastExposed = c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === WATER
             if (southExposed) {
-              shapes.push({ points: isoFrontFacePoints(c, r, p.tileW, p.tileH, FACE_PX), fill: ISO_FRONT_FACE_COLOR })
+              shapes.push({ points: isoFrontFacePoints(c, r, p.tileW, p.tileH, facePx), fill: ISO_FRONT_FACE_COLOR })
             }
             if (eastExposed) {
-              shapes.push({ points: isoEastFacePoints(c, r, p.tileW, p.tileH, FACE_PX), fill: ISO_EAST_FACE_COLOR })
+              shapes.push({ points: isoEastFacePoints(c, r, p.tileW, p.tileH, facePx), fill: ISO_EAST_FACE_COLOR })
             }
           }
           items.push({ depth: c + r + 1, shapes })
@@ -99,7 +101,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
     for (const run of p.steps) {
       if (run.z !== z) continue
       const treads = isoStepTreads(run, p.tileW, p.tileH)
-      const sideFaces = p.show3D ? isoStepSideFaces(run, p.tileW, p.tileH, FACE_PX) : null
+      const sideFaces = p.show3D ? isoStepSideFaces(run, p.tileW, p.tileH, facePx) : null
       const centers = stepTreadCenters(run)
       const selected = run.id === p.selectedStepId
       treads.forEach((tread, i) => {

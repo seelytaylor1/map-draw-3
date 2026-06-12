@@ -2,9 +2,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildTopDownShapes } from './topDownScene'
 import { createGrid, paintTiles } from './grid'
-import { FLOOR, WATER } from './constants'
+import { FLOOR, WATER, type TileState } from './constants'
 
-function grid(cols: number, rows: number, tiles: { col: number; row: number }[], state = FLOOR) {
+function grid(cols: number, rows: number, tiles: { col: number; row: number }[], state: TileState = FLOOR) {
   return paintTiles(createGrid(cols, rows), cols, tiles, state)
 }
 

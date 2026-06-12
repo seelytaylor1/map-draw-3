@@ -1,7 +1,9 @@
-import { FLOOR, FLOOR_COLOR, FACE_COLOR, ISO_FRONT_FACE_COLOR, ISO_EAST_FACE_COLOR, FACE_PX, TILE_PX, WALL, WATER, WATER_COLOR } from './constants'
+import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, WATER_COLOR } from './constants'
 import { getTile } from './grid'
-import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject, isoStampTransform } from './iso'
+import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
+import { buildIsoScene } from './isoScene'
+import { buildTopDownShapes } from './topDownScene'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -58,12 +60,12 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
   const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, stamps, exportTile: T } = params
 
   if (showIso) {
-    return buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stamps, T })
+    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stamps, T })
   }
-  return buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
+  return buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
 }
 
-function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T }: {
+function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean; showGrid: boolean
   wallColor: string; wallOpacity: number
@@ -71,36 +73,28 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
 }): ExportLayout {
   const canvasW = cols * T
   const canvasH = rows * T
+  const faceT = Math.round(FACE_PX * T / TILE_PX)
   const shapes: ShapeSpec[] = []
 
   if (wallOpacity > 0) {
     shapes.push({ kind: 'rect', x: 0, y: 0, w: canvasW, h: canvasH, fill: wallColor, opacity: wallOpacity })
   }
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (getTile(grid, cols, c, r) === FLOOR) {
-        shapes.push({ kind: 'rect', x: c * T, y: r * T, w: T, h: T, fill: FLOOR_COLOR })
-      } else if (getTile(grid, cols, c, r) === WATER) {
-        shapes.push({ kind: 'rect', x: c * T, y: r * T, w: T, h: T, fill: WATER_COLOR })
-      }
-    }
-  }
-
-  if (show3D) {
-    const faceT = Math.round(FACE_PX * T / TILE_PX)
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (getTile(grid, cols, c, r) !== FLOOR) continue
-        const southWall = r + 1 >= rows || getTile(grid, cols, c, r + 1) === WALL
-        const eastWall = c + 1 >= cols || getTile(grid, cols, c + 1, r) === WALL
-        if (southWall) {
-          shapes.push({ kind: 'rect', x: c * T, y: (r + 1) * T, w: T, h: faceT, fill: FACE_COLOR })
+  for (const s of buildTopDownShapes(grid, cols, rows, show3D)) {
+    switch (s.kind) {
+      case 'floor':
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: FLOOR_COLOR })
+        break
+      case 'water':
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: WATER_COLOR })
+        break
+      case 'face':
+        if (s.side === 'south') {
+          shapes.push({ kind: 'rect', x: s.col * T, y: (s.row + 1) * T, w: T, h: faceT, fill: FACE_COLOR })
+        } else {
+          shapes.push({ kind: 'rect', x: (s.col + 1) * T, y: s.row * T, w: faceT, h: T, fill: FACE_COLOR })
         }
-        if (eastWall) {
-          shapes.push({ kind: 'rect', x: (c + 1) * T, y: r * T, w: faceT, h: T, fill: FACE_COLOR })
-        }
-      }
+        break
     }
   }
 
@@ -137,7 +131,7 @@ function buildTopDownShapes({ grid, cols, rows, show3D, showGrid, wallColor, wal
   return { canvasW, canvasH, offsetX: 0, shapes }
 }
 
-function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stamps, T }: {
+function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, stamps, T }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean
   wallColor: string; wallOpacity: number
@@ -148,67 +142,25 @@ function buildIsoShapes({ grid, cols, rows, show3D, wallColor, wallOpacity, stam
   const canvasW = (cols + rows) * T
   const canvasH = (cols + rows) * T / 2
   const offsetX = rows * T
-  const shapes: ShapeSpec[] = []
 
-  if (wallOpacity > 0) {
-    const tl = isoProject(0, 0, ITW, ITH)
-    const tr = isoProject(cols, 0, ITW, ITH)
-    const br = isoProject(cols, rows, ITW, ITH)
-    const bl = isoProject(0, rows, ITW, ITH)
-    shapes.push({
-      kind: 'polygon',
-      points: [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y],
-      fill: wallColor,
-      opacity: wallOpacity,
-    })
-  }
+  const isoShapes = buildIsoScene({
+    grids: new Map([[0, grid]]),
+    steps: [],
+    ramps: [],
+    cols, rows, show3D, wallColor, wallOpacity,
+    selectedStepId: null, selectedRampId: null,
+    tileW: ITW, tileH: ITH,
+    facePx: Math.round(FACE_PX * T / TILE_PX),
+  })
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (getTile(grid, cols, c, r) === FLOOR) {
-        shapes.push({
-          kind: 'polygon',
-          points: isoFloorPoints(c, r, ITW, ITH),
-          fill: FLOOR_COLOR,
-          stroke: 'rgba(0,0,0,0.15)',
-          strokeWidth: 0.5,
-        })
-      } else if (getTile(grid, cols, c, r) === WATER) {
-        shapes.push({
-          kind: 'polygon',
-          points: isoWaterPoints(c, r, ITW, ITH),
-          fill: WATER_COLOR,
-        })
-      }
-    }
-  }
-
-  if (show3D) {
-    const faceT = Math.round(FACE_PX * T / TILE_PX)
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (getTile(grid, cols, c, r) !== FLOOR) continue
-        const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
-        const eastNeighbor = c + 1 < cols ? getTile(grid, cols, c + 1, r) : null
-        const southWall = r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER
-        const eastWall = c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER
-        if (southWall) {
-          shapes.push({
-            kind: 'polygon',
-            points: isoFrontFacePoints(c, r, ITW, ITH, faceT),
-            fill: ISO_FRONT_FACE_COLOR,
-          })
-        }
-        if (eastWall) {
-          shapes.push({
-            kind: 'polygon',
-            points: isoEastFacePoints(c, r, ITW, ITH, faceT),
-            fill: ISO_EAST_FACE_COLOR,
-          })
-        }
-      }
-    }
-  }
+  const shapes: ShapeSpec[] = isoShapes.map(s => ({
+    kind: 'polygon' as const,
+    points: s.points,
+    fill: s.fill ?? FLOOR_COLOR,
+    opacity: s.opacity,
+    stroke: s.stroke,
+    strokeWidth: s.strokeWidth,
+  }))
 
   for (const stamp of stamps) {
     const sz = stampSize(stamp.type)
