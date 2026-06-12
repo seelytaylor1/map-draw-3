@@ -2,7 +2,7 @@
 
 A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw floors, place stamps (doors, traps, stairs), toggle 3D effects, and export high-resolution PNG maps.
 
-![Map Draw 3 Screenshot](header.png)
+<img width="905" height="589" alt="image" src="https://github.com/user-attachments/assets/9d9b36f1-1395-443c-bde5-322b5a2b9f17" />
 
 ## Features
 
