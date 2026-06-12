@@ -23,10 +23,28 @@ export const FLOOR_STAMP_LABELS: Record<StampType, string> = {
 
 const OBJECT_STAMP_URLS: Record<ObjectStampType, string> = {
   archway: archwayUrl,
+  bigpillar: archwayUrl,
+  'iron-door': archwayUrl,
+  'passageway-arch': archwayUrl,
+  pillar: archwayUrl,
+  portculis: archwayUrl,
+  ramp: archwayUrl,
+  well: archwayUrl,
+  'wood-door': archwayUrl,
+  'wood-doubledoor': archwayUrl,
 }
 
 export const OBJECT_STAMP_LABELS: Record<ObjectStampType, string> = {
   archway: 'Archway',
+  bigpillar: 'Big Pillar',
+  'iron-door': 'Iron Door',
+  'passageway-arch': 'Passageway Arch',
+  pillar: 'Pillar',
+  portculis: 'Portculis',
+  ramp: 'Ramp',
+  well: 'Well',
+  'wood-door': 'Wood Door',
+  'wood-doubledoor': 'Wood Double Door',
 }
 
 interface Props {

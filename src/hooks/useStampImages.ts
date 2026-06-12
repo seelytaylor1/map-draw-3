@@ -15,6 +15,15 @@ const STAMP_URLS: Record<StampType, string> = {
 
 const OBJECT_STAMP_URLS: Record<ObjectStampType, string> = {
   archway: archwayUrl,
+  bigpillar: archwayUrl,
+  'iron-door': archwayUrl,
+  'passageway-arch': archwayUrl,
+  pillar: archwayUrl,
+  portculis: archwayUrl,
+  ramp: archwayUrl,
+  well: archwayUrl,
+  'wood-door': archwayUrl,
+  'wood-doubledoor': archwayUrl,
 }
 
 export function useStampImages(): Map<StampType | ObjectStampType, HTMLImageElement> | null {

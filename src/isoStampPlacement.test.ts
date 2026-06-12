@@ -100,7 +100,7 @@ describe('ISO object stamp – base anchor', () => {
 
   for (const [col, row] of [[0, 0], [2, 1], [3, 3]]) {
     it(`stamp at (${col},${row}): export image bottom-y equals tile bottom-corner y`, () => {
-      const stamp = { id: 'a', type: 'archway' as const, col, row, rotation: 0 as const }
+      const stamp = { id: 'a', type: 'archway' as const, col, row, rotation: 0 as const, z: 0 }
       const { shapes } = buildExportShapes({ ...baseParams(), stamps: [stamp] })
       const img = shapes.find(s => s.kind === 'image') as ImageSpec | undefined
       expect(img).toBeDefined()
@@ -153,7 +153,7 @@ describe('ISO click→tile round-trip', () => {
 describe('ISO floor stamp – export ImageSpec x/y', () => {
   for (const [col, row] of [[0, 0], [1, 2], [3, 3]]) {
     it(`floor stamp at (${col},${row}) has x/y = isoProject(col+0.5, row+0.5)`, () => {
-      const stamp = { id: 'x', type: 'star' as const, col, row, rotation: 0 as const }
+      const stamp = { id: 'x', type: 'star' as const, col, row, rotation: 0 as const, z: 0 }
       const { shapes } = buildExportShapes({ ...baseParams(), stamps: [stamp] })
       const img = shapes.find(s => s.kind === 'image') as ImageSpec | undefined
       expect(img).toBeDefined()
@@ -177,7 +177,7 @@ describe('ISO floor stamp – group origin stays at tile centre for all rotation
 
   for (const rotation of [0, 90, 180, 270] as const) {
     it(`rotation=${rotation}: export x/y still at tile iso-center`, () => {
-      const stamp = { id: 'x', type: 'star' as const, col, row, rotation }
+      const stamp = { id: 'x', type: 'star' as const, col, row, rotation, z: 0 }
       const { shapes } = buildExportShapes({ ...baseParams(), stamps: [stamp] })
       const img = shapes.find(s => s.kind === 'image') as ImageSpec | undefined
       expect(img).toBeDefined()
