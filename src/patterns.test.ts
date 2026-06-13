@@ -25,6 +25,12 @@ describe('patterns', () => {
     expect(patternTypes).toContain('diagonal')
   })
 
+  it('does not draw anything for none pattern', () => {
+    drawPattern(ctx, 'none', 20, 20, '#000')
+    expect(ctx.beginPath).not.toHaveBeenCalled()
+    expect(ctx.stroke).not.toHaveBeenCalled()
+  })
+
   it('draws diagonal pattern on canvas', () => {
     drawPattern(ctx, 'diagonal', 20, 20, '#000')
     expect(ctx.stroke).toHaveBeenCalled()

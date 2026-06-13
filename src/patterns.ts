@@ -32,7 +32,7 @@ export function drawPattern(
       ctx.moveTo(x, 0)
       ctx.lineTo(x + height, height)
     }
-    for (let x = 0; x < width + height; x += 3) {
+    for (let x = -height; x < width; x += 3) {
       ctx.moveTo(x, 0)
       ctx.lineTo(x - height, height)
     }
