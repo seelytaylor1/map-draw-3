@@ -37,14 +37,25 @@ describe('drawHatching', () => {
     expect(ctx.stroke).toHaveBeenCalledTimes(16)
   })
 
-  it('does not throw for an all-floor grid', () => {
+  it('draws only boundary strokes for a 3x3 all-floor grid (interior tile has no wall neighbors)', () => {
+    // tileSize=20: spacing=max(3,round(20/6))=3, edgeLen=20
+    // t=1.5,4.5,7.5,10.5,13.5,16.5,19.5 → 7 strokes per wall edge
+    // 4 corner tiles × 2 off-grid edges × 7 = 56
+    // 4 edge tiles × 1 off-grid edge × 7 = 28
+    // 1 center tile × 0 wall edges = 0
+    // Total = 84
     const grid = new Uint8Array(9).fill(FLOOR)
-    expect(() => drawHatching(ctx, grid, 3, 3, 20, '#000')).not.toThrow()
+    drawHatching(ctx, grid, 3, 3, 20, '#000')
+    expect(ctx.stroke).toHaveBeenCalledTimes(84)
   })
 
-  it('draws strokes when floor tiles have wall neighbors', () => {
+  it('counts correct strokes for a 2x1 all-floor grid', () => {
+    // tileSize=20: spacing=3, 7 strokes per wall edge
+    // Tile (0,0): N, S, W all off-grid (wall) → 3 edges × 7 = 21 strokes
+    // Tile (1,0): N, S, E all off-grid (wall) → 3 edges × 7 = 21 strokes
+    // Total = 42
     const grid = new Uint8Array([FLOOR, FLOOR])
     drawHatching(ctx, grid, 2, 1, 20, '#000')
-    expect(ctx.stroke).toHaveBeenCalled()
+    expect(ctx.stroke).toHaveBeenCalledTimes(42)
   })
 })

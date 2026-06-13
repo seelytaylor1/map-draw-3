@@ -26,6 +26,7 @@ function drawEdgeHatch(
     const ddx = nx + alt * tx
     const ddy = ny + alt * ty
     const dlen = Math.sqrt(ddx * ddx + ddy * ddy)
+    if (dlen < 1e-10) continue
     ctx.beginPath()
     ctx.moveTo(x, y)
     ctx.lineTo(x + strokeLen * ddx / dlen, y + strokeLen * ddy / dlen)
@@ -43,6 +44,7 @@ export function drawHatching(
 ): void {
   ctx.strokeStyle = color
   ctx.lineWidth = 1
+  ctx.lineCap = 'round'
   const spacing = Math.max(3, Math.round(tileSize / 6))
   const strokeLen = Math.max(5, Math.round(tileSize * 0.4))
   for (let r = 0; r < rows; r++) {
