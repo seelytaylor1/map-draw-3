@@ -1240,7 +1240,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, stamps, steps, ramps, labels })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, stamps, steps, ramps, labels })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1265,6 +1265,9 @@ export default function App() {
       setIsoFaceColor(save.isoFaceColor)
       setShowHatching(save.showHatching)
       setHatchColor(save.hatchColor)
+      setShowWallOutline(save.showWallOutline)
+      setWallOutlineColor(save.wallOutlineColor)
+      setWallOutlineStyle(save.wallOutlineStyle)
       setSelectedStampId(null)
       setSelectedStepId(null)
       setSelectedRampId(null)

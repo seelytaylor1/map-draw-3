@@ -19,6 +19,9 @@ export interface MapSave {
   isoFaceColor?: string
   showHatching?: boolean
   hatchColor?: string
+  showWallOutline?: boolean
+  wallOutlineColor?: string
+  wallOutlineStyle?: 'clean' | 'rough'
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -38,6 +41,9 @@ export interface DeserializedMap {
   isoFaceColor: string
   showHatching: boolean
   hatchColor: string
+  showWallOutline: boolean
+  wallOutlineColor: string
+  wallOutlineStyle: 'clean' | 'rough'
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -56,6 +62,9 @@ export function serialize(params: {
   isoFaceColor: string
   showHatching: boolean
   hatchColor: string
+  showWallOutline: boolean
+  wallOutlineColor: string
+  wallOutlineStyle: 'clean' | 'rough'
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -78,6 +87,9 @@ export function serialize(params: {
     isoFaceColor: params.isoFaceColor,
     showHatching: params.showHatching,
     hatchColor: params.hatchColor,
+    showWallOutline: params.showWallOutline,
+    wallOutlineColor: params.wallOutlineColor,
+    wallOutlineStyle: params.wallOutlineStyle,
     stamps: params.stamps.map(s => {
       const { scale, mirrored, z, ...rest } = s
       const out: Partial<Stamp> = { ...rest }
@@ -206,6 +218,9 @@ export function deserialize(raw: unknown): DeserializedMap {
 
   const showHatching = s['showHatching'] === true
   const hatchColor = typeof s['hatchColor'] === 'string' ? s['hatchColor'] : '#000000'
+  const showWallOutline = s['showWallOutline'] === true
+  const wallOutlineColor = typeof s['wallOutlineColor'] === 'string' ? s['wallOutlineColor'] : '#000000'
+  const wallOutlineStyle: 'clean' | 'rough' = s['wallOutlineStyle'] === 'rough' ? 'rough' : 'clean'
 
   return {
     version: 1,
@@ -220,6 +235,9 @@ export function deserialize(raw: unknown): DeserializedMap {
     isoFaceColor,
     showHatching,
     hatchColor,
+    showWallOutline,
+    wallOutlineColor,
+    wallOutlineStyle,
     stamps,
     steps,
     ramps,
