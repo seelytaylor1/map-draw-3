@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { drawHatching, drawShadow } from './patterns'
+import { buildHatchPolylines, drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -717,21 +717,32 @@ export default function App() {
         group.add(rampGroup)
       }
 
-      // Crosshatch overlay
+      // Crosshatch overlay — Konva.Line nodes so they stay crisp at any zoom
       if (showHatching) {
-        const hatchCanvas = document.createElement('canvas')
-        hatchCanvas.width = cols * TILE_PX
-        hatchCanvas.height = rows * TILE_PX
-        const hatchCtx = hatchCanvas.getContext('2d')!
-        drawShadow(hatchCtx, levelGrid, cols, rows, TILE_PX)
-        drawHatching(hatchCtx, levelGrid, cols, rows, TILE_PX, hatchColor)
-        group.add(new Konva.Image({
-          x: 0, y: 0,
-          image: hatchCanvas as unknown as HTMLImageElement,
-          width: cols * TILE_PX,
-          height: rows * TILE_PX,
+        const hatchGroup = new Konva.Group({
+          clipFunc: (ctx) => {
+            for (let r = 0; r < rows; r++) {
+              for (let c = 0; c < cols; c++) {
+                if (getTile(levelGrid, cols, c, r) === WALL) {
+                  ctx.rect(c * TILE_PX, r * TILE_PX, TILE_PX, TILE_PX)
+                }
+              }
+            }
+          },
           listening: false,
-        }))
+        })
+        const polylines = buildHatchPolylines(levelGrid, cols, rows, TILE_PX)
+        for (const polyline of polylines) {
+          if (polyline.length < 2) continue
+          hatchGroup.add(new Konva.Line({
+            points: polyline.flat(),
+            stroke: hatchColor,
+            strokeWidth: 1,
+            lineCap: 'round',
+            listening: false,
+          }))
+        }
+        group.add(hatchGroup)
       }
 
       layer.add(group)
