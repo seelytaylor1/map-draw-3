@@ -5,7 +5,7 @@ import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TI
 import { isoProject, isoUnproject, isoStampTransform } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
-import { createGrid, getTile, paintTiles, resizeGrid, resizePatternGrid, rectTiles, circleBrushTiles, getGrid, setGrid, getPatternGrid, setPatternGrid, paintPatterns } from './grid'
+import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { type PatternType, PATTERN_LABELS } from './patterns'
+import { drawHatching } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -35,7 +35,7 @@ type RoughPhase = 'idle' | 'placed1' | 'placed2'
 
 interface Tile { col: number; row: number }
 
-type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[]; patterns: Map<number, Uint8Array> }
+type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[] }
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
   if (shape === 'square') {
@@ -56,9 +56,9 @@ export default function App() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], patterns: new Map([[0, new Uint8Array(DEFAULT_COLS * DEFAULT_ROWS).fill(0)]]) }),
+    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [] }),
   )
-  const { grids, stamps, steps, ramps, labels, patterns } = history.present
+  const { grids, stamps, steps, ramps, labels } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
@@ -74,9 +74,6 @@ export default function App() {
   const [areaPhase, setAreaPhase] = useState<'idle' | 'selecting'>('idle')
   const [areaStart, setAreaStart] = useState<Tile | null>(null)
   const [areaEnd, setAreaEnd] = useState<Tile | null>(null)
-  const [selectedPattern, setSelectedPattern] = useState<PatternType>('none')
-  const selectedPatternRef = useRef<PatternType>('none')
-
   const [activeZ, setActiveZ] = useState(0)
   const activeZRef = useRef(0)
 
@@ -107,6 +104,8 @@ export default function App() {
 
   const [wallColor, setWallColor] = useState('#000000')
   const [wallOpacity, setWallOpacity] = useState(1)
+  const [showHatching, setShowHatching] = useState(false)
+  const [hatchColor, setHatchColor] = useState('#000000')
   const [showGrid, setShowGrid] = useState(false)
   const [show3D, setShow3D] = useState(false)
   const [showIso, setShowIso] = useState(false)
@@ -432,21 +431,11 @@ export default function App() {
       const tiles = getAreaTiles(areaStartRef.current, areaEndRef.current, brushShapeRef.current)
       const az = activeZRef.current
       const tileValue = paintMode.current
-      const pattern = selectedPatternRef.current
 
       setHistory(h => {
         const gridsNext = setGrid(h.present.grids, az, paintTiles(getGrid(h.present.grids, az, cols, rows), cols, tiles, tileValue))
 
-        // Apply patterns if selected
-        let patternsNext = h.present.patterns
-        if (pattern !== 'none') {
-          const patternIdx = ['none', 'diagonal', 'cross', 'dots'].indexOf(pattern)
-          const patternGrid = getPatternGrid(h.present.patterns, az, cols, rows)
-          const patterned = paintPatterns(patternGrid, cols, tiles, patternIdx)
-          patternsNext = setPatternGrid(h.present.patterns, az, patterned)
-        }
-
-        return push(h, { ...h.present, grids: gridsNext, patterns: patternsNext })
+        return push(h, { ...h.present, grids: gridsNext })
       })
       setAreaPhase('idle'); areaPhaseRef.current = 'idle'
       setAreaStart(null); areaStartRef.current = null
@@ -518,7 +507,7 @@ export default function App() {
       // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
       const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
       const shapes = buildIsoScene({
-        grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
+        grids, steps, ramps, cols, rows, show3D, showGrid, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
       })
       for (const shape of shapes) {
@@ -1046,10 +1035,26 @@ export default function App() {
         }
       })
       layer.add(textNode)
+
+      if (label.id === selectedLabelId) {
+        const textX = label.col * TILE_PX + TILE_PX / 2 - textWidth / 2
+        const textY = label.row * TILE_PX + TILE_PX / 2 - 7
+        const fontSize = label.number !== undefined ? 14 : 10
+        layer.add(new Konva.Rect({
+          x: textX - 2,
+          y: textY - 2,
+          width: textWidth + 4,
+          height: fontSize + 4,
+          stroke: '#ffff00',
+          strokeWidth: 2,
+          fill: 'transparent',
+          listening: false,
+        }))
+      }
     }
 
     layer.batchDraw()
-  }, [labels, showIso])
+  }, [labels, showIso, selectedLabelId])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
@@ -1068,11 +1073,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      const newPatterns = new Map<number, Uint8Array>()
-      for (const [z, p] of h.present.patterns) {
-        newPatterns.set(z, resizePatternGrid(p, cols, rows, newCols, rows))
-      }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: newPatterns })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels })
     })
     setCols(newCols)
   }
@@ -1086,11 +1087,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      const newPatterns = new Map<number, Uint8Array>()
-      for (const [z, p] of h.present.patterns) {
-        newPatterns.set(z, resizePatternGrid(p, cols, rows, cols, newRows))
-      }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: newPatterns })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels })
     })
     setRows(newRows)
   }
@@ -1099,12 +1096,12 @@ export default function App() {
     if (!stampImages) return
 
     const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
-    const activePatterns = getPatternGrid(patterns, activeZ, cols, rows)
     const layout = buildExportShapes({
       grid: activeGrid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
       frontFaceColor, eastFaceColor,
       stamps: stamps.filter(s => s.z === activeZ),
-      patterns: activePatterns,
+      showHatching,
+      hatchColor,
       exportTile: 60,
     })
 
@@ -1129,6 +1126,12 @@ export default function App() {
           points: shape.points, closed: true,
           fill: shape.fill, opacity: shape.opacity,
           stroke: shape.stroke, strokeWidth: shape.strokeWidth,
+        }))
+      } else if (shape.kind === 'canvas') {
+        offLayer.add(new Konva.Image({
+          image: shape.canvas as unknown as HTMLImageElement,
+          x: shape.x, y: shape.y, width: shape.w, height: shape.h,
+          listening: false,
         }))
       } else if (shape.kind === 'image') {
         const imgEl = stampImages.get(shape.stampType as any)
@@ -1170,10 +1173,10 @@ export default function App() {
         a.click()
       },
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, patterns])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, stamps, steps, ramps, labels, patterns })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, stamps, steps, ramps, labels })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1186,7 +1189,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, patterns: save.patterns }))
+      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels }))
       setCols(save.cols)
       setRows(save.rows)
       setWallColor(save.wallColor)
@@ -1196,6 +1199,8 @@ export default function App() {
       setShowGrid(save.showGrid)
       setShow3D(save.show3D)
       setIsoFaceColor(save.isoFaceColor)
+      setShowHatching(save.showHatching)
+      setHatchColor(save.hatchColor)
       setSelectedStampId(null)
       setSelectedStepId(null)
       setSelectedRampId(null)
@@ -1446,27 +1451,26 @@ export default function App() {
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
-        {/* ── PATTERNS ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Patterns</div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {(['none', 'diagonal', 'cross', 'dots'] as PatternType[]).map(p => (
-            <button
-              key={p}
-              onClick={() => { setSelectedPattern(p); selectedPatternRef.current = p }}
-              style={{
-                flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: selectedPattern === p ? '#555' : 'transparent',
-                color: '#eee',
-                border: selectedPattern === p ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-                borderRadius: 4,
-              }}
-            >
-              {PATTERN_LABELS[p]}
-            </button>
-          ))}
-        </div>
-        <div style={{ fontSize: 11, color: '#aaa' }}>
-          Click areas to apply pattern
+        {/* ── HATCHING ── */}
+        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Hatching</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => setShowHatching(v => !v)}
+            style={{
+              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+              background: showHatching ? '#555' : 'transparent',
+              color: '#eee',
+              border: showHatching ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+              borderRadius: 4,
+            }}
+          >
+            {showHatching ? 'On' : 'Off'}
+          </button>
+          <input
+            type="color" value={hatchColor}
+            onChange={e => setHatchColor(e.target.value)}
+            style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
+          />
         </div>
 
         {/* ── STAMPS ── */}
