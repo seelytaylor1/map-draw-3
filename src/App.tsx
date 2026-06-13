@@ -5,7 +5,7 @@ import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TI
 import { isoProject, isoUnproject, isoStampTransform } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
-import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid, getPatternGrid, setPatternGrid, paintPatterns } from './grid'
+import { createGrid, getTile, paintTiles, resizeGrid, resizePatternGrid, rectTiles, circleBrushTiles, getGrid, setGrid, getPatternGrid, setPatternGrid, paintPatterns } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
@@ -1070,7 +1070,7 @@ export default function App() {
       }
       const newPatterns = new Map<number, Uint8Array>()
       for (const [z, p] of h.present.patterns) {
-        newPatterns.set(z, resizeGrid(p, cols, rows, newCols, rows))
+        newPatterns.set(z, resizePatternGrid(p, cols, rows, newCols, rows))
       }
       return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: newPatterns })
     })
@@ -1088,7 +1088,7 @@ export default function App() {
       }
       const newPatterns = new Map<number, Uint8Array>()
       for (const [z, p] of h.present.patterns) {
-        newPatterns.set(z, resizeGrid(p, cols, rows, cols, newRows))
+        newPatterns.set(z, resizePatternGrid(p, cols, rows, cols, newRows))
       }
       return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: newPatterns })
     })

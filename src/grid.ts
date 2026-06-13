@@ -37,6 +37,18 @@ export function resizeGrid(
   return next
 }
 
+export function resizePatternGrid(patterns: Uint8Array, oldCols: number, oldRows: number, newCols: number, newRows: number): Uint8Array {
+  const newGrid = new Uint8Array(newCols * newRows).fill(0)
+  const copyRows = Math.min(oldRows, newRows)
+  const copyCols = Math.min(oldCols, newCols)
+  for (let r = 0; r < copyRows; r++) {
+    for (let c = 0; c < copyCols; c++) {
+      newGrid[r * newCols + c] = patterns[r * oldCols + c]
+    }
+  }
+  return newGrid
+}
+
 export function rectTiles(
   c1: number, r1: number, c2: number, r2: number,
 ): { col: number; row: number }[] {
