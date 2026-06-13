@@ -112,6 +112,7 @@ export default function App() {
   const layerRef = useRef<Konva.Layer>(null)
   const stampLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
+  const labelsLayerRef = useRef<Konva.Layer>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const stampImages = useStampImages()
@@ -979,6 +980,31 @@ export default function App() {
     layer.batchDraw()
   }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
 
+  // Labels layer
+  useEffect(() => {
+    const layer = labelsLayerRef.current
+    if (!layer || showIso) return
+    layer.destroyChildren()
+
+    for (const label of labels) {
+      const displayText = label.number !== undefined ? `${label.number}` : label.text
+      layer.add(new Konva.Text({
+        x: label.col * TILE_PX + TILE_PX / 2,
+        y: label.row * TILE_PX + TILE_PX / 2,
+        text: displayText,
+        fontSize: label.number !== undefined ? 14 : 10,
+        fontFamily: 'Arial',
+        fill: '#000',
+        align: 'center',
+        verticalAlign: 'middle',
+        offsetX: 0,
+        offsetY: 7,
+      }))
+    }
+
+    layer.batchDraw()
+  }, [labels, showIso])
+
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
   useEffect(() => { setShow3D(showIso) }, [showIso])
@@ -1550,6 +1576,7 @@ export default function App() {
         <Layer ref={layerRef} />
         <Layer ref={stampLayerRef} />
         <Layer ref={dotLayerRef} listening={false} />
+        <Layer ref={labelsLayerRef} listening={false} />
       </Stage>
     </div>
   )
