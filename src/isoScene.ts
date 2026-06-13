@@ -1,4 +1,4 @@
-import { FACE_PX, FLOOR, FLOOR_COLOR, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
+import { FACE_PX, FLOOR, FLOOR_COLOR, WALL, WATER, WATER_COLOR, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
@@ -93,10 +93,19 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
           }
           items.push({ depth: c + r + 1, shapes })
         } else if (state === WATER) {
-          items.push({
-            depth: c + r + 1,
-            shapes: [{ points: isoWaterPoints(c, r, p.tileW, p.tileH), fill: WATER_COLOR }],
-          })
+          const shapes: IsoShape[] = [{ points: isoWaterPoints(c, r, p.tileW, p.tileH), fill: WATER_COLOR }]
+          if (p.show3D) {
+            const waterFaceH = facePx - WATER_OFFSET_Y
+            const southNeighbor = r + 1 < p.rows ? getTile(grid, p.cols, c, r + 1) : null
+            const eastNeighbor = c + 1 < p.cols ? getTile(grid, p.cols, c + 1, r) : null
+            if (r + 1 >= p.rows || southNeighbor === WALL) {
+              shapes.push({ points: offsetY(isoFrontFacePoints(c, r, p.tileW, p.tileH, waterFaceH), WATER_OFFSET_Y), fill: WATER_COLOR })
+            }
+            if (c + 1 >= p.cols || eastNeighbor === WALL) {
+              shapes.push({ points: offsetY(isoEastFacePoints(c, r, p.tileW, p.tileH, waterFaceH), WATER_OFFSET_Y), fill: WATER_COLOR })
+            }
+          }
+          items.push({ depth: c + r + 1, shapes })
         }
       }
     }

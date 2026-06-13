@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildIsoScene, type IsoSceneParams } from './isoScene'
 import { createGrid, paintTiles } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
-import { FACE_PX, FLOOR, FLOOR_COLOR, WATER, WATER_COLOR, Z_STEP_HEIGHT } from './constants'
+import { FACE_PX, FLOOR, FLOOR_COLOR, WATER, WATER_COLOR, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
 import { STEP_TREAD_COUNT, isoStepTreads, type StepRun } from './steps'
 import { isoRampSurface, type RampRun } from './ramps'
 import { deriveFaceColors } from './faceColors'
@@ -14,6 +14,10 @@ const { front: FRONT_COLOR, east: EAST_COLOR } = deriveFaceColors('#6a5040')
 
 function offset(points: number[]): number[] {
   return points.map((v, i) => (i % 2 === 1 ? v - Z_STEP_HEIGHT : v))
+}
+
+function shiftY(points: number[], dy: number): number[] {
+  return points.map((v, i) => (i % 2 === 1 ? v + dy : v))
 }
 
 function params(overrides: Partial<IsoSceneParams> = {}): IsoSceneParams {
@@ -61,13 +65,37 @@ describe('buildIsoScene: tile emission', () => {
     expect(shapes[0].strokeWidth).toBe(0.5)
   })
 
-  it('water emits the sunken water quad with no faces', () => {
+  it('water with show3D off emits only the sunken surface quad', () => {
     const grid = paintTiles(createGrid(8, 8), 8, [{ col: 2, row: 2 }], WATER)
     const grids = new Map([[0, grid]])
-    const shapes = buildIsoScene(params({ grids, show3D: true }))
+    const shapes = buildIsoScene(params({ grids, show3D: false }))
     expect(shapes.length).toBe(1)
     expect(shapes[0].points).toEqual(isoWaterPoints(2, 2, TILE_W, TILE_H))
     expect(shapes[0].fill).toBe(WATER_COLOR)
+  })
+
+  it('show3D water emits surface + south + east faces when surrounded by walls', () => {
+    const grid = paintTiles(createGrid(8, 8), 8, [{ col: 2, row: 2 }], WATER)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: true }))
+    const waterFaceH = FACE_PX - WATER_OFFSET_Y
+    expect(shapes.length).toBe(3)
+    expect(shapes[0].points).toEqual(isoWaterPoints(2, 2, TILE_W, TILE_H))
+    expect(shapes[0].fill).toBe(WATER_COLOR)
+    expect(shapes[1].points).toEqual(shiftY(isoFrontFacePoints(2, 2, TILE_W, TILE_H, waterFaceH), WATER_OFFSET_Y))
+    expect(shapes[1].fill).toBe(WATER_COLOR)
+    expect(shapes[2].points).toEqual(shiftY(isoEastFacePoints(2, 2, TILE_W, TILE_H, waterFaceH), WATER_OFFSET_Y))
+    expect(shapes[2].fill).toBe(WATER_COLOR)
+  })
+
+  it('show3D water has no face on the edge shared with an adjacent water tile', () => {
+    let grid = paintTiles(createGrid(8, 8), 8, [{ col: 3, row: 3 }], WATER)
+    grid = paintTiles(grid, 8, [{ col: 4, row: 3 }], WATER)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: true }))
+    // (3,3): surface + south face (wall to south), no east face (water to east) = 2 shapes
+    // (4,3): surface + south face + east face = 3 shapes
+    expect(shapes.length).toBe(5)
   })
 
   it('show3D floor emits its south and east faces immediately after its top', () => {
