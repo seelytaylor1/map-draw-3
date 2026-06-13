@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { buildHatchPolylines } from './patterns'
+import { buildHatchPolylines, buildWallOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -106,6 +106,9 @@ export default function App() {
   const [wallOpacity, setWallOpacity] = useState(1)
   const [showHatching, setShowHatching] = useState(false)
   const [hatchColor, setHatchColor] = useState('#000000')
+  const [showWallOutline, setShowWallOutline] = useState(false)
+  const [wallOutlineColor, setWallOutlineColor] = useState('#000000')
+  const [wallOutlineStyle, setWallOutlineStyle] = useState<'clean' | 'rough'>('clean')
   const [showGrid, setShowGrid] = useState(false)
   const [show3D, setShow3D] = useState(false)
   const [showIso, setShowIso] = useState(false)
@@ -745,6 +748,39 @@ export default function App() {
         group.add(hatchGroup)
       }
 
+      // Wall outline — two passes: shadow then line
+      if (showWallOutline) {
+        const outlineSegs = buildWallOutlineSegments(levelGrid, cols, rows, TILE_PX)
+        const polylines = wallOutlineStyle === 'rough'
+          ? roughenSegments(outlineSegs, OUTLINE_ROUGH_OPTS, 77)
+          : outlineSegs
+        const outlineGroup = new Konva.Group({ listening: false })
+        for (const polyline of polylines) {
+          if (polyline.length < 2) continue
+          outlineGroup.add(new Konva.Line({
+            points: (polyline as [number, number][]).flat(),
+            stroke: wallOutlineColor,
+            strokeWidth: 6,
+            opacity: 0.18,
+            lineCap: 'round',
+            lineJoin: 'round',
+            listening: false,
+          }))
+        }
+        for (const polyline of polylines) {
+          if (polyline.length < 2) continue
+          outlineGroup.add(new Konva.Line({
+            points: (polyline as [number, number][]).flat(),
+            stroke: wallOutlineColor,
+            strokeWidth: 2,
+            lineCap: 'round',
+            lineJoin: 'round',
+            listening: false,
+          }))
+        }
+        group.add(outlineGroup)
+      }
+
       layer.add(group)
     }
 
@@ -802,7 +838,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor])
+  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle])
 
   // Stamp layer
   useEffect(() => {
