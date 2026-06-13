@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { drawHatching } from './patterns'
+import { drawHatching, drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -723,6 +723,7 @@ export default function App() {
         hatchCanvas.width = cols * TILE_PX
         hatchCanvas.height = rows * TILE_PX
         const hatchCtx = hatchCanvas.getContext('2d')!
+        drawShadow(hatchCtx, levelGrid, cols, rows, TILE_PX)
         drawHatching(hatchCtx, levelGrid, cols, rows, TILE_PX, hatchColor)
         group.add(new Konva.Image({
           x: 0, y: 0,
