@@ -98,6 +98,19 @@ describe('buildIsoScene: tile emission', () => {
     expect(shapes.length).toBe(5)
   })
 
+  it('show3D water emits a south face toward an adjacent floor tile', () => {
+    let grid = paintTiles(createGrid(8, 8), 8, [{ col: 3, row: 3 }], WATER)
+    grid = paintTiles(grid, 8, [{ col: 3, row: 4 }], FLOOR)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: true }))
+    const waterFaceH = FACE_PX - WATER_OFFSET_Y
+    // water(3,3): surface + south face (floor to south) + east face (wall to east) = 3 shapes
+    // floor(3,4): top + south face (wall to south) + east face (wall to east) = 3 shapes
+    expect(shapes.length).toBe(6)
+    const southWaterFace = shiftY(isoFrontFacePoints(3, 3, TILE_W, TILE_H, waterFaceH), WATER_OFFSET_Y)
+    expect(shapes.some(s => JSON.stringify(s.points) === JSON.stringify(southWaterFace) && s.fill === WATER_COLOR)).toBe(true)
+  })
+
   it('show3D floor emits its south and east faces immediately after its top', () => {
     // single floor tile surrounded by wall: both faces exposed
     const grids = new Map([[0, gridWith([{ col: 3, row: 3 }])]])

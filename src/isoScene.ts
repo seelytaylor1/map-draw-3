@@ -98,10 +98,10 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
             const waterFaceH = facePx - WATER_OFFSET_Y
             const southNeighbor = r + 1 < p.rows ? getTile(grid, p.cols, c, r + 1) : null
             const eastNeighbor = c + 1 < p.cols ? getTile(grid, p.cols, c + 1, r) : null
-            if (r + 1 >= p.rows || southNeighbor === WALL) {
+            if (r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === FLOOR) {
               shapes.push({ points: offsetY(isoFrontFacePoints(c, r, p.tileW, p.tileH, waterFaceH), WATER_OFFSET_Y), fill: WATER_COLOR })
             }
-            if (c + 1 >= p.cols || eastNeighbor === WALL) {
+            if (c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === FLOOR) {
               shapes.push({ points: offsetY(isoEastFacePoints(c, r, p.tileW, p.tileH, waterFaceH), WATER_OFFSET_Y), fill: WATER_COLOR })
             }
           }
