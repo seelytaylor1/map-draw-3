@@ -1,6 +1,6 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, HatchOptions } from './patterns'
+import { drawHatching, buildHatchLines, roughenSegments, HatchOptions, RoughLineOptions } from './patterns'
 import { FLOOR, WALL } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -183,5 +183,86 @@ describe('buildHatchLines (pure geometry)', () => {
     const r1 = buildHatchLines(grid, 3, 3, 20, opts)
     const r2 = buildHatchLines(grid, 3, 3, 20, opts)
     expect(r1).toEqual(r2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// roughenSegments — pure pipeline tests
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ROUGH: RoughLineOptions = {
+  segmentSizeMin: 1,
+  segmentSizeMax: 1,
+  segmentSkipRate: 0,
+  noDotRate: 0.2,
+  scribbleScale: 0.2,
+  scribbleAmplitude: 1,
+  shiftRate: 0,
+  shiftAmountMin: 1,
+  shiftAmountMax: 2,
+  majorNoiseScale: 0.05,
+  majorNoiseAmplitude: 0,
+  majorNoiseShift: 0.9,
+}
+
+describe('roughenSegments', () => {
+  const seg: [number, number][][] = [[[0, 0], [20, 0]]]
+
+  it('returns at least as many polylines as input segments (with skipRate=0)', () => {
+    const result = roughenSegments(seg, DEFAULT_ROUGH, 1)
+    expect(result.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('output polylines each have at least 2 points', () => {
+    const segments: [number, number][][] = [
+      [[0, 0], [20, 0]],
+      [[10, 10], [30, 10]],
+    ]
+    const result = roughenSegments(segments, DEFAULT_ROUGH, 2)
+    for (const polyline of result) {
+      expect(polyline.length).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('is deterministic with the same seed', () => {
+    const segments: [number, number][][] = [[[0, 0], [20, 0]], [[5, 5], [25, 5]]]
+    const r1 = roughenSegments(segments, DEFAULT_ROUGH, 99)
+    const r2 = roughenSegments(segments, DEFAULT_ROUGH, 99)
+    expect(r1).toEqual(r2)
+  })
+
+  it('with skipRate=1 and noDotRate=1, returns empty array', () => {
+    const opts: RoughLineOptions = {
+      ...DEFAULT_ROUGH,
+      segmentSkipRate: 1,
+      noDotRate: 1,
+    }
+    const result = roughenSegments(seg, opts, 7)
+    expect(result).toHaveLength(0)
+  })
+
+  it('output points deviate from the original line when scribbleAmplitude > 0', () => {
+    // Use a longer segment so scribble has room to displace points
+    const longSeg: [number, number][][] = [[[0, 0], [50, 0]]]
+    const opts: RoughLineOptions = {
+      ...DEFAULT_ROUGH,
+      segmentSizeMin: 5,
+      segmentSizeMax: 10,
+      scribbleAmplitude: 5,
+    }
+    const result = roughenSegments(longSeg, opts, 42)
+
+    // Flatten all output points and check that at least one deviates vertically from y=0
+    let anyDeviation = false
+    for (const polyline of result) {
+      for (const [, y] of polyline) {
+        if (Math.abs(y) > 1e-9) {
+          anyDeviation = true
+          break
+        }
+      }
+      if (anyDeviation) break
+    }
+    expect(anyDeviation).toBe(true)
   })
 })

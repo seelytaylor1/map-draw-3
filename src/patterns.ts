@@ -5,6 +5,36 @@ import { FLOOR, WALL } from './constants'
 // Types
 // ---------------------------------------------------------------------------
 
+export interface RoughLineOptions {
+  segmentSizeMin: number      // min sub-segment size after subdivision
+  segmentSizeMax: number      // max sub-segment size after subdivision
+  segmentSkipRate: number     // probability [0,1] of dropping a sub-segment
+  noDotRate: number           // probability [0,1] that a skipped segment leaves no dot
+  scribbleScale: number       // frequency of Perlin-noise wobble
+  scribbleAmplitude: number   // amplitude of perpendicular noise displacement
+  shiftRate: number           // probability [0,1] of splitting a segment into offset halves
+  shiftAmountMin: number      // min perpendicular shift amount
+  shiftAmountMax: number      // max perpendicular shift amount
+  majorNoiseScale: number     // frequency of slow drift noise
+  majorNoiseAmplitude: number // amplitude of slow drift
+  majorNoiseShift: number     // threshold shift for major noise
+}
+
+const DEFAULT_ROUGH_OPTS: RoughLineOptions = {
+  segmentSizeMin: 1,
+  segmentSizeMax: 1,
+  segmentSkipRate: 0,
+  noDotRate: 0.2,
+  scribbleScale: 0.2,
+  scribbleAmplitude: 1,
+  shiftRate: 0,
+  shiftAmountMin: 1,
+  shiftAmountMax: 2,
+  majorNoiseScale: 0.05,
+  majorNoiseAmplitude: 0,
+  majorNoiseShift: 0.9,
+}
+
 export interface HatchOptions {
   /** pixels; cells within this distance of a wall edge qualify */
   wallDistance: number
@@ -518,6 +548,256 @@ export function buildHatchLines(
 }
 
 // ---------------------------------------------------------------------------
+// Rough-line post-processing pipeline
+// ---------------------------------------------------------------------------
+
+/** Simple LCG seeded RNG — returns [0, 1). */
+function makeLCG(seed: number): () => number {
+  let s = seed | 0
+  return function rng(): number {
+    s = Math.imul(s + 0x6d2b79f5, 0x735a2d97)
+    s = ((s << 15) | (s >>> 17)) ^ Math.imul(s, 0x1b56c4e9)
+    return (s >>> 0) / 0x100000000
+  }
+}
+
+function randomRange(min: number, max: number, rng: () => number): number {
+  return min + rng() * (max - min)
+}
+
+/**
+ * Stage 1: Maybe split a 2-point segment into two offset halves.
+ */
+function shiftSegment(
+  p0: [number, number],
+  p1: [number, number],
+  opts: RoughLineOptions,
+  rng: () => number,
+): [number, number][][] {
+  if (rng() >= opts.shiftRate) return [[p0, p1]]
+
+  // Random interior split point t in [0.2, 0.8]
+  const t = 0.2 + rng() * 0.6
+  const midX = p0[0] + t * (p1[0] - p0[0])
+  const midY = p0[1] + t * (p1[1] - p0[1])
+
+  // Perpendicular direction
+  const dx = p1[0] - p0[0]
+  const dy = p1[1] - p0[1]
+  const len = Math.sqrt(dx * dx + dy * dy)
+  if (len < 1e-10) return [[p0, p1]]
+  const perpX = -dy / len
+  const perpY = dx / len
+
+  const amount = randomRange(opts.shiftAmountMin, opts.shiftAmountMax, rng)
+  const sign = rng() < 0.5 ? 1 : -1
+  const offsetX = sign * amount * perpX
+  const offsetY = sign * amount * perpY
+
+  const mid2: [number, number] = [midX + offsetX, midY + offsetY]
+
+  return [
+    [p0, [midX, midY]],
+    [mid2, p1],
+  ]
+}
+
+/**
+ * Stage 2: Subdivide a 2-point segment into sub-segments of random length.
+ * If min === max === 1 this is a pass-through (just return [p0, p1]).
+ */
+function subdivide(
+  points: [number, number][],
+  minLen: number,
+  maxLen: number,
+  rng: () => number,
+): [number, number][] {
+  const [p0, p1] = points
+  const dx = p1[0] - p0[0]
+  const dy = p1[1] - p0[1]
+  const totalLen = Math.sqrt(dx * dx + dy * dy)
+
+  // Pass-through when trivial subdivision requested
+  if (minLen === 1 && maxLen === 1) return [p0, p1]
+  if (totalLen < 1e-10) return [p0, p1]
+
+  const result: [number, number][] = [p0]
+  let walked = 0
+  while (walked < totalLen) {
+    const step = randomRange(minLen, maxLen, rng)
+    walked += step
+    if (walked >= totalLen) break
+    const frac = walked / totalLen
+    result.push([p0[0] + frac * dx, p0[1] + frac * dy])
+  }
+  result.push(p1)
+  return result
+}
+
+/**
+ * Simple 1D value noise: linearly interpolates between random values at integer positions.
+ * Seeded via a pre-computed table using the given rng snapshot.
+ */
+function makeValueNoise(rng: () => number): (t: number) => number {
+  // Build a table of 256 random values
+  const TABLE_SIZE = 256
+  const table: number[] = []
+  for (let i = 0; i < TABLE_SIZE; i++) table.push(rng() * 2 - 1)
+
+  return function noise(t: number): number {
+    const i0 = Math.floor(t) & (TABLE_SIZE - 1)
+    const i1 = (i0 + 1) & (TABLE_SIZE - 1)
+    const frac = t - Math.floor(t)
+    // Smoothstep interpolation
+    const u = frac * frac * (3 - 2 * frac)
+    return table[i0] * (1 - u) + table[i1] * u
+  }
+}
+
+/**
+ * Stage 3: Displace each point perpendicularly using value noise (scribble).
+ */
+function scribble(
+  points: [number, number][],
+  scale: number,
+  amplitude: number,
+  rng: () => number,
+): [number, number][] {
+  if (amplitude === 0 || points.length < 2) return points
+
+  const noise = makeValueNoise(rng)
+
+  const first = points[0]
+  const last = points[points.length - 1]
+  const mainDx = last[0] - first[0]
+  const mainDy = last[1] - first[1]
+  const mainLen = Math.sqrt(mainDx * mainDx + mainDy * mainDy)
+  if (mainLen < 1e-10) return points
+
+  const dirX = mainDx / mainLen
+  const dirY = mainDy / mainLen
+  const perpX = -dirY
+  const perpY = dirX
+
+  return points.map((pt): [number, number] => {
+    const proj = (pt[0] - first[0]) * dirX + (pt[1] - first[1]) * dirY
+    const t = proj * scale
+    const disp = noise(t) * amplitude
+    return [pt[0] + disp * perpX, pt[1] + disp * perpY]
+  })
+}
+
+/**
+ * Stage 4: Add slow lateral drift via low-frequency noise.
+ */
+function addBlemishes(
+  points: [number, number][],
+  noiseScale: number,
+  amplitude: number,
+  shift: number,
+  rng: () => number,
+): [number, number][] {
+  if (amplitude === 0 || points.length < 2) return points
+
+  const noise = makeValueNoise(rng)
+
+  const first = points[0]
+  const last = points[points.length - 1]
+  const mainDx = last[0] - first[0]
+  const mainDy = last[1] - first[1]
+  const mainLen = Math.sqrt(mainDx * mainDx + mainDy * mainDy)
+  if (mainLen < 1e-10) return points
+
+  const dirX = mainDx / mainLen
+  const dirY = mainDy / mainLen
+  const perpX = -dirY
+  const perpY = dirX
+
+  return points.map((pt): [number, number] => {
+    const proj = (pt[0] - first[0]) * dirX + (pt[1] - first[1]) * dirY
+    const t = proj * noiseScale
+    const raw = noise(t)
+    const disp = Math.max(Math.abs(raw) - shift * amplitude, 0) * (raw < 0 ? -1 : 1)
+    return [pt[0] + disp * perpX, pt[1] + disp * perpY]
+  })
+}
+
+/**
+ * Stage 5: Randomly drop sub-segments, optionally leaving dots at gaps.
+ */
+function addSkips(
+  points: [number, number][],
+  skipRate: number,
+  noDotRate: number,
+  rng: () => number,
+): [number, number][][] {
+  if (skipRate === 0) return [points]
+  if (points.length < 2) return [points]
+
+  const result: [number, number][][] = []
+  let current: [number, number][] = [points[0]]
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+
+    if (rng() < skipRate) {
+      // Drop this sub-segment
+      if (current.length >= 2) {
+        result.push(current)
+      }
+      current = [b]
+      // Optionally insert a tiny "dot" at the midpoint
+      if (rng() >= noDotRate) {
+        const mx = (a[0] + b[0]) / 2
+        const my = (a[1] + b[1]) / 2
+        const eps = 0.5
+        result.push([[mx - eps, my], [mx + eps, my]])
+      }
+    } else {
+      current.push(b)
+    }
+  }
+
+  if (current.length >= 2) result.push(current)
+  return result
+}
+
+/**
+ * Convert clean 2-point segments into wobbly, gappy, hand-drawn-looking polylines.
+ */
+export function roughenSegments(
+  segments: [number, number][][],
+  opts: RoughLineOptions,
+  seed = 0,
+): [number, number][][] {
+  const rng = makeLCG(seed)
+
+  const result: [number, number][][] = []
+  for (const seg of segments) {
+    if (seg.length < 2) continue
+    const p0 = seg[0] as [number, number]
+    const p1 = seg[1] as [number, number]
+
+    // Stage 1: maybe shift
+    const shifted = shiftSegment(p0, p1, opts, rng)
+
+    for (const [a, b] of shifted) {
+      // Stage 2: subdivide
+      const pts = subdivide([a, b], opts.segmentSizeMin, opts.segmentSizeMax, rng)
+      // Stage 3: scribble
+      const scribbled = scribble(pts, opts.scribbleScale, opts.scribbleAmplitude, rng)
+      // Stage 4: blemishes
+      const blemished = addBlemishes(scribbled, opts.majorNoiseScale, opts.majorNoiseAmplitude, opts.majorNoiseShift, rng)
+      // Stage 5: add skips — produces multiple polylines
+      const skipped = addSkips(blemished, opts.segmentSkipRate, opts.noDotRate, rng)
+      for (const polyline of skipped) result.push(polyline)
+    }
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // drawHatching — public canvas API
 // ---------------------------------------------------------------------------
 
@@ -531,16 +811,18 @@ export function drawHatching(
 ): void {
   ctx.save()
   ctx.strokeStyle = color
-  ctx.lineWidth = Math.max(1, tileSize / 16)
+  ctx.lineWidth = 1
   ctx.lineCap = 'round'
 
   const segments = buildHatchLines(grid, cols, rows, tileSize, DEFAULT_HATCH_OPTS)
+  const roughened = roughenSegments(segments, DEFAULT_ROUGH_OPTS, 42)
 
-  for (const seg of segments) {
+  for (const polyline of roughened) {
+    if (polyline.length < 2) continue
     ctx.beginPath()
-    ctx.moveTo(seg[0][0], seg[0][1])
-    for (let i = 1; i < seg.length; i++) {
-      ctx.lineTo(seg[i][0], seg[i][1])
+    ctx.moveTo(polyline[0][0], polyline[0][1])
+    for (let i = 1; i < polyline.length; i++) {
+      ctx.lineTo(polyline[i][0], polyline[i][1])
     }
     ctx.stroke()
   }
