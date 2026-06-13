@@ -11,13 +11,14 @@ export interface MapSave {
   cols: number
   rows: number
   grids: Record<string, number[]>
-  patterns: Array<[number, string]>
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
   showGrid: boolean
   show3D: boolean
   isoFaceColor?: string
+  showHatching?: boolean
+  hatchColor?: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -29,13 +30,14 @@ export interface DeserializedMap {
   cols: number
   rows: number
   grids: Map<number, Uint8Array>
-  patterns: Map<number, Uint8Array>
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
   showGrid: boolean
   show3D: boolean
   isoFaceColor: string
+  showHatching: boolean
+  hatchColor: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -44,7 +46,6 @@ export interface DeserializedMap {
 
 export function serialize(params: {
   grids: Map<number, Uint8Array>
-  patterns: Map<number, Uint8Array>
   cols: number
   rows: number
   wallColor: string
@@ -53,6 +54,8 @@ export function serialize(params: {
   showGrid: boolean
   show3D: boolean
   isoFaceColor: string
+  showHatching: boolean
+  hatchColor: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -67,13 +70,14 @@ export function serialize(params: {
     cols: params.cols,
     rows: params.rows,
     grids,
-    patterns: [...params.patterns].map(([z, p]) => [z, btoa(Array.from(p, c => String.fromCharCode(c)).join(''))]),
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
     brushShape: params.brushShape,
     showGrid: params.showGrid,
     show3D: params.show3D,
     isoFaceColor: params.isoFaceColor,
+    showHatching: params.showHatching,
+    hatchColor: params.hatchColor,
     stamps: params.stamps.map(s => {
       const { scale, mirrored, z, ...rest } = s
       const out: Partial<Stamp> = { ...rest }
@@ -182,15 +186,6 @@ export function deserialize(raw: unknown): DeserializedMap {
     }
   })
 
-  const patterns = new Map<number, Uint8Array>()
-  if (s['patterns'] && Array.isArray(s['patterns'])) {
-    for (const [z, encoded] of s['patterns']) {
-      if (typeof z !== 'number' || typeof encoded !== 'string') throw new Error('Invalid pattern entry')
-      const decoded = atob(encoded)
-      patterns.set(z, new Uint8Array(decoded.split('').map(c => c.charCodeAt(0))))
-    }
-  }
-
   const rawLabels = Array.isArray(s['labels']) ? s['labels'] : []
   const labels: Label[] = rawLabels.map((entry: unknown): Label => {
     if (typeof entry !== 'object' || entry === null) throw new Error('Invalid label entry')
@@ -209,18 +204,22 @@ export function deserialize(raw: unknown): DeserializedMap {
     return label
   })
 
+  const showHatching = s['showHatching'] === true
+  const hatchColor = typeof s['hatchColor'] === 'string' ? s['hatchColor'] : '#000000'
+
   return {
     version: 1,
     cols: s['cols'] as number,
     rows: s['rows'] as number,
     grids,
-    patterns,
     wallColor: s['wallColor'] as string,
     wallOpacity: s['wallOpacity'] as number,
     brushShape: s['brushShape'] as 'square' | 'circle',
     showGrid: s['showGrid'] as boolean,
     show3D,
     isoFaceColor,
+    showHatching,
+    hatchColor,
     stamps,
     steps,
     ramps,
