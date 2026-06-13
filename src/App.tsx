@@ -717,6 +717,22 @@ export default function App() {
         group.add(rampGroup)
       }
 
+      // Crosshatch overlay
+      if (showHatching) {
+        const hatchCanvas = document.createElement('canvas')
+        hatchCanvas.width = cols * TILE_PX
+        hatchCanvas.height = rows * TILE_PX
+        const hatchCtx = hatchCanvas.getContext('2d')!
+        drawHatching(hatchCtx, levelGrid, cols, rows, TILE_PX, hatchColor)
+        group.add(new Konva.Image({
+          x: 0, y: 0,
+          image: hatchCanvas as unknown as HTMLImageElement,
+          width: cols * TILE_PX,
+          height: rows * TILE_PX,
+          listening: false,
+        }))
+      }
+
       layer.add(group)
     }
 
@@ -774,7 +790,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor])
+  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor])
 
   // Stamp layer
   useEffect(() => {
@@ -1453,24 +1469,29 @@ export default function App() {
 
         {/* ── HATCHING ── */}
         <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Hatching</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={() => setShowHatching(v => !v)}
             style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
               background: showHatching ? '#555' : 'transparent',
               color: '#eee',
               border: showHatching ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
               borderRadius: 4,
             }}
           >
-            {showHatching ? 'On' : 'Off'}
+            ⌇ Hatch
           </button>
-          <input
-            type="color" value={hatchColor}
-            onChange={e => setHatchColor(e.target.value)}
-            style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
-          />
+          {showHatching && (
+            <input
+              type="color" value={hatchColor}
+              onChange={e => setHatchColor(e.target.value)}
+              style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
+            />
+          )}
+          {showHatching && (
+            <span style={{ color: '#aaa', fontSize: 11 }}>{hatchColor}</span>
+          )}
         </div>
 
         {/* ── STAMPS ── */}
