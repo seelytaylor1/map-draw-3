@@ -983,22 +983,22 @@ export default function App() {
   // Labels layer
   useEffect(() => {
     const layer = labelsLayerRef.current
-    if (!layer || showIso) return
+    if (!layer) return
     layer.destroyChildren()
+    if (showIso) { layer.batchDraw(); return }
 
     for (const label of labels) {
       const displayText = label.number !== undefined ? `${label.number}` : label.text
+      const textWidth = TILE_PX * 4
       layer.add(new Konva.Text({
-        x: label.col * TILE_PX + TILE_PX / 2,
-        y: label.row * TILE_PX + TILE_PX / 2,
+        x: label.col * TILE_PX + TILE_PX / 2 - textWidth / 2,
+        y: label.row * TILE_PX + TILE_PX / 2 - 7,
+        width: textWidth,
         text: displayText,
         fontSize: label.number !== undefined ? 14 : 10,
         fontFamily: 'Arial',
         fill: '#000',
         align: 'center',
-        verticalAlign: 'middle',
-        offsetX: 0,
-        offsetY: 7,
       }))
     }
 
