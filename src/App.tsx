@@ -1445,7 +1445,6 @@ export default function App() {
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
         {/* ── PATTERNS ── */}
-        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
         <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Patterns</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {(['none', 'diagonal', 'cross', 'dots'] as PatternType[]).map(p => (
