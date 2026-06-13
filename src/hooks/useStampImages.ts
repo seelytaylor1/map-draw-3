@@ -4,7 +4,16 @@ import doorUrl from '../stamps/door.svg?url'
 import trapUrl from '../stamps/trap.svg?url'
 import starUrl from '../stamps/star.svg?url'
 import barsUrl from '../stamps/bars.svg?url'
-import archwayUrl from '../stamps/archway.svg?url'
+import isoArchwayUrl from '../iso-objects/archway.svg?url'
+import isoBigpillarUrl from '../iso-objects/bigpillar.svg?url'
+import isoIronDoorUrl from '../iso-objects/iron-door.svg?url'
+import isoPassagewayArchUrl from '../iso-objects/passageway-arch.svg?url'
+import isoPillarUrl from '../iso-objects/pillar.svg?url'
+import isoPortculisUrl from '../iso-objects/portculis.svg?url'
+import isoRampUrl from '../iso-objects/ramp.svg?url'
+import isoWellUrl from '../iso-objects/well.svg?url'
+import isoWoodDoorUrl from '../iso-objects/wood-door.svg?url'
+import isoWoodDoubledoorUrl from '../iso-objects/wood-doubledoor.svg?url'
 
 const STAMP_URLS: Record<StampType, string> = {
   door: doorUrl,
@@ -14,16 +23,16 @@ const STAMP_URLS: Record<StampType, string> = {
 }
 
 const OBJECT_STAMP_URLS: Record<ObjectStampType, string> = {
-  archway: archwayUrl,
-  bigpillar: archwayUrl,
-  'iron-door': archwayUrl,
-  'passageway-arch': archwayUrl,
-  pillar: archwayUrl,
-  portculis: archwayUrl,
-  ramp: archwayUrl,
-  well: archwayUrl,
-  'wood-door': archwayUrl,
-  'wood-doubledoor': archwayUrl,
+  archway: isoArchwayUrl,
+  bigpillar: isoBigpillarUrl,
+  'iron-door': isoIronDoorUrl,
+  'passageway-arch': isoPassagewayArchUrl,
+  pillar: isoPillarUrl,
+  portculis: isoPortculisUrl,
+  ramp: isoRampUrl,
+  well: isoWellUrl,
+  'wood-door': isoWoodDoorUrl,
+  'wood-doubledoor': isoWoodDoubledoorUrl,
 }
 
 export function useStampImages(): Map<StampType | ObjectStampType, HTMLImageElement> | null {
