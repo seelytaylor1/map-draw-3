@@ -1,6 +1,6 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, HatchOptions, buildShadowCells, ShadowOptions } from './patterns'
+import { drawHatching, buildHatchLines, roughenSegments, HatchOptions, RoughLineOptions } from './patterns'
 import { FLOOR, WALL } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -185,97 +185,82 @@ describe('buildHatchLines (pure geometry)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// buildShadowCells — pure geometry tests
+// roughenSegments — pure pipeline tests
 // ---------------------------------------------------------------------------
 
-const SMALL_SHADOW_OPTS: ShadowOptions = {
-  wallDistance: 25,
-  tileSize: 60,
-  minDistance: 8,
-  maxDistance: 12,
-  fillColor: 'rgba(0,0,0,1)',
-  fillOpacity: 0.18,
+const DEFAULT_ROUGH: RoughLineOptions = {
+  segmentSizeMin: 1,
+  segmentSizeMax: 1,
+  segmentSkipRate: 0,
+  noDotRate: 0.2,
+  scribbleScale: 0.2,
+  scribbleAmplitude: 1,
+  shiftRate: 0,
+  shiftAmountMin: 1,
+  shiftAmountMax: 2,
+  majorNoiseScale: 0.05,
+  majorNoiseAmplitude: 0,
+  majorNoiseShift: 0.9,
 }
 
-describe('buildShadowCells (pure geometry)', () => {
-  it('returns empty array for all-wall grid', () => {
-    const grid = new Uint8Array([WALL, WALL, WALL, WALL])
-    const result = buildShadowCells(grid, 2, 2, 20, SMALL_SHADOW_OPTS)
-    expect(result).toHaveLength(0)
+describe('roughenSegments', () => {
+  const seg: [number, number][][] = [[[0, 0], [20, 0]]]
+
+  it('returns at least as many polylines as input segments (with skipRate=0)', () => {
+    const result = roughenSegments(seg, DEFAULT_ROUGH, 1)
+    expect(result.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('returns empty array for all-floor grid', () => {
-    // All floor means no wall-edge points → no polygons
-    const grid = new Uint8Array(9).fill(FLOOR)
-    const result = buildShadowCells(grid, 3, 3, 20, SMALL_SHADOW_OPTS)
-    expect(result).toHaveLength(0)
-  })
-
-  it('returns non-empty polygons for a 3×3 center-floor grid', () => {
-    const grid = new Uint8Array(9).fill(WALL)
-    grid[4] = FLOOR // center cell surrounded by walls
-    const opts: ShadowOptions = {
-      wallDistance: 30,
-      tileSize: 60,
-      minDistance: 5,
-      maxDistance: 10,
-      fillColor: 'rgba(0,0,0,1)',
-      fillOpacity: 0.18,
-    }
-    const result = buildShadowCells(grid, 3, 3, 20, opts)
-    expect(result.length).toBeGreaterThan(0)
-  })
-
-  it('all returned polygons have at least 3 vertices', () => {
-    const grid = new Uint8Array(9).fill(WALL)
-    grid[4] = FLOOR
-    const opts: ShadowOptions = {
-      wallDistance: 30,
-      tileSize: 60,
-      minDistance: 5,
-      maxDistance: 10,
-      fillColor: 'rgba(0,0,0,1)',
-      fillOpacity: 0.18,
-    }
-    const result = buildShadowCells(grid, 3, 3, 20, opts)
-    for (const poly of result) {
-      expect(poly.length).toBeGreaterThanOrEqual(3)
+  it('output polylines each have at least 2 points', () => {
+    const segments: [number, number][][] = [
+      [[0, 0], [20, 0]],
+      [[10, 10], [30, 10]],
+    ]
+    const result = roughenSegments(segments, DEFAULT_ROUGH, 2)
+    for (const polyline of result) {
+      expect(polyline.length).toBeGreaterThanOrEqual(2)
     }
   })
 
-  it('all vertex coordinates are finite numbers', () => {
-    const grid = new Uint8Array(9).fill(WALL)
-    grid[4] = FLOOR
-    const opts: ShadowOptions = {
-      wallDistance: 30,
-      tileSize: 60,
-      minDistance: 5,
-      maxDistance: 10,
-      fillColor: 'rgba(0,0,0,1)',
-      fillOpacity: 0.18,
-    }
-    const result = buildShadowCells(grid, 3, 3, 20, opts)
-    for (const poly of result) {
-      for (const [x, y] of poly) {
-        expect(Number.isFinite(x)).toBe(true)
-        expect(Number.isFinite(y)).toBe(true)
-      }
-    }
-  })
-
-  it('produces identical output on repeated calls (deterministic)', () => {
-    const grid = new Uint8Array(9).fill(WALL)
-    grid[4] = FLOOR
-    const opts: ShadowOptions = {
-      wallDistance: 30,
-      tileSize: 60,
-      minDistance: 5,
-      maxDistance: 10,
-      fillColor: 'rgba(0,0,0,1)',
-      fillOpacity: 0.18,
-    }
-    const r1 = buildShadowCells(grid, 3, 3, 20, opts)
-    const r2 = buildShadowCells(grid, 3, 3, 20, opts)
+  it('is deterministic with the same seed', () => {
+    const segments: [number, number][][] = [[[0, 0], [20, 0]], [[5, 5], [25, 5]]]
+    const r1 = roughenSegments(segments, DEFAULT_ROUGH, 99)
+    const r2 = roughenSegments(segments, DEFAULT_ROUGH, 99)
     expect(r1).toEqual(r2)
+  })
+
+  it('with skipRate=1 and noDotRate=1, returns empty array', () => {
+    const opts: RoughLineOptions = {
+      ...DEFAULT_ROUGH,
+      segmentSkipRate: 1,
+      noDotRate: 1,
+    }
+    const result = roughenSegments(seg, opts, 7)
+    expect(result).toHaveLength(0)
+  })
+
+  it('output points deviate from the original line when scribbleAmplitude > 0', () => {
+    // Use a longer segment so scribble has room to displace points
+    const longSeg: [number, number][][] = [[[0, 0], [50, 0]]]
+    const opts: RoughLineOptions = {
+      ...DEFAULT_ROUGH,
+      segmentSizeMin: 5,
+      segmentSizeMax: 10,
+      scribbleAmplitude: 5,
+    }
+    const result = roughenSegments(longSeg, opts, 42)
+
+    // Flatten all output points and check that at least one deviates vertically from y=0
+    let anyDeviation = false
+    for (const polyline of result) {
+      for (const [, y] of polyline) {
+        if (Math.abs(y) > 1e-9) {
+          anyDeviation = true
+          break
+        }
+      }
+      if (anyDeviation) break
+    }
+    expect(anyDeviation).toBe(true)
   })
 })
