@@ -21,6 +21,8 @@ dist/
 # Scratch/temp
 .scratch/
 .playwright-mcp/
+.superpowers/
+docs/superpowers/plans/
 
 # Claude Code
 .claude/
