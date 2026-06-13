@@ -1054,7 +1054,11 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: h.present.patterns })
+      const newPatterns = new Map<number, Uint8Array>()
+      for (const [z, p] of h.present.patterns) {
+        newPatterns.set(z, resizeGrid(p, cols, rows, newCols, rows))
+      }
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: newPatterns })
     })
     setCols(newCols)
   }
@@ -1068,7 +1072,11 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: h.present.patterns })
+      const newPatterns = new Map<number, Uint8Array>()
+      for (const [z, p] of h.present.patterns) {
+        newPatterns.set(z, resizeGrid(p, cols, rows, cols, newRows))
+      }
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: newPatterns })
     })
     setRows(newRows)
   }

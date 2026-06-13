@@ -67,7 +67,7 @@ export function serialize(params: {
     cols: params.cols,
     rows: params.rows,
     grids,
-    patterns: [...params.patterns].map(([z, p]) => [z, btoa(String.fromCharCode(...p))]),
+    patterns: [...params.patterns].map(([z, p]) => [z, btoa(Array.from(p, c => String.fromCharCode(c)).join(''))]),
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
     brushShape: params.brushShape,
@@ -184,7 +184,8 @@ export function deserialize(raw: unknown): DeserializedMap {
 
   const patterns = new Map<number, Uint8Array>()
   if (s['patterns'] && Array.isArray(s['patterns'])) {
-    for (const [z, encoded] of s['patterns'] as Array<[number, string]>) {
+    for (const [z, encoded] of s['patterns']) {
+      if (typeof z !== 'number' || typeof encoded !== 'string') throw new Error('Invalid pattern entry')
       const decoded = atob(encoded)
       patterns.set(z, new Uint8Array(decoded.split('').map(c => c.charCodeAt(0))))
     }
