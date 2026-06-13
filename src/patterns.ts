@@ -535,11 +535,37 @@ export function buildHatchLines(
         // Check wall proximity
         if (!isNearWallEdge(cx, cy, wallEdgePts, opts.wallDistance)) continue
 
-        // Generate hatch lines
+        // Clip to wall tiles only before generating hatch lines
         const angle = cellAngle(cellIdx)
         const minLen = opts.minDistance / 3
-        const segs = generateCellLines(worldPoly, angle, opts.spacing, minLen)
-        for (const seg of segs) allSegments.push(seg)
+
+        let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity
+        for (const [x, y] of worldPoly) {
+          if (x < bMinX) bMinX = x; if (y < bMinY) bMinY = y
+          if (x > bMaxX) bMaxX = x; if (y > bMaxY) bMaxY = y
+        }
+        const cCol0 = Math.max(0, Math.floor(bMinX / tileSize))
+        const cCol1 = Math.min(cols - 1, Math.floor(bMaxX / tileSize))
+        const cRow0 = Math.max(0, Math.floor(bMinY / tileSize))
+        const cRow1 = Math.min(rows - 1, Math.floor(bMaxY / tileSize))
+
+        for (let r = cRow0; r <= cRow1; r++) {
+          for (let c = cCol0; c <= cCol1; c++) {
+            if (getLocalTile(grid, cols, c, r) !== WALL) continue
+            const tx0 = c * tileSize
+            const ty0 = r * tileSize
+            const tx1 = tx0 + tileSize
+            const ty1 = ty0 + tileSize
+            let wallClipped = worldPoly
+            wallClipped = clipPolygonByHalfPlane(wallClipped, -1, 0, -tx0)
+            wallClipped = clipPolygonByHalfPlane(wallClipped, 1, 0, tx1)
+            wallClipped = clipPolygonByHalfPlane(wallClipped, 0, -1, -ty0)
+            wallClipped = clipPolygonByHalfPlane(wallClipped, 0, 1, ty1)
+            if (wallClipped.length < 3) continue
+            const segs = generateCellLines(wallClipped, angle, opts.spacing, minLen)
+            for (const seg of segs) allSegments.push(seg)
+          }
+        }
       }
     }
   }
@@ -798,6 +824,21 @@ export function roughenSegments(
 }
 
 // ---------------------------------------------------------------------------
+// Shadow cells (simplified stub for now)
+// ---------------------------------------------------------------------------
+
+export function drawShadow(
+  ctx: CanvasRenderingContext2D,
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  tileSize: number,
+): void {
+  // TODO: Implement shadow pass with filled Voronoi cells near walls
+  // For now, this is a placeholder to prevent import errors
+}
+
+// ---------------------------------------------------------------------------
 // drawHatching — public canvas API
 // ---------------------------------------------------------------------------
 
@@ -810,6 +851,18 @@ export function drawHatching(
   color: string,
 ): void {
   ctx.save()
+
+  // Hard clip to wall tiles so floating-point geometry errors can't bleed onto floors
+  ctx.beginPath()
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (getLocalTile(grid, cols, c, r) === WALL) {
+        ctx.rect(c * tileSize, r * tileSize, tileSize, tileSize)
+      }
+    }
+  }
+  ctx.clip()
+
   ctx.strokeStyle = color
   ctx.lineWidth = 1
   ctx.lineCap = 'round'
