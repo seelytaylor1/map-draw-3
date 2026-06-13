@@ -10,6 +10,7 @@ const GRIDS = new Map([[0, new Uint8Array([1, 0, 1, 1])]])
 
 const BASE = {
   grids: GRIDS,
+  patterns: new Map([[0, new Uint8Array([0, 0, 0, 0])]]),
   cols: 2,
   rows: 2,
   wallColor: '#ff0000',

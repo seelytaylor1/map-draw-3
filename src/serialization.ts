@@ -11,6 +11,7 @@ export interface MapSave {
   cols: number
   rows: number
   grids: Record<string, number[]>
+  patterns: Array<[number, string]>
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
@@ -28,6 +29,7 @@ export interface DeserializedMap {
   cols: number
   rows: number
   grids: Map<number, Uint8Array>
+  patterns: Map<number, Uint8Array>
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
@@ -42,6 +44,7 @@ export interface DeserializedMap {
 
 export function serialize(params: {
   grids: Map<number, Uint8Array>
+  patterns: Map<number, Uint8Array>
   cols: number
   rows: number
   wallColor: string
@@ -64,6 +67,7 @@ export function serialize(params: {
     cols: params.cols,
     rows: params.rows,
     grids,
+    patterns: [...params.patterns].map(([z, p]) => [z, btoa(String.fromCharCode(...p))]),
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
     brushShape: params.brushShape,
@@ -178,6 +182,14 @@ export function deserialize(raw: unknown): DeserializedMap {
     }
   })
 
+  const patterns = new Map<number, Uint8Array>()
+  if (s['patterns'] && Array.isArray(s['patterns'])) {
+    for (const [z, encoded] of s['patterns'] as Array<[number, string]>) {
+      const decoded = atob(encoded)
+      patterns.set(z, new Uint8Array(decoded.split('').map(c => c.charCodeAt(0))))
+    }
+  }
+
   const rawLabels = Array.isArray(s['labels']) ? s['labels'] : []
   const labels: Label[] = rawLabels.map((entry: unknown): Label => {
     if (typeof entry !== 'object' || entry === null) throw new Error('Invalid label entry')
@@ -201,6 +213,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     cols: s['cols'] as number,
     rows: s['rows'] as number,
     grids,
+    patterns,
     wallColor: s['wallColor'] as string,
     wallOpacity: s['wallOpacity'] as number,
     brushShape: s['brushShape'] as 'square' | 'circle',

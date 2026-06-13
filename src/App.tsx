@@ -5,7 +5,7 @@ import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TI
 import { isoProject, isoUnproject, isoStampTransform } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
-import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
+import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid, getPatternGrid, setPatternGrid, paintPatterns } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
@@ -15,6 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
+import { type PatternType, PATTERN_LABELS } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -34,7 +35,7 @@ type RoughPhase = 'idle' | 'placed1' | 'placed2'
 
 interface Tile { col: number; row: number }
 
-type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[] }
+type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[]; patterns: Map<number, Uint8Array> }
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
   if (shape === 'square') {
@@ -55,9 +56,9 @@ export default function App() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [] }),
+    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], patterns: new Map([[0, new Uint8Array(DEFAULT_COLS * DEFAULT_ROWS).fill(0)]]) }),
   )
-  const { grids, stamps, steps, ramps, labels } = history.present
+  const { grids, stamps, steps, ramps, labels, patterns } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
@@ -1053,7 +1054,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: h.present.patterns })
     })
     setCols(newCols)
   }
@@ -1067,7 +1068,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, patterns: h.present.patterns })
     })
     setRows(newRows)
   }
@@ -1148,7 +1149,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, stamps, steps, ramps, labels })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, stamps, steps, ramps, labels, patterns })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1161,7 +1162,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels }))
+      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, patterns: save.patterns }))
       setCols(save.cols)
       setRows(save.rows)
       setWallColor(save.wallColor)

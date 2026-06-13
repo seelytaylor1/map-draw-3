@@ -99,3 +99,34 @@ export function setGrid(
   next.set(z, grid)
   return next
 }
+
+export function getPatternAtTile(patterns: Uint8Array, cols: number, col: number, row: number): number {
+  if (col < 0 || row < 0 || col >= cols) return 0
+  if (row * cols + col >= patterns.length) return 0
+  return patterns[row * cols + col]
+}
+
+export function setPatternAtTile(patterns: Uint8Array, cols: number, col: number, row: number, pattern: number): Uint8Array {
+  const copy = new Uint8Array(patterns)
+  if (col < 0 || row < 0 || col >= cols || row * cols + col >= copy.length) return copy
+  copy[row * cols + col] = pattern
+  return copy
+}
+
+export function paintPatterns(patterns: Uint8Array, cols: number, tiles: { col: number; row: number }[], pattern: number): Uint8Array {
+  let result = patterns
+  for (const tile of tiles) {
+    result = setPatternAtTile(result, cols, tile.col, tile.row, pattern)
+  }
+  return result
+}
+
+export function getPatternGrid(patterns: Map<number, Uint8Array>, z: number, cols: number, rows: number): Uint8Array {
+  return patterns.get(z) ?? new Uint8Array(cols * rows).fill(0)
+}
+
+export function setPatternGrid(patterns: Map<number, Uint8Array>, z: number, grid: Uint8Array): Map<number, Uint8Array> {
+  const copy = new Map(patterns)
+  copy.set(z, grid)
+  return copy
+}
