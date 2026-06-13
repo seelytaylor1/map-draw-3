@@ -4,6 +4,7 @@ import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
+import { drawHatching } from './patterns'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -34,7 +35,13 @@ export type ImageSpec = {
   mirrored?: boolean
 }
 
-export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec
+export type CanvasSpec = {
+  kind: 'canvas'
+  canvas: HTMLCanvasElement
+  x: number; y: number; w: number; h: number
+}
+
+export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec | CanvasSpec
 
 export type ExportLayout = {
   canvasW: number
@@ -55,48 +62,27 @@ export type BuildExportParams = {
   frontFaceColor: string
   eastFaceColor: string
   stamps: Stamp[]
-  patterns?: Uint8Array
+  showHatching?: boolean
+  hatchColor?: string
   exportTile: number
 }
 
 export function buildExportShapes(params: BuildExportParams): ExportLayout {
-  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, patterns, exportTile: T } = params
+  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, exportTile: T } = params
 
   if (showIso) {
     return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
   }
   const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
-  if (patterns) appendPatternOverlays(layout.shapes, grid, cols, rows, patterns, T, wallOpacity)
-  return layout
-}
-
-function appendPatternOverlays(
-  shapes: ShapeSpec[],
-  grid: Uint8Array,
-  cols: number,
-  rows: number,
-  patterns: Uint8Array,
-  T: number,
-  wallOpacity: number,
-): void {
-  const patternOpacity = wallOpacity > 0 ? 0.15 : 0.2
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const patternIdx = patterns[r * cols + c]
-      if (patternIdx === 0 || getTile(grid, cols, c, r) === WALL) continue
-      shapes.push({
-        kind: 'rect',
-        x: c * T,
-        y: r * T,
-        w: T,
-        h: T,
-        fill: '#000',
-        opacity: patternOpacity,
-        stroke: undefined,
-        strokeWidth: 0,
-      })
-    }
+  if (showHatching && hatchColor) {
+    const hatchCanvas = document.createElement('canvas')
+    hatchCanvas.width = cols * T
+    hatchCanvas.height = rows * T
+    const hatchCtx = hatchCanvas.getContext('2d')!
+    drawHatching(hatchCtx, grid, cols, rows, T, hatchColor)
+    layout.shapes.push({ kind: 'canvas', canvas: hatchCanvas, x: 0, y: 0, w: cols * T, h: rows * T })
   }
+  return layout
 }
 
 function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T }: {
