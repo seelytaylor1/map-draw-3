@@ -63,9 +63,7 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
   const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, patterns, exportTile: T } = params
 
   if (showIso) {
-    const layout = buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
-    if (patterns) appendPatternOverlays(layout.shapes, grid, cols, rows, patterns, T, wallOpacity)
-    return layout
+    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
   }
   const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
   if (patterns) appendPatternOverlays(layout.shapes, grid, cols, rows, patterns, T, wallOpacity)
@@ -81,7 +79,7 @@ function appendPatternOverlays(
   T: number,
   wallOpacity: number,
 ): void {
-  const patternOpacity = (wallOpacity > 0 ? 0.15 : 0.2) * 0.3
+  const patternOpacity = wallOpacity > 0 ? 0.15 : 0.2
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const patternIdx = patterns[r * cols + c]
