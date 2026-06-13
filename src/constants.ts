@@ -13,3 +13,4 @@ export const WATER_COLOR = '#6baed6'
 export const FACE_COLOR = '#6a5040'
 
 export const Z_STEP_HEIGHT = TILE_PX / 2 + FACE_PX  // 18px at current constants
+export const WATER_OFFSET_Y = 4
