@@ -1542,6 +1542,52 @@ export default function App() {
           )}
         </div>
 
+        {/* ── OUTLINE ── */}
+        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Outline</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setShowWallOutline(v => !v)}
+            style={{
+              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+              background: showWallOutline ? '#555' : 'transparent',
+              color: '#eee',
+              border: showWallOutline ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+              borderRadius: 4,
+            }}
+          >
+            ◻ Outline
+          </button>
+          {showWallOutline && (
+            <input
+              type="color" value={wallOutlineColor}
+              onChange={e => setWallOutlineColor(e.target.value)}
+              style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
+            />
+          )}
+          {showWallOutline && (
+            <span style={{ color: '#aaa', fontSize: 11 }}>{wallOutlineColor}</span>
+          )}
+        </div>
+        {showWallOutline && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['clean', 'rough'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setWallOutlineStyle(s)}
+                style={{
+                  flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                  background: wallOutlineStyle === s ? '#555' : 'transparent',
+                  color: '#eee',
+                  border: wallOutlineStyle === s ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+                  borderRadius: 4,
+                }}
+              >
+                {s === 'clean' ? '— Clean' : '⌇ Rough'}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* ── STAMPS ── */}
         <StampPicker mode={mode} showIso={showIso} onModeChange={setMode} />
         {selectedStampId && (() => {
