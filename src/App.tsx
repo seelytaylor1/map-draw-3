@@ -74,6 +74,8 @@ export default function App() {
   const [areaPhase, setAreaPhase] = useState<'idle' | 'selecting'>('idle')
   const [areaStart, setAreaStart] = useState<Tile | null>(null)
   const [areaEnd, setAreaEnd] = useState<Tile | null>(null)
+  const [selectedPattern, setSelectedPattern] = useState<PatternType>('none')
+  const selectedPatternRef = useRef<PatternType>('none')
 
   const [activeZ, setActiveZ] = useState(0)
   const activeZRef = useRef(0)
@@ -430,10 +432,22 @@ export default function App() {
       const tiles = getAreaTiles(areaStartRef.current, areaEndRef.current, brushShapeRef.current)
       const az = activeZRef.current
       const tileValue = paintMode.current
-      setHistory(h => push(h, {
-        ...h.present,
-        grids: setGrid(h.present.grids, az, paintTiles(getGrid(h.present.grids, az, cols, rows), cols, tiles, tileValue)),
-      }))
+      const pattern = selectedPatternRef.current
+
+      setHistory(h => {
+        const gridsNext = setGrid(h.present.grids, az, paintTiles(getGrid(h.present.grids, az, cols, rows), cols, tiles, tileValue))
+
+        // Apply patterns if selected
+        let patternsNext = h.present.patterns
+        if (pattern !== 'none') {
+          const patternIdx = ['none', 'diagonal', 'cross', 'dots'].indexOf(pattern)
+          const patternGrid = getPatternGrid(h.present.patterns, az, cols, rows)
+          const patterned = paintPatterns(patternGrid, cols, tiles, patternIdx)
+          patternsNext = setPatternGrid(h.present.patterns, az, patterned)
+        }
+
+        return push(h, { ...h.present, grids: gridsNext, patterns: patternsNext })
+      })
       setAreaPhase('idle'); areaPhaseRef.current = 'idle'
       setAreaStart(null); areaStartRef.current = null
       setAreaEnd(null); areaEndRef.current = null
@@ -1429,6 +1443,30 @@ export default function App() {
         })()}
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
+
+        {/* ── PATTERNS ── */}
+        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
+        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Patterns</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {(['none', 'diagonal', 'cross', 'dots'] as PatternType[]).map(p => (
+            <button
+              key={p}
+              onClick={() => { setSelectedPattern(p); selectedPatternRef.current = p }}
+              style={{
+                flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                background: selectedPattern === p ? '#555' : 'transparent',
+                color: '#eee',
+                border: selectedPattern === p ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+                borderRadius: 4,
+              }}
+            >
+              {PATTERN_LABELS[p]}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: '#aaa' }}>
+          Click areas to apply pattern
+        </div>
 
         {/* ── STAMPS ── */}
         <StampPicker mode={mode} showIso={showIso} onModeChange={setMode} />
