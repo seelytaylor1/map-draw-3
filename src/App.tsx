@@ -62,6 +62,8 @@ export default function App() {
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
   const [mode, setMode] = useState<Mode>('paint')
+  const [labelMode, setLabelMode] = useState<'none' | 'place'>('none')
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null)
   const [selectedStampId, setSelectedStampId] = useState<string | null>(null)
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
   const [selectedRampId, setSelectedRampId] = useState<string | null>(null)
@@ -267,6 +269,19 @@ export default function App() {
         return
       }
 
+      if (labelMode === 'place') {
+        const newLabel: Label = {
+          id: crypto.randomUUID(),
+          col: tile.col,
+          row: tile.row,
+          text: 'New Label',
+          number: undefined,
+        }
+        setHistory(h => push(h, { ...h.present, labels: addLabel(h.present.labels, newLabel) }))
+        setSelectedLabelId(newLabel.id)
+        return
+      }
+
       if (mode === 'steps') {
         const newRun: StepRun = {
           id: crypto.randomUUID(),
@@ -317,7 +332,7 @@ export default function App() {
       setAreaEnd(tile); areaEndRef.current = tile
       setAreaPhase('selecting'); areaPhaseRef.current = 'selecting'
     },
-    [mode, cols, rows, showIso],
+    [mode, labelMode, cols, rows, showIso],
   )
 
   const handleMouseMove = useCallback(
@@ -990,7 +1005,7 @@ export default function App() {
     for (const label of labels) {
       const displayText = label.number !== undefined ? `${label.number}` : label.text
       const textWidth = TILE_PX * 4
-      layer.add(new Konva.Text({
+      const textNode = new Konva.Text({
         x: label.col * TILE_PX + TILE_PX / 2 - textWidth / 2,
         y: label.row * TILE_PX + TILE_PX / 2 - 7,
         width: textWidth,
@@ -999,11 +1014,21 @@ export default function App() {
         fontFamily: 'Arial',
         fill: '#000',
         align: 'center',
-      }))
+      })
+      textNode.on('mousedown', (e) => {
+        e.cancelBubble = true
+        if (e.evt.button === 2 && label.id === selectedLabelId) {
+          setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, label.id) }))
+          setSelectedLabelId(null)
+        } else {
+          setSelectedLabelId(label.id)
+        }
+      })
+      layer.add(textNode)
     }
 
     layer.batchDraw()
-  }, [labels, showIso])
+  }, [labels, showIso, selectedLabelId])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
@@ -1321,6 +1346,70 @@ export default function App() {
 
         <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
 
+        {/* ── LABELS ── */}
+        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Labels</div>
+        <button
+          onClick={() => {
+            if (labelMode === 'place') {
+              setLabelMode('none')
+            } else {
+              setLabelMode('place')
+              setSelectedLabelId(null)
+              setMode('paint')
+            }
+          }}
+          style={{
+            width: '100%', padding: '4px 0', fontSize: 11, cursor: 'pointer',
+            background: labelMode === 'place' ? '#555' : 'transparent',
+            color: '#eee',
+            border: labelMode === 'place' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+            borderRadius: 4,
+          }}
+        >
+          + Label
+        </button>
+        {selectedLabelId && (() => {
+          const label = labels.find(l => l.id === selectedLabelId)
+          return label ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <input
+                type="text"
+                value={label.text}
+                onChange={e => setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { text: e.target.value }) }))}
+                placeholder="Label text"
+                style={{ background: '#222', color: '#eee', border: '1px solid #555', borderRadius: 3, padding: '4px', fontSize: 11 }}
+              />
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  type="number"
+                  value={label.number ?? ''}
+                  onChange={e => {
+                    const num = e.target.value === '' ? undefined : parseInt(e.target.value)
+                    setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { number: num }) }))
+                  }}
+                  placeholder="Number"
+                  style={{ width: 50, background: '#222', color: '#eee', border: '1px solid #555', borderRadius: 3, padding: '4px', fontSize: 11 }}
+                />
+                <button
+                  onClick={() => {
+                    setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, selectedLabelId) }))
+                    setSelectedLabelId(null)
+                  }}
+                  style={{
+                    flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
+                    background: 'transparent', color: '#eee',
+                    border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : null
+        })()}
+
+        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
+
         {/* ── STAMPS ── */}
         <StampPicker mode={mode} showIso={showIso} onModeChange={setMode} />
         {selectedStampId && (() => {
@@ -1576,7 +1665,7 @@ export default function App() {
         <Layer ref={layerRef} />
         <Layer ref={stampLayerRef} />
         <Layer ref={dotLayerRef} listening={false} />
-        <Layer ref={labelsLayerRef} listening={false} />
+        <Layer ref={labelsLayerRef} />
       </Stage>
     </div>
   )
