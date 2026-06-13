@@ -64,6 +64,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('paint')
   const [labelMode, setLabelMode] = useState<'none' | 'place'>('none')
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null)
+  const selectedLabelIdRef = useRef<string | null>(null)
   const [selectedStampId, setSelectedStampId] = useState<string | null>(null)
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
   const [selectedRampId, setSelectedRampId] = useState<string | null>(null)
@@ -167,6 +168,8 @@ export default function App() {
         setSelectedStampId(null)
         setSelectedStepId(null)
         setSelectedRampId(null)
+        setSelectedLabelId(null)
+        setLabelMode('none')
         if (roughPhase !== 'idle') {
           setRoughPhase('idle')
           roughPhaseRef.current = 'idle'
@@ -189,7 +192,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedStampId, selectedStepId, selectedRampId, roughPhase])
+  }, [selectedStampId, selectedStepId, selectedRampId, selectedLabelId, labelMode, roughPhase])
 
   const stageToTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
     const rect = stage.container().getBoundingClientRect()
@@ -279,6 +282,9 @@ export default function App() {
         }
         setHistory(h => push(h, { ...h.present, labels: addLabel(h.present.labels, newLabel) }))
         setSelectedLabelId(newLabel.id)
+        setSelectedStampId(null)
+        setSelectedStepId(null)
+        setSelectedRampId(null)
         return
       }
 
@@ -1017,7 +1023,7 @@ export default function App() {
       })
       textNode.on('mousedown', (e) => {
         e.cancelBubble = true
-        if (e.evt.button === 2 && label.id === selectedLabelId) {
+        if (e.evt.button === 2 && label.id === selectedLabelIdRef.current) {
           setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, label.id) }))
           setSelectedLabelId(null)
         } else {
@@ -1028,9 +1034,13 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [labels, showIso, selectedLabelId])
+  }, [labels, showIso])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
+
+  useEffect(() => { selectedLabelIdRef.current = selectedLabelId }, [selectedLabelId])
+
+  useEffect(() => { if (mode !== 'paint') setLabelMode('none') }, [mode])
 
   useEffect(() => { setShow3D(showIso) }, [showIso])
 
@@ -1384,7 +1394,8 @@ export default function App() {
                   type="number"
                   value={label.number ?? ''}
                   onChange={e => {
-                    const num = e.target.value === '' ? undefined : parseInt(e.target.value)
+                    const parsed = parseInt(e.target.value, 10)
+                    const num = e.target.value === '' || isNaN(parsed) ? undefined : parsed
                     setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { number: num }) }))
                   }}
                   placeholder="Number"
