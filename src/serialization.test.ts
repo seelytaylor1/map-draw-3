@@ -4,6 +4,7 @@ import { WATER } from './constants'
 import { type Stamp } from './stamps'
 import { type StepRun } from './steps'
 import { type RampRun } from './ramps'
+import { type Label } from './labels'
 
 const GRIDS = new Map([[0, new Uint8Array([1, 0, 1, 1])]])
 
@@ -20,6 +21,7 @@ const BASE = {
   stamps: [] as Stamp[],
   steps: [] as StepRun[],
   ramps: [] as RampRun[],
+  labels: [] as Label[],
 }
 
 const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90, z: 0 }

@@ -1,6 +1,7 @@
 import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type ObjectStampType, type Rotation } from './stamps'
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
+import { type Label } from './labels'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
 const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
@@ -19,6 +20,7 @@ export interface MapSave {
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
+  labels: Label[]
 }
 
 export interface DeserializedMap {
@@ -35,6 +37,7 @@ export interface DeserializedMap {
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
+  labels: Label[]
 }
 
 export function serialize(params: {
@@ -50,6 +53,7 @@ export function serialize(params: {
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
+  labels: Label[]
 }): MapSave {
   const grids: Record<string, number[]> = {}
   for (const [z, grid] of params.grids) {
@@ -76,6 +80,7 @@ export function serialize(params: {
     }),
     steps: params.steps.map(s => ({ ...s })),
     ramps: params.ramps.map(r => ({ ...r })),
+    labels: params.labels,
   }
 }
 
@@ -173,6 +178,24 @@ export function deserialize(raw: unknown): DeserializedMap {
     }
   })
 
+  const rawLabels = Array.isArray(s['labels']) ? s['labels'] : []
+  const labels: Label[] = rawLabels.map((entry: unknown): Label => {
+    if (typeof entry !== 'object' || entry === null) throw new Error('Invalid label entry')
+    const o = entry as Record<string, unknown>
+    if (typeof o['id'] !== 'string') throw new Error('Invalid label id')
+    if (typeof o['col'] !== 'number') throw new Error('Invalid label col')
+    if (typeof o['row'] !== 'number') throw new Error('Invalid label row')
+    if (typeof o['text'] !== 'string') throw new Error('Invalid label text')
+    const label: Label = {
+      id: o['id'] as string,
+      col: o['col'] as number,
+      row: o['row'] as number,
+      text: o['text'] as string,
+    }
+    if (typeof o['number'] === 'number') label.number = o['number']
+    return label
+  })
+
   return {
     version: 1,
     cols: s['cols'] as number,
@@ -187,5 +210,6 @@ export function deserialize(raw: unknown): DeserializedMap {
     stamps,
     steps,
     ramps,
+    labels,
   }
 }
