@@ -1,5 +1,6 @@
 import { STAMP_TYPES, OBJECT_STAMP_TYPES, type StampType, type ObjectStampType } from './stamps'
 import doorUrl from './stamps/door.svg?url'
+import secretDoorUrl from './stamps/secret-door.svg?url'
 import trapUrl from './stamps/trap.svg?url'
 import starUrl from './stamps/star.svg?url'
 import barsUrl from './stamps/bars.svg?url'
@@ -9,6 +10,7 @@ export type Mode = 'paint' | 'rough' | 'steps' | 'ramps' | StampType | ObjectSta
 
 const FLOOR_STAMP_URLS: Record<StampType, string> = {
   door: doorUrl,
+  'secret-door': secretDoorUrl,
   trap: trapUrl,
   star: starUrl,
   bars: barsUrl,
@@ -16,6 +18,7 @@ const FLOOR_STAMP_URLS: Record<StampType, string> = {
 
 export const FLOOR_STAMP_LABELS: Record<StampType, string> = {
   door: 'Door',
+  'secret-door': 'Secret Door',
   trap: 'Trap',
   star: 'Star',
   bars: 'Bars',

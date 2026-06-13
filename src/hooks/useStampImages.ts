@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type StampType, type ObjectStampType } from '../stamps'
 import doorUrl from '../stamps/door.svg?url'
+import secretDoorUrl from '../stamps/secret-door.svg?url'
 import trapUrl from '../stamps/trap.svg?url'
 import starUrl from '../stamps/star.svg?url'
 import barsUrl from '../stamps/bars.svg?url'
@@ -17,6 +18,7 @@ import isoWoodDoubledoorUrl from '../iso-objects/wood-doubledoor.svg?url'
 
 const STAMP_URLS: Record<StampType, string> = {
   door: doorUrl,
+  'secret-door': secretDoorUrl,
   trap: trapUrl,
   star: starUrl,
   bars: barsUrl,

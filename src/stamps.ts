@@ -1,4 +1,4 @@
-export type StampType = 'door' | 'trap' | 'star' | 'bars'
+export type StampType = 'door' | 'secret-door' | 'trap' | 'star' | 'bars'
 export type ObjectStampType =
   | 'archway'
   | 'bigpillar'
@@ -23,7 +23,7 @@ export interface Stamp {
   mirrored?: boolean
 }
 
-export const STAMP_TYPES: StampType[] = ['door', 'trap', 'star', 'bars']
+export const STAMP_TYPES: StampType[] = ['door', 'secret-door', 'trap', 'star', 'bars']
 export const OBJECT_STAMP_TYPES: ObjectStampType[] = [
   'archway',
   'bigpillar',
