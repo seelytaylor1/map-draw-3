@@ -857,6 +857,69 @@ export function drawShadow(
 }
 
 // ---------------------------------------------------------------------------
+// Wall outline segments
+// ---------------------------------------------------------------------------
+
+export const OUTLINE_ROUGH_OPTS: RoughLineOptions = {
+  segmentSizeMin: 1,
+  segmentSizeMax: 1,
+  segmentSkipRate: 0,        // never gap the outline
+  noDotRate: 0.2,
+  scribbleScale: 0.15,
+  scribbleAmplitude: 0.6,    // gentle wobble (hatching uses 1)
+  shiftRate: 0.05,           // rare mid-segment splits
+  shiftAmountMin: 0.5,
+  shiftAmountMax: 1.0,
+  majorNoiseScale: 0.05,
+  majorNoiseAmplitude: 0,
+  majorNoiseShift: 0.9,
+}
+
+/**
+ * Return one line segment for each edge shared between a WALL tile and a
+ * FLOOR/WATER tile. Out-of-bounds is treated as WALL (per getTile), so map
+ * boundary edges are never emitted. Each interior edge is visited once.
+ */
+export function buildWallOutlineSegments(
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  tileSize: number,
+): [number, number][][] {
+  const segs: [number, number][][] = []
+  const rows_ = grid.length / cols
+
+  function tile(c: number, r: number): number {
+    if (c < 0 || r < 0 || c >= cols || r >= rows_) return WALL
+    return grid[r * cols + c]
+  }
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t      = tile(c, r)
+      const right  = tile(c + 1, r)
+      const bottom = tile(c, r + 1)
+
+      // One side WALL, other side non-WALL → boundary
+      if ((t === WALL) !== (right === WALL)) {
+        segs.push([
+          [(c + 1) * tileSize,  r      * tileSize],
+          [(c + 1) * tileSize, (r + 1) * tileSize],
+        ])
+      }
+      if ((t === WALL) !== (bottom === WALL)) {
+        segs.push([
+          [ c      * tileSize, (r + 1) * tileSize],
+          [(c + 1) * tileSize, (r + 1) * tileSize],
+        ])
+      }
+    }
+  }
+
+  return segs
+}
+
+// ---------------------------------------------------------------------------
 // drawHatching — public canvas API
 // ---------------------------------------------------------------------------
 

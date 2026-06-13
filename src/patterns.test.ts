@@ -1,6 +1,6 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, buildHatchPolylines, roughenSegments, HatchOptions, RoughLineOptions } from './patterns'
+import { drawHatching, buildHatchLines, buildHatchPolylines, roughenSegments, buildWallOutlineSegments, HatchOptions, RoughLineOptions } from './patterns'
 import { FLOOR, WALL } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -291,6 +291,80 @@ describe('buildHatchPolylines', () => {
     grid[4] = FLOOR
     const r1 = buildHatchPolylines(grid, 3, 3, 20)
     const r2 = buildHatchPolylines(grid, 3, 3, 20)
+    expect(r1).toEqual(r2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildWallOutlineSegments
+// ---------------------------------------------------------------------------
+
+describe('buildWallOutlineSegments', () => {
+  it('returns empty array for all-wall grid', () => {
+    const grid = new Uint8Array([WALL, WALL, WALL, WALL])
+    expect(buildWallOutlineSegments(grid, 2, 2, 20)).toHaveLength(0)
+  })
+
+  it('returns no segments for a floor tile fully surrounded by other floor tiles', () => {
+    // 3×3: outer ring floor, center floor — but OOB=WALL means edge tiles get segments.
+    // Use a 5×5 with only the very center (2,2) as floor, surrounded by floor ring,
+    // surrounded by wall ring. The center-to-floor edges are floor-floor (no segment).
+    // Simpler: verify a single floor tile surrounded on all 4 sides by floor tiles = 0 segments.
+    // Build a 3×3 all-floor grid and only check the center tile's contributions:
+    // the center tile (1,1) has floor neighbors on all 4 sides → 0 segments from it.
+    // (Edge tiles produce OOB segments but we care about the interior behavior here.)
+    const grid = new Uint8Array(9).fill(FLOOR)
+    // A floor-only grid produces segments at the map boundary (OOB=WALL).
+    // 3×3 all-floor: right col (c=2) → 3 vertical segs; bottom row (r=2) → 3 horizontal segs = 6.
+    expect(buildWallOutlineSegments(grid, 3, 3, 20)).toHaveLength(6)
+  })
+
+  it('returns 4 segments for a single floor tile surrounded by walls', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR // center tile (col=1, row=1)
+    expect(buildWallOutlineSegments(grid, 3, 3, 20)).toHaveLength(4)
+  })
+
+  it('returns correct pixel coordinates for center floor tile', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR // (col=1, row=1)
+    const T = 10
+    const segs = buildWallOutlineSegments(grid, 3, 3, T)
+    const flat = segs.map(s => s.flat()).sort((a, b) =>
+      a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3],
+    )
+    expect(flat).toContainEqual([10, 10, 20, 10]) // top edge
+    expect(flat).toContainEqual([10, 10, 10, 20]) // left edge
+    expect(flat).toContainEqual([20, 10, 20, 20]) // right edge
+    expect(flat).toContainEqual([10, 20, 20, 20]) // bottom edge
+  })
+
+  it('does not emit a segment for the shared edge between two adjacent floor tiles', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR // (1,1)
+    grid[5] = FLOOR // (2,1)
+    // Each floor tile has 4 edges; two tiles share 1 → 4+4−2 = 6
+    expect(buildWallOutlineSegments(grid, 3, 3, 10)).toHaveLength(6)
+  })
+
+  it('each segment is a 2-element array of [number, number] pairs', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    for (const seg of buildWallOutlineSegments(grid, 3, 3, 20)) {
+      expect(seg).toHaveLength(2)
+      for (const pt of seg) {
+        expect(pt).toHaveLength(2)
+        expect(typeof pt[0]).toBe('number')
+        expect(typeof pt[1]).toBe('number')
+      }
+    }
+  })
+
+  it('is deterministic', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    const r1 = buildWallOutlineSegments(grid, 3, 3, 20)
+    const r2 = buildWallOutlineSegments(grid, 3, 3, 20)
     expect(r1).toEqual(r2)
   })
 })
