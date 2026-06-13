@@ -211,13 +211,15 @@ describe('buildExportShapes – ISO mode', () => {
     expect(waterPoly.points).toEqual(isoWaterPoints(1, 1, ITW, ITH))
   })
 
-  it('ISO water tile does not produce side face shapes (no 3D faces for water)', () => {
+  it('ISO water tile produces side face shapes when show3D is true', () => {
     const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
     const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), showIso: true, show3D: true })
-    // Only the water polygon should appear (no floor, no side faces)
+    // Water tile at (1,1) with walls to south and east should produce 3 polygons
     const polys = shapes.filter(s => s.kind === 'polygon') as any[]
-    expect(polys).toHaveLength(1)
-    expect(polys[0].fill).toBe(WATER_COLOR)
+    expect(polys).toHaveLength(3)
+    expect(polys[0].fill).toBe(WATER_COLOR) // surface
+    expect(polys[1].fill).toBe(WATER_COLOR) // front face
+    expect(polys[2].fill).toBe(WATER_COLOR) // east face
   })
 
   it('ISO + show3D: Floor tile with south Water neighbor produces front-face polygon', () => {
