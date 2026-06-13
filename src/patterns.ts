@@ -5,6 +5,30 @@ import { FLOOR, WALL } from './constants'
 // Types
 // ---------------------------------------------------------------------------
 
+export interface ShadowOptions {
+  /** pixels; cells within this distance of a wall edge qualify */
+  wallDistance: number
+  /** Voronoi tile size in pixels (smaller = denser blobs) */
+  tileSize: number
+  /** Poisson-disc min separation */
+  minDistance: number
+  /** Poisson-disc max separation */
+  maxDistance: number
+  /** fill color for shadow blobs */
+  fillColor: string
+  /** global alpha for shadow blobs */
+  fillOpacity: number
+}
+
+const DEFAULT_SHADOW_OPTS: ShadowOptions = {
+  wallDistance: 18,
+  tileSize: 200,
+  minDistance: 10,
+  maxDistance: 20,
+  fillColor: 'rgba(0,0,0,1)',
+  fillOpacity: 0.18,
+}
+
 export interface HatchOptions {
   /** pixels; cells within this distance of a wall edge qualify */
   wallDistance: number
@@ -515,6 +539,140 @@ export function buildHatchLines(
   }
 
   return allSegments
+}
+
+// ---------------------------------------------------------------------------
+// Core: buildShadowCells
+// ---------------------------------------------------------------------------
+
+export function buildShadowCells(
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  tileSize: number,
+  opts: ShadowOptions,
+): [number, number][][] {
+  const canvasW = cols * tileSize
+  const canvasH = rows * tileSize
+
+  // Collect wall-edge points
+  const wallEdgePts = collectWallEdgePoints(grid, cols, rows, tileSize)
+  if (wallEdgePts.length === 0) return []
+
+  // Generate tileable Voronoi seeds
+  const vtSize = opts.tileSize
+  const baseSeeds = poissonDisk(vtSize, vtSize, opts.minDistance, opts.maxDistance, 12345)
+
+  const tilesX = Math.ceil(canvasW / vtSize) + 1
+  const tilesY = Math.ceil(canvasH / vtSize) + 1
+
+  // Build border ring of ghost seeds for tileability
+  type IndexedSeed = { pt: Vec2; tileIdx: number }
+  const extSeeds: IndexedSeed[] = []
+
+  for (let i = 0; i < baseSeeds.length; i++) {
+    extSeeds.push({ pt: baseSeeds[i], tileIdx: i })
+  }
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      if (dx === 0 && dy === 0) continue
+      for (const p of baseSeeds) {
+        extSeeds.push({
+          pt: [p[0] + dx * vtSize, p[1] + dy * vtSize],
+          tileIdx: -1,
+        })
+      }
+    }
+  }
+
+  const extPts: Vec2[] = extSeeds.map(s => s.pt)
+
+  const margin = vtSize
+  const bboxMinX = -margin
+  const bboxMinY = -margin
+  const bboxMaxX = vtSize + margin
+  const bboxMaxY = vtSize + margin
+
+  // Pre-compute cells for the base tile
+  interface CellInfo {
+    poly: Vec2[]
+  }
+  const baseCells: CellInfo[] = []
+
+  for (let i = 0; i < baseSeeds.length; i++) {
+    const poly = voronoiCell(extPts, i, bboxMinX, bboxMinY, bboxMaxX, bboxMaxY)
+    let clipped = poly
+    clipped = clipPolygonByHalfPlane(clipped, -1, 0, 0)
+    clipped = clipPolygonByHalfPlane(clipped, 1, 0, vtSize)
+    clipped = clipPolygonByHalfPlane(clipped, 0, -1, 0)
+    clipped = clipPolygonByHalfPlane(clipped, 0, 1, vtSize)
+    if (clipped.length >= 3) {
+      baseCells.push({ poly: clipped })
+    }
+  }
+
+  const allPolygons: [number, number][][] = []
+
+  // Stamp tiles across the canvas
+  for (let ty = 0; ty < tilesY; ty++) {
+    for (let tx = 0; tx < tilesX; tx++) {
+      const offsetX = tx * vtSize
+      const offsetY = ty * vtSize
+
+      for (const cell of baseCells) {
+        // Translate cell polygon to canvas coordinates
+        const worldPoly: Vec2[] = cell.poly.map(([x, y]) => [x + offsetX, y + offsetY])
+
+        // Check if any part of this cell is within the canvas
+        let anyInCanvas = false
+        for (const [x, y] of worldPoly) {
+          if (x >= 0 && x <= canvasW && y >= 0 && y <= canvasH) {
+            anyInCanvas = true
+            break
+          }
+        }
+        if (!anyInCanvas) continue
+
+        // Compute centroid in world space
+        const [cx, cy] = centroid(worldPoly)
+
+        // Only include cells near wall edges
+        if (!isNearWallEdge(cx, cy, wallEdgePts, opts.wallDistance)) continue
+
+        allPolygons.push(worldPoly)
+      }
+    }
+  }
+
+  return allPolygons
+}
+
+// ---------------------------------------------------------------------------
+// drawShadow — public canvas API
+// ---------------------------------------------------------------------------
+
+export function drawShadow(
+  ctx: CanvasRenderingContext2D,
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  tileSize: number,
+): void {
+  const polygons = buildShadowCells(grid, cols, rows, tileSize, DEFAULT_SHADOW_OPTS)
+
+  for (const poly of polygons) {
+    ctx.save()
+    ctx.globalAlpha = DEFAULT_SHADOW_OPTS.fillOpacity
+    ctx.fillStyle = DEFAULT_SHADOW_OPTS.fillColor
+    ctx.beginPath()
+    ctx.moveTo(poly[0][0], poly[0][1])
+    for (let i = 1; i < poly.length; i++) {
+      ctx.lineTo(poly[i][0], poly[i][1])
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+  }
 }
 
 // ---------------------------------------------------------------------------

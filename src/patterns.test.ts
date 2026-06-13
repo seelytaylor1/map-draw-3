@@ -1,6 +1,6 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, HatchOptions } from './patterns'
+import { drawHatching, buildHatchLines, HatchOptions, buildShadowCells, ShadowOptions } from './patterns'
 import { FLOOR, WALL } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -22,8 +22,6 @@ describe('drawHatching (canvas mock)', () => {
       lineTo: vi.fn(),
       stroke: vi.fn(),
       rect: vi.fn(),
-      save: vi.fn(),
-      restore: vi.fn(),
       clip: vi.fn(),
     } as unknown as CanvasRenderingContext2D
   })
@@ -182,6 +180,102 @@ describe('buildHatchLines (pure geometry)', () => {
     }
     const r1 = buildHatchLines(grid, 3, 3, 20, opts)
     const r2 = buildHatchLines(grid, 3, 3, 20, opts)
+    expect(r1).toEqual(r2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildShadowCells — pure geometry tests
+// ---------------------------------------------------------------------------
+
+const SMALL_SHADOW_OPTS: ShadowOptions = {
+  wallDistance: 25,
+  tileSize: 60,
+  minDistance: 8,
+  maxDistance: 12,
+  fillColor: 'rgba(0,0,0,1)',
+  fillOpacity: 0.18,
+}
+
+describe('buildShadowCells (pure geometry)', () => {
+  it('returns empty array for all-wall grid', () => {
+    const grid = new Uint8Array([WALL, WALL, WALL, WALL])
+    const result = buildShadowCells(grid, 2, 2, 20, SMALL_SHADOW_OPTS)
+    expect(result).toHaveLength(0)
+  })
+
+  it('returns empty array for all-floor grid', () => {
+    // All floor means no wall-edge points → no polygons
+    const grid = new Uint8Array(9).fill(FLOOR)
+    const result = buildShadowCells(grid, 3, 3, 20, SMALL_SHADOW_OPTS)
+    expect(result).toHaveLength(0)
+  })
+
+  it('returns non-empty polygons for a 3×3 center-floor grid', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR // center cell surrounded by walls
+    const opts: ShadowOptions = {
+      wallDistance: 30,
+      tileSize: 60,
+      minDistance: 5,
+      maxDistance: 10,
+      fillColor: 'rgba(0,0,0,1)',
+      fillOpacity: 0.18,
+    }
+    const result = buildShadowCells(grid, 3, 3, 20, opts)
+    expect(result.length).toBeGreaterThan(0)
+  })
+
+  it('all returned polygons have at least 3 vertices', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    const opts: ShadowOptions = {
+      wallDistance: 30,
+      tileSize: 60,
+      minDistance: 5,
+      maxDistance: 10,
+      fillColor: 'rgba(0,0,0,1)',
+      fillOpacity: 0.18,
+    }
+    const result = buildShadowCells(grid, 3, 3, 20, opts)
+    for (const poly of result) {
+      expect(poly.length).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('all vertex coordinates are finite numbers', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    const opts: ShadowOptions = {
+      wallDistance: 30,
+      tileSize: 60,
+      minDistance: 5,
+      maxDistance: 10,
+      fillColor: 'rgba(0,0,0,1)',
+      fillOpacity: 0.18,
+    }
+    const result = buildShadowCells(grid, 3, 3, 20, opts)
+    for (const poly of result) {
+      for (const [x, y] of poly) {
+        expect(Number.isFinite(x)).toBe(true)
+        expect(Number.isFinite(y)).toBe(true)
+      }
+    }
+  })
+
+  it('produces identical output on repeated calls (deterministic)', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    const opts: ShadowOptions = {
+      wallDistance: 30,
+      tileSize: 60,
+      minDistance: 5,
+      maxDistance: 10,
+      fillColor: 'rgba(0,0,0,1)',
+      fillOpacity: 0.18,
+    }
+    const r1 = buildShadowCells(grid, 3, 3, 20, opts)
+    const r2 = buildShadowCells(grid, 3, 3, 20, opts)
     expect(r1).toEqual(r2)
   })
 })
