@@ -1099,10 +1099,12 @@ export default function App() {
     if (!stampImages) return
 
     const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
+    const activePatterns = getPatternGrid(patterns, activeZ, cols, rows)
     const layout = buildExportShapes({
       grid: activeGrid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
       frontFaceColor, eastFaceColor,
       stamps: stamps.filter(s => s.z === activeZ),
+      patterns: activePatterns,
       exportTile: 60,
     })
 
@@ -1168,7 +1170,7 @@ export default function App() {
         a.click()
       },
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, patterns])
 
   const handleSave = () => {
     const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, stamps, steps, ramps, labels, patterns })

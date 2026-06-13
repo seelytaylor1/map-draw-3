@@ -1,4 +1,4 @@
-import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, WATER_COLOR } from './constants'
+import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, WALL, WATER_COLOR } from './constants'
 import { getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
@@ -55,16 +55,50 @@ export type BuildExportParams = {
   frontFaceColor: string
   eastFaceColor: string
   stamps: Stamp[]
+  patterns?: Uint8Array
   exportTile: number
 }
 
 export function buildExportShapes(params: BuildExportParams): ExportLayout {
-  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, exportTile: T } = params
+  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, patterns, exportTile: T } = params
 
   if (showIso) {
-    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
+    const layout = buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
+    if (patterns) appendPatternOverlays(layout.shapes, grid, cols, rows, patterns, T, wallOpacity)
+    return layout
   }
-  return buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
+  const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
+  if (patterns) appendPatternOverlays(layout.shapes, grid, cols, rows, patterns, T, wallOpacity)
+  return layout
+}
+
+function appendPatternOverlays(
+  shapes: ShapeSpec[],
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  patterns: Uint8Array,
+  T: number,
+  wallOpacity: number,
+): void {
+  const patternOpacity = (wallOpacity > 0 ? 0.15 : 0.2) * 0.3
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const patternIdx = patterns[r * cols + c]
+      if (patternIdx === 0 || getTile(grid, cols, c, r) === WALL) continue
+      shapes.push({
+        kind: 'rect',
+        x: c * T,
+        y: r * T,
+        w: T,
+        h: T,
+        fill: '#000',
+        opacity: patternOpacity,
+        stroke: undefined,
+        strokeWidth: 0,
+      })
+    }
+  }
 }
 
 function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T }: {
