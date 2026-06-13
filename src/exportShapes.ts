@@ -4,7 +4,7 @@ import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
-import { drawHatching } from './patterns'
+import { drawHatching, buildWallOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -41,7 +41,17 @@ export type CanvasSpec = {
   x: number; y: number; w: number; h: number
 }
 
-export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec | CanvasSpec
+export type LineSpec = {
+  kind: 'line'
+  points: number[]
+  stroke: string
+  strokeWidth: number
+  opacity?: number
+  lineCap?: CanvasLineCap
+  lineJoin?: CanvasLineJoin
+}
+
+export type ShapeSpec = RectSpec | PolygonSpec | ImageSpec | CanvasSpec | LineSpec
 
 export type ExportLayout = {
   canvasW: number
@@ -64,11 +74,14 @@ export type BuildExportParams = {
   stamps: Stamp[]
   showHatching?: boolean
   hatchColor?: string
+  showWallOutline?: boolean
+  wallOutlineColor?: string
+  wallOutlineStyle?: 'clean' | 'rough'
   exportTile: number
 }
 
 export function buildExportShapes(params: BuildExportParams): ExportLayout {
-  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, exportTile: T } = params
+  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, exportTile: T } = params
 
   if (showIso) {
     return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
@@ -81,6 +94,18 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
     const hatchCtx = hatchCanvas.getContext('2d')!
     drawHatching(hatchCtx, grid, cols, rows, T, hatchColor)
     layout.shapes.push({ kind: 'canvas', canvas: hatchCanvas, x: 0, y: 0, w: cols * T, h: rows * T })
+  }
+  if (showWallOutline && wallOutlineColor) {
+    const outlineSegs = buildWallOutlineSegments(grid, cols, rows, T)
+    const polylines = wallOutlineStyle === 'rough'
+      ? roughenSegments(outlineSegs, OUTLINE_ROUGH_OPTS, 77) : outlineSegs
+    const color = wallOutlineColor
+    for (const polyline of polylines) {
+      layout.shapes.push({ kind: 'line', points: (polyline as [number, number][]).flat(), stroke: color, strokeWidth: 6, opacity: 0.18, lineCap: 'round', lineJoin: 'round' })
+    }
+    for (const polyline of polylines) {
+      layout.shapes.push({ kind: 'line', points: (polyline as [number, number][]).flat(), stroke: color, strokeWidth: 2, lineCap: 'round', lineJoin: 'round' })
+    }
   }
   return layout
 }

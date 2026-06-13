@@ -1166,6 +1166,9 @@ export default function App() {
       stamps: stamps.filter(s => s.z === activeZ),
       showHatching,
       hatchColor,
+      showWallOutline,
+      wallOutlineColor,
+      wallOutlineStyle,
       exportTile: 60,
     })
 
@@ -1195,6 +1198,13 @@ export default function App() {
         offLayer.add(new Konva.Image({
           image: shape.canvas as unknown as HTMLImageElement,
           x: shape.x, y: shape.y, width: shape.w, height: shape.h,
+          listening: false,
+        }))
+      } else if (shape.kind === 'line') {
+        offLayer.add(new Konva.Line({
+          points: shape.points,
+          stroke: shape.stroke, strokeWidth: shape.strokeWidth,
+          opacity: shape.opacity, lineCap: shape.lineCap, lineJoin: shape.lineJoin,
           listening: false,
         }))
       } else if (shape.kind === 'image') {
