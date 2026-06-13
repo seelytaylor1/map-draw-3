@@ -824,6 +824,24 @@ export function roughenSegments(
 }
 
 // ---------------------------------------------------------------------------
+// buildHatchPolylines — convenience export
+// ---------------------------------------------------------------------------
+
+/**
+ * Convenience export: builds hatch lines and applies roughening with
+ * default options. Returns fully processed polylines ready for rendering.
+ */
+export function buildHatchPolylines(
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  tileSize: number,
+): [number, number][][] {
+  const segments = buildHatchLines(grid, cols, rows, tileSize, DEFAULT_HATCH_OPTS)
+  return roughenSegments(segments, DEFAULT_ROUGH_OPTS, 42)
+}
+
+// ---------------------------------------------------------------------------
 // Shadow cells (simplified stub for now)
 // ---------------------------------------------------------------------------
 

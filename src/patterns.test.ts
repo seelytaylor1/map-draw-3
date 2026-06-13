@@ -1,6 +1,6 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, roughenSegments, HatchOptions, RoughLineOptions } from './patterns'
+import { drawHatching, buildHatchLines, buildHatchPolylines, roughenSegments, HatchOptions, RoughLineOptions } from './patterns'
 import { FLOOR, WALL } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -262,5 +262,35 @@ describe('roughenSegments', () => {
       if (anyDeviation) break
     }
     expect(anyDeviation).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildHatchPolylines — integration smoke test
+// ---------------------------------------------------------------------------
+
+describe('buildHatchPolylines', () => {
+  it('returns non-empty polylines for a grid with wall adjacent to floor', () => {
+    // 3×3: center is floor, ring is wall
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    const result = buildHatchPolylines(grid, 3, 3, 20)
+    expect(result.length).toBeGreaterThan(0)
+    for (const polyline of result) {
+      expect(polyline.length).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('returns empty array for all-wall grid', () => {
+    const grid = new Uint8Array([WALL, WALL, WALL, WALL])
+    expect(buildHatchPolylines(grid, 2, 2, 20)).toHaveLength(0)
+  })
+
+  it('is deterministic', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+    const r1 = buildHatchPolylines(grid, 3, 3, 20)
+    const r2 = buildHatchPolylines(grid, 3, 3, 20)
+    expect(r1).toEqual(r2)
   })
 })
