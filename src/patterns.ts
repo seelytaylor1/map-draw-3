@@ -919,6 +919,41 @@ export function buildWallOutlineSegments(
   return segs
 }
 
+// Merge adjacent collinear segments so roughening produces continuous lines
+// instead of independent short strokes that gap at shared endpoints.
+export function mergeOutlineSegments(segs: [number, number][][]): [number, number][][] {
+  const hLines = new Map<number, [number, number][]>() // y → [x1,x2] intervals
+  const vLines = new Map<number, [number, number][]>() // x → [y1,y2] intervals
+
+  for (const [[x1, y1], [x2, y2]] of segs) {
+    if (y1 === y2) {
+      if (!hLines.has(y1)) hLines.set(y1, [])
+      hLines.get(y1)!.push([Math.min(x1, x2), Math.max(x1, x2)])
+    } else {
+      if (!vLines.has(x1)) vLines.set(x1, [])
+      vLines.get(x1)!.push([Math.min(y1, y2), Math.max(y1, y2)])
+    }
+  }
+
+  const result: [number, number][][] = []
+
+  function mergeIntervals(intervals: [number, number][], makeSegs: (a: number, b: number) => [number, number][]) {
+    intervals.sort((a, b) => a[0] - b[0])
+    let [cur0, cur1] = intervals[0]
+    for (let i = 1; i < intervals.length; i++) {
+      const [a, b] = intervals[i]
+      if (a <= cur1) { cur1 = Math.max(cur1, b) }
+      else { result.push(makeSegs(cur0, cur1)); cur0 = a; cur1 = b }
+    }
+    result.push(makeSegs(cur0, cur1))
+  }
+
+  for (const [y, intervals] of hLines) mergeIntervals(intervals, (a, b) => [[a, y], [b, y]])
+  for (const [x, intervals] of vLines) mergeIntervals(intervals, (a, b) => [[x, a], [x, b]])
+
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // drawHatching — public canvas API
 // ---------------------------------------------------------------------------

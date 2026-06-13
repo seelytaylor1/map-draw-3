@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { buildHatchPolylines, buildWallOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
+import { buildHatchPolylines, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -751,8 +751,9 @@ export default function App() {
       // Wall outline — two passes: shadow then line
       if (showWallOutline) {
         const outlineSegs = buildWallOutlineSegments(levelGrid, cols, rows, TILE_PX)
+        const mergedSegs = wallOutlineStyle === 'rough' ? mergeOutlineSegments(outlineSegs) : outlineSegs
         const polylines = wallOutlineStyle === 'rough'
-          ? roughenSegments(outlineSegs, OUTLINE_ROUGH_OPTS, 77)
+          ? roughenSegments(mergedSegs, OUTLINE_ROUGH_OPTS, 77)
           : outlineSegs
         const outlineGroup = new Konva.Group({ listening: false })
         for (const polyline of polylines) {

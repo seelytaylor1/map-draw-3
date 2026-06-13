@@ -4,7 +4,7 @@ import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
-import { drawHatching, buildWallOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
+import { drawHatching, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -97,8 +97,9 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
   }
   if (showWallOutline && wallOutlineColor) {
     const outlineSegs = buildWallOutlineSegments(grid, cols, rows, T)
+    const mergedSegs = wallOutlineStyle === 'rough' ? mergeOutlineSegments(outlineSegs) : outlineSegs
     const polylines = wallOutlineStyle === 'rough'
-      ? roughenSegments(outlineSegs, OUTLINE_ROUGH_OPTS, 77) : outlineSegs
+      ? roughenSegments(mergedSegs, OUTLINE_ROUGH_OPTS, 77) : outlineSegs
     const color = wallOutlineColor
     for (const polyline of polylines) {
       layout.shapes.push({ kind: 'line', points: (polyline as [number, number][]).flat(), stroke: color, strokeWidth: 6, opacity: 0.18, lineCap: 'round', lineJoin: 'round' })
