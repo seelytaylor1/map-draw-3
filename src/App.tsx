@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { buildHatchPolylines, drawShadow } from './patterns'
+import { buildHatchPolylines } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
