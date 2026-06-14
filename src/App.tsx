@@ -510,7 +510,7 @@ export default function App() {
       // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
       const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
       const shapes = buildIsoScene({
-        grids, steps, ramps, cols, rows, show3D, showGrid, wallColor, wallOpacity, selectedStepId, selectedRampId,
+        grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
       })
       for (const shape of shapes) {
