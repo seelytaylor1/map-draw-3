@@ -15,7 +15,7 @@ import {
 import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { buildHatchPolylines, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
+import { buildHatchPolylines, drawShadow, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, varyWidthsAlongStroke, OUTLINE_ROUGH_OPTS } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
@@ -103,10 +103,10 @@ export default function App() {
   const activeGrid = getGrid(grids, activeZ, cols, rows)
 
   const [wallColor, setWallColor] = useState('#000000')
-  const [wallOpacity, setWallOpacity] = useState(1)
+  const [wallOpacity, setWallOpacity] = useState(0)
   const [showHatching, setShowHatching] = useState(false)
   const [hatchColor, setHatchColor] = useState('#000000')
-  const [showWallOutline, setShowWallOutline] = useState(false)
+  const [showWallOutline, setShowWallOutline] = useState(true)
   const [wallOutlineColor, setWallOutlineColor] = useState('#000000')
   const [wallOutlineStyle, setWallOutlineStyle] = useState<'clean' | 'rough'>('clean')
   const [showGrid, setShowGrid] = useState(false)
@@ -619,6 +619,20 @@ export default function App() {
         }
       }
 
+      // Directional shadows — cast only from north/west walls onto floor tiles
+      if (showWallOutline) {
+        const shadowCanvas = document.createElement('canvas')
+        shadowCanvas.width = cols * TILE_PX
+        shadowCanvas.height = rows * TILE_PX
+        drawShadow(shadowCanvas.getContext('2d')!, levelGrid, cols, rows, TILE_PX)
+        group.add(new Konva.Image({
+          image: shadowCanvas as unknown as HTMLImageElement,
+          x: 0, y: 0,
+          width: cols * TILE_PX, height: rows * TILE_PX,
+          listening: false,
+        }))
+      }
+
       if (showGrid) {
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
@@ -748,36 +762,34 @@ export default function App() {
         group.add(hatchGroup)
       }
 
-      // Wall outline — two passes: shadow then line
+      // Wall outline
       if (showWallOutline) {
         const outlineSegs = buildWallOutlineSegments(levelGrid, cols, rows, TILE_PX)
-        const mergedSegs = wallOutlineStyle === 'rough' ? mergeOutlineSegments(outlineSegs) : outlineSegs
-        const polylines = wallOutlineStyle === 'rough'
-          ? roughenSegments(mergedSegs, OUTLINE_ROUGH_OPTS, 77)
-          : outlineSegs
         const outlineGroup = new Konva.Group({ listening: false })
-        for (const polyline of polylines) {
-          if (polyline.length < 2) continue
-          outlineGroup.add(new Konva.Line({
-            points: (polyline as [number, number][]).flat(),
-            stroke: wallOutlineColor,
-            strokeWidth: 6,
-            opacity: 0.18,
-            lineCap: 'round',
-            lineJoin: 'round',
-            listening: false,
-          }))
-        }
-        for (const polyline of polylines) {
-          if (polyline.length < 2) continue
-          outlineGroup.add(new Konva.Line({
-            points: (polyline as [number, number][]).flat(),
-            stroke: wallOutlineColor,
-            strokeWidth: 2,
-            lineCap: 'round',
-            lineJoin: 'round',
-            listening: false,
-          }))
+        if (wallOutlineStyle === 'rough') {
+          const polylines = roughenSegments(mergeOutlineSegments(outlineSegs), OUTLINE_ROUGH_OPTS, 77)
+          const allSegs = polylines.flatMap((pl, i) => varyWidthsAlongStroke(pl, 2, 1, 77 + i))
+          for (const { a, b, width } of allSegs) {
+            outlineGroup.add(new Konva.Line({
+              points: [...a, ...b],
+              stroke: wallOutlineColor,
+              strokeWidth: width,
+              lineCap: 'round',
+              listening: false,
+            }))
+          }
+        } else {
+          for (const polyline of outlineSegs) {
+            if (polyline.length < 2) continue
+            outlineGroup.add(new Konva.Line({
+              points: (polyline as [number, number][]).flat(),
+              stroke: wallOutlineColor,
+              strokeWidth: 2,
+              lineCap: 'round',
+              lineJoin: 'round',
+              listening: false,
+            }))
+          }
         }
         group.add(outlineGroup)
       }

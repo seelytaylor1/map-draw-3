@@ -1,6 +1,6 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, buildHatchPolylines, roughenSegments, buildWallOutlineSegments, HatchOptions, RoughLineOptions } from './patterns'
+import { drawHatching, buildHatchLines, buildHatchPolylines, roughenSegments, buildWallOutlineSegments, assignWidths, varyWidthsAlongStroke, HatchOptions, RoughLineOptions } from './patterns'
 import { FLOOR, WALL } from './constants'
 
 // ---------------------------------------------------------------------------
@@ -240,6 +240,7 @@ describe('roughenSegments', () => {
   })
 
   it('output points deviate from the original line when scribbleAmplitude > 0', () => {
+
     // Use a longer segment so scribble has room to displace points
     const longSeg: [number, number][][] = [[[0, 0], [50, 0]]]
     const opts: RoughLineOptions = {
@@ -262,6 +263,95 @@ describe('roughenSegments', () => {
       if (anyDeviation) break
     }
     expect(anyDeviation).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// assignWidths
+// ---------------------------------------------------------------------------
+
+describe('assignWidths', () => {
+  const polylines: [number, number][][] = [
+    [[0, 0], [10, 0]],
+    [[0, 5], [10, 5]],
+    [[0, 10], [10, 10]],
+  ]
+
+  it('returns one entry per polyline with width within [minWidth, maxWidth]', () => {
+    const result = assignWidths(polylines, 1, 3, 42)
+    expect(result).toHaveLength(polylines.length)
+    for (const { width } of result) {
+      expect(width).toBeGreaterThanOrEqual(1)
+      expect(width).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('widths are not all identical when minWidth !== maxWidth', () => {
+    const manyPolylines: [number, number][][] = Array.from({ length: 10 }, (_, i) => [[0, i], [10, i]])
+    const result = assignWidths(manyPolylines, 1, 3, 7)
+    const widths = result.map(r => r.width)
+    const allSame = widths.every(w => w === widths[0])
+    expect(allSame).toBe(false)
+  })
+
+  it('is deterministic with the same seed', () => {
+    const r1 = assignWidths(polylines, 1, 3, 99)
+    const r2 = assignWidths(polylines, 1, 3, 99)
+    expect(r1.map(r => r.width)).toEqual(r2.map(r => r.width))
+  })
+
+  it('when minWidth === maxWidth all widths equal that value', () => {
+    const result = assignWidths(polylines, 2, 2, 42)
+    for (const { width } of result) {
+      expect(width).toBe(2)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// varyWidthsAlongStroke
+// ---------------------------------------------------------------------------
+
+describe('varyWidthsAlongStroke', () => {
+  const polyline: [number, number][] = [[0,0],[5,0],[10,0],[15,0],[20,0],[25,0]]
+
+  it('returns one entry per consecutive point pair', () => {
+    const result = varyWidthsAlongStroke(polyline, 2, 1, 42)
+    expect(result).toHaveLength(polyline.length - 1)
+    for (const { a, b } of result) {
+      expect(a).toHaveLength(2)
+      expect(b).toHaveLength(2)
+    }
+  })
+
+  it('all widths are within [baseWidth - variation, baseWidth + variation]', () => {
+    const result = varyWidthsAlongStroke(polyline, 2, 1, 42)
+    for (const { width } of result) {
+      expect(width).toBeGreaterThanOrEqual(1)
+      expect(width).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('widths vary along the stroke (not all identical)', () => {
+    const longPolyline: [number, number][] = Array.from({ length: 20 }, (_, i) => [i * 5, 0])
+    const result = varyWidthsAlongStroke(longPolyline, 2, 1, 7)
+    const widths = result.map(r => r.width)
+    const allSame = widths.every(w => w === widths[0])
+    expect(allSame).toBe(false)
+  })
+
+  it('is deterministic with the same seed', () => {
+    const r1 = varyWidthsAlongStroke(polyline, 2, 1, 99)
+    const r2 = varyWidthsAlongStroke(polyline, 2, 1, 99)
+    expect(r1.map(r => r.width)).toEqual(r2.map(r => r.width))
+  })
+
+  it('adjacent widths do not jump by more than variation', () => {
+    const longPolyline: [number, number][] = Array.from({ length: 30 }, (_, i) => [i * 5, 0])
+    const result = varyWidthsAlongStroke(longPolyline, 2, 1, 13)
+    for (let i = 1; i < result.length; i++) {
+      expect(Math.abs(result[i].width - result[i - 1].width)).toBeLessThanOrEqual(1)
+    }
   })
 })
 

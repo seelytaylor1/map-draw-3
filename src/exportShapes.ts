@@ -4,7 +4,7 @@ import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
-import { drawHatching, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, OUTLINE_ROUGH_OPTS } from './patterns'
+import { drawHatching, drawShadow, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, varyWidthsAlongStroke, OUTLINE_ROUGH_OPTS } from './patterns'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -96,16 +96,25 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
     layout.shapes.push({ kind: 'canvas', canvas: hatchCanvas, x: 0, y: 0, w: cols * T, h: rows * T })
   }
   if (showWallOutline && wallOutlineColor) {
+    const shadowCanvas = document.createElement('canvas')
+    shadowCanvas.width = cols * T
+    shadowCanvas.height = rows * T
+    const shadowCtx = shadowCanvas.getContext('2d')!
+    drawShadow(shadowCtx, grid, cols, rows, T)
+    layout.shapes.push({ kind: 'canvas', canvas: shadowCanvas, x: 0, y: 0, w: cols * T, h: rows * T })
+
     const outlineSegs = buildWallOutlineSegments(grid, cols, rows, T)
-    const mergedSegs = wallOutlineStyle === 'rough' ? mergeOutlineSegments(outlineSegs) : outlineSegs
-    const polylines = wallOutlineStyle === 'rough'
-      ? roughenSegments(mergedSegs, OUTLINE_ROUGH_OPTS, 77) : outlineSegs
     const color = wallOutlineColor
-    for (const polyline of polylines) {
-      layout.shapes.push({ kind: 'line', points: (polyline as [number, number][]).flat(), stroke: color, strokeWidth: 6, opacity: 0.18, lineCap: 'round', lineJoin: 'round' })
-    }
-    for (const polyline of polylines) {
-      layout.shapes.push({ kind: 'line', points: (polyline as [number, number][]).flat(), stroke: color, strokeWidth: 2, lineCap: 'round', lineJoin: 'round' })
+    if (wallOutlineStyle === 'rough') {
+      const polylines = roughenSegments(mergeOutlineSegments(outlineSegs), OUTLINE_ROUGH_OPTS, 77)
+      const allSegs = polylines.flatMap((pl, i) => varyWidthsAlongStroke(pl, 2, 1, 77 + i))
+      for (const { a, b, width } of allSegs) {
+        layout.shapes.push({ kind: 'line', points: [...a, ...b], stroke: color, strokeWidth: width, lineCap: 'round' })
+      }
+    } else {
+      for (const polyline of outlineSegs) {
+        layout.shapes.push({ kind: 'line', points: (polyline as [number, number][]).flat(), stroke: color, strokeWidth: 2, lineCap: 'round', lineJoin: 'round' })
+      }
     }
   }
   return layout
