@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
-import { isoProject, isoUnproject, isoStampTransform } from './iso'
+import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, type TileState } from './constants'
+import { isoUnproject } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
@@ -12,14 +12,19 @@ import {
   addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
-import { addStepRun, removeStepRun, rotateStepRun, stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
-import { addRampRun, removeRampRun, rotateRampRun, rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
+import { addStepRun, removeStepRun, rotateStepRun, type StepRun } from './steps'
+import { addRampRun, removeRampRun, rotateRampRun, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
-import { buildHatchPolylines, drawShadow, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, varyWidthsAlongStroke, OUTLINE_ROUGH_OPTS } from './patterns'
+import { drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
 import { applyTileLevelNoise, type TileFlip } from './noise'
 import { StampPicker, type Mode } from './StampPicker'
+import {
+  drawingReducer, INITIAL_DRAWING_STATE,
+  type DrawingState, type BrushShape, type Tile,
+} from './drawingState'
+import { buildTileScene, buildStampScene, buildLabelScene } from './viewportScene'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -29,11 +34,6 @@ const WALL_PRESETS = [
   { label: 'Repro Blue', color: '#A8C8E8', opacity: 1 },
   { label: 'Transparent', color: '#000000', opacity: 0 },
 ]
-
-type BrushShape = 'square' | 'circle'
-type RoughPhase = 'idle' | 'placed1' | 'placed2'
-
-interface Tile { col: number; row: number }
 
 type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[] }
 
@@ -62,41 +62,38 @@ export default function App() {
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
-  const [mode, setMode] = useState<Mode>('paint')
-  const [labelMode, setLabelMode] = useState<'none' | 'place'>('none')
-  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null)
-  const selectedLabelIdRef = useRef<string | null>(null)
-  const [selectedStampId, setSelectedStampId] = useState<string | null>(null)
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(null)
-  const [selectedRampId, setSelectedRampId] = useState<string | null>(null)
+  const [drawingState, dispatch] = useReducer(drawingReducer, INITIAL_DRAWING_STATE)
+  const drawingStateRef = useRef<DrawingState>(INITIAL_DRAWING_STATE)
+  useEffect(() => { drawingStateRef.current = drawingState }, [drawingState])
+
+  const gridsRef = useRef(grids)
+  useEffect(() => { gridsRef.current = grids }, [grids])
+
+  // Derived values from DrawingState — keep render code and layer effects clean
+  const brushShape: BrushShape = drawingState.tool === 'paint' ? drawingState.brushShape : 'square'
+  const selectedPaintState: TileState = drawingState.tool === 'paint'
+    ? (drawingState.phase === 'idle' ? drawingState.paintValue : drawingState.idlePaintValue)
+    : FLOOR
+  const selectedStampId: string | null = drawingState.tool === 'stamp' ? drawingState.selectedId : null
+  const selectedStepId: string | null = drawingState.tool === 'steps' ? drawingState.selectedId : null
+  const selectedRampId: string | null = drawingState.tool === 'ramps' ? drawingState.selectedId : null
+  const selectedLabelId: string | null = drawingState.tool === 'label' && drawingState.phase === 'idle' ? drawingState.selectedId : null
+  const labelMode: 'none' | 'place' = drawingState.tool === 'label' && drawingState.phase === 'placing' ? 'place' : 'none'
+  const mode: Mode = drawingState.tool === 'stamp' ? drawingState.stampType
+    : drawingState.tool === 'label' ? 'paint'
+    : drawingState.tool as Mode
+  const roughPhase = drawingState.tool === 'rough' ? drawingState.phase : 'idle' as const
+  const roughStart: Tile | null = drawingState.tool === 'rough' && drawingState.phase !== 'idle' ? drawingState.start : null
+  const roughEnd: Tile | null = drawingState.tool === 'rough' && drawingState.phase !== 'idle' ? drawingState.end : null
+  const roughPreview: TileFlip[] = drawingState.tool === 'rough' && drawingState.phase === 'placed2' ? drawingState.preview : []
+  const areaStart: Tile | null = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? drawingState.start : null
+  const areaEnd: Tile | null = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? drawingState.end : null
+  const areaPhase: 'idle' | 'selecting' = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? 'selecting' : 'idle'
+
   const [hoverTile, setHoverTile] = useState<Tile | null>(null)
-  const [brushShape, setBrushShape] = useState<BrushShape>('square')
-  const [areaPhase, setAreaPhase] = useState<'idle' | 'selecting'>('idle')
-  const [areaStart, setAreaStart] = useState<Tile | null>(null)
-  const [areaEnd, setAreaEnd] = useState<Tile | null>(null)
+  const hoverTileRef = useRef<Tile | null>(null)
   const [activeZ, setActiveZ] = useState(0)
   const activeZRef = useRef(0)
-
-  const [roughPhase, setRoughPhase] = useState<RoughPhase>('idle')
-  const [roughStart, setRoughStart] = useState<Tile | null>(null)
-  const [roughEnd, setRoughEnd] = useState<Tile | null>(null)
-  const [roughSeed, setRoughSeed] = useState(0)
-  const [roughPreview, setRoughPreview] = useState<TileFlip[]>([])
-  const roughBaseGrid = useRef<Uint8Array | null>(null)
-
-  const hoverTileRef = useRef<Tile | null>(null)
-  const roughPhaseRef = useRef<RoughPhase>('idle')
-  const roughStartRef = useRef<Tile | null>(null)
-  const roughEndRef = useRef<Tile | null>(null)
-  const roughPreviewRef = useRef<TileFlip[]>([])
-  const roughSeedRef = useRef<number>(0)
-  const [selectedPaintState, setSelectedPaintState] = useState<TileState>(FLOOR)
-  const selectedPaintStateRef = useRef<TileState>(FLOOR)
-  const paintMode = useRef<TileState>(FLOOR)
-  const areaPhaseRef = useRef<'idle' | 'selecting'>('idle')
-  const areaStartRef = useRef<Tile | null>(null)
-  const areaEndRef = useRef<Tile | null>(null)
-  const brushShapeRef = useRef<BrushShape>('square')
   const isPanningRef = useRef(false)
   const panLastRef = useRef({ x: 0, y: 0 })
 
@@ -138,66 +135,56 @@ export default function App() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       if (e.ctrlKey && e.key === 'z') { setHistory(h => undo(h)); return }
       if (e.ctrlKey && e.key === 'y') { setHistory(h => redo(h)); return }
-      if (e.key === 'Delete' && selectedStampId) {
-        setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, selectedStampId) }))
-        setSelectedStampId(null)
+      const ds = drawingStateRef.current
+      if (e.key === 'Delete' && ds.tool === 'stamp' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, id) }))
+        dispatch({ type: 'SELECT', id: null })
         return
       }
-      if ((e.key === 'r' || e.key === 'R') && selectedStampId) {
-        setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, selectedStampId) }))
+      if ((e.key === 'r' || e.key === 'R') && ds.tool === 'stamp' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, id) }))
         return
       }
-      if ((e.key === 'e' || e.key === 'E') && selectedStampId) {
-        setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))
+      if ((e.key === 'e' || e.key === 'E') && ds.tool === 'stamp' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, id) }))
         return
       }
-      if (e.key === 'Delete' && selectedStepId) {
-        setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, selectedStepId) }))
-        setSelectedStepId(null)
+      if (e.key === 'Delete' && ds.tool === 'steps' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, id) }))
+        dispatch({ type: 'SELECT', id: null })
         return
       }
-      if ((e.key === 'r' || e.key === 'R') && selectedStepId) {
-        setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))
+      if ((e.key === 'r' || e.key === 'R') && ds.tool === 'steps' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, id) }))
         return
       }
-      if (e.key === 'Delete' && selectedRampId) {
-        setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, selectedRampId) }))
-        setSelectedRampId(null)
+      if (e.key === 'Delete' && ds.tool === 'ramps' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, id) }))
+        dispatch({ type: 'SELECT', id: null })
         return
       }
-      if ((e.key === 'r' || e.key === 'R') && selectedRampId) {
-        setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))
+      if ((e.key === 'r' || e.key === 'R') && ds.tool === 'ramps' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, id) }))
         return
       }
       if (e.key === 'Escape') {
-        setSelectedStampId(null)
-        setSelectedStepId(null)
-        setSelectedRampId(null)
-        setSelectedLabelId(null)
-        setLabelMode('none')
-        if (roughPhase !== 'idle') {
-          setRoughPhase('idle')
-          roughPhaseRef.current = 'idle'
-          setRoughStart(null)
-          roughStartRef.current = null
-          setRoughEnd(null); roughEndRef.current = null
-          setRoughPreview([]); roughPreviewRef.current = []
-          if (roughBaseGrid.current !== null) {
-            const savedGrid = roughBaseGrid.current
-            roughBaseGrid.current = null
-            setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, savedGrid) } }))
-          }
+        if (ds.tool === 'rough' && ds.phase === 'placed2') {
+          const savedGrid = ds.baseGrid
+          setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, savedGrid) } }))
         }
-        if (areaPhaseRef.current === 'selecting') {
-          setAreaPhase('idle'); areaPhaseRef.current = 'idle'
-          setAreaStart(null); areaStartRef.current = null
-          setAreaEnd(null); areaEndRef.current = null
-        }
+        dispatch({ type: 'ESCAPE' })
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedStampId, selectedStepId, selectedRampId, selectedLabelId, labelMode, roughPhase])
+  }, [])
 
   const stageToTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
     const rect = stage.container().getBoundingClientRect()
@@ -220,7 +207,8 @@ export default function App() {
         panLastRef.current = { x: e.evt.clientX, y: e.evt.clientY }
         return
       }
-      if (showIso && (mode === 'paint' || mode === 'rough')) return
+      const ds = drawingStateRef.current
+      if (showIso && (ds.tool === 'paint' || ds.tool === 'rough')) return
       const stage = e.target.getStage()!
       let tile: Tile | null
       if (showIso) {
@@ -237,47 +225,35 @@ export default function App() {
       }
       if (!tile) return
 
-      if (mode === 'rough') {
-        if (roughPhaseRef.current === 'idle') {
-          setRoughStart(tile)
-          roughStartRef.current = tile
-          setRoughEnd(tile); roughEndRef.current = tile
-          setRoughPhase('placed1')
-          roughPhaseRef.current = 'placed1'
-        } else if (roughPhaseRef.current === 'placed2' && roughStartRef.current && roughEndRef.current) {
-          const start = roughStartRef.current
-          const end = roughEndRef.current
+      if (ds.tool === 'rough') {
+        if (ds.phase === 'idle') {
+          dispatch({ type: 'ROUGH_CLICK', tile })
+        } else if (ds.phase === 'placed2') {
+          const { start, end, preview, baseGrid } = ds
           const minC = Math.min(start.col, end.col)
           const maxC = Math.max(start.col, end.col)
           const minR = Math.min(start.row, end.row)
           const maxR = Math.max(start.row, end.row)
           const az = activeZRef.current
-          const captured = roughPreviewRef.current
-          const savedBase = roughBaseGrid.current
-          roughBaseGrid.current = null
+          const captured = preview
+          const savedBase = baseGrid
           setHistory(h => {
-            const originalGrid = savedBase ?? getGrid(h.present.grids, az, cols, rows)
             const rectTileList: Tile[] = []
             for (let r = minR; r <= maxR; r++)
               for (let c = minC; c <= maxC; c++)
                 rectTileList.push({ col: c, row: r })
-            let next = paintTiles(originalGrid, cols, rectTileList, FLOOR)
+            let next = paintTiles(savedBase, cols, rectTileList, FLOOR)
             if (captured.length > 0)
               next = paintTiles(next, cols, captured.map(f => ({ col: f.col, row: f.row })), WALL)
-            const baseHistory = { ...h, present: { ...h.present, grids: setGrid(h.present.grids, az, originalGrid) } }
+            const baseHistory = { ...h, present: { ...h.present, grids: setGrid(h.present.grids, az, savedBase) } }
             return push(baseHistory, { ...h.present, grids: setGrid(h.present.grids, az, next) })
           })
-          setRoughPhase('idle')
-          roughPhaseRef.current = 'idle'
-          setRoughStart(null)
-          roughStartRef.current = null
-          setRoughEnd(null); roughEndRef.current = null
-          setRoughPreview([]); roughPreviewRef.current = []
+          dispatch({ type: 'ROUGH_COMMIT' })
         }
         return
       }
 
-      if (labelMode === 'place') {
+      if (ds.tool === 'label' && ds.phase === 'placing') {
         const newLabel: Label = {
           id: crypto.randomUUID(),
           col: tile.col,
@@ -286,14 +262,11 @@ export default function App() {
           number: undefined,
         }
         setHistory(h => push(h, { ...h.present, labels: addLabel(h.present.labels, newLabel) }))
-        setSelectedLabelId(newLabel.id)
-        setSelectedStampId(null)
-        setSelectedStepId(null)
-        setSelectedRampId(null)
+        dispatch({ type: 'LABEL_PLACED', id: newLabel.id })
         return
       }
 
-      if (mode === 'steps') {
+      if (ds.tool === 'steps') {
         const newRun: StepRun = {
           id: crypto.randomUUID(),
           col: tile.col,
@@ -302,13 +275,11 @@ export default function App() {
           direction: 'E',
         }
         setHistory(h => push(h, { ...h.present, steps: addStepRun(h.present.steps, newRun) }))
-        setSelectedStampId(null)
-        setSelectedRampId(null)
-        setSelectedStepId(newRun.id)
+        dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: newRun.id } })
         return
       }
 
-      if (mode === 'ramps') {
+      if (ds.tool === 'ramps') {
         const newRun: RampRun = {
           id: crypto.randomUUID(),
           col: tile.col,
@@ -317,33 +288,28 @@ export default function App() {
           direction: 'E',
         }
         setHistory(h => push(h, { ...h.present, ramps: addRampRun(h.present.ramps, newRun) }))
-        setSelectedStampId(null)
-        setSelectedStepId(null)
-        setSelectedRampId(newRun.id)
+        dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: newRun.id } })
         return
       }
 
-      if (mode !== 'paint') {
+      if (ds.tool === 'stamp') {
         const newStamp: Stamp = {
           id: crypto.randomUUID(),
-          type: mode,
+          type: ds.stampType,
           col: tile.col,
           row: tile.row,
           rotation: 0,
           z: activeZRef.current,
         }
         setHistory(h => push(h, { ...h.present, stamps: addStamp(h.present.stamps, newStamp) }))
-        setSelectedStampId(newStamp.id)
+        dispatch({ type: 'SELECT', id: newStamp.id })
         return
       }
 
-      // Area select start
-      paintMode.current = e.evt.button === 2 ? WALL : selectedPaintStateRef.current
-      setAreaStart(tile); areaStartRef.current = tile
-      setAreaEnd(tile); areaEndRef.current = tile
-      setAreaPhase('selecting'); areaPhaseRef.current = 'selecting'
+      // Paint mode: area select start
+      dispatch({ type: 'PAINT_START', tile, button: e.evt.button === 2 ? 2 : 0 })
     },
-    [mode, labelMode, cols, rows, showIso],
+    [cols, rows, showIso],
   )
 
   const handleMouseMove = useCallback(
@@ -362,38 +328,37 @@ export default function App() {
       setHoverTile(tile)
       hoverTileRef.current = tile
 
-      if (roughPhaseRef.current === 'placed1' && roughStartRef.current && tile) {
-        setRoughEnd(tile); roughEndRef.current = tile
+      const ds = drawingStateRef.current
+      if (ds.tool === 'rough' && ds.phase === 'placed1' && tile) {
+        dispatch({ type: 'ROUGH_UPDATE_RECT', tile })
         return
       }
 
-      if (roughPhaseRef.current === 'placed2' && roughEndRef.current && roughStartRef.current) {
-        const cursorX = e.evt.clientX
-        const cursorY = e.evt.clientY
+      if (ds.tool === 'rough' && ds.phase === 'placed2') {
         const stageRect = stage.container().getBoundingClientRect()
         const scale = stage.scaleX()
         const ox = stage.x(); const oy = stage.y()
-        const rEnd = roughEndRef.current!
-        const rStart = roughStartRef.current!
+        const rEnd = ds.end
+        const rStart = ds.start
         const endWorldX = rEnd.col * TILE_PX + TILE_PX / 2
         const endWorldY = rEnd.row * TILE_PX + TILE_PX / 2
         const endScreenX = endWorldX * scale + stageRect.left + ox
         const endScreenY = endWorldY * scale + stageRect.top + oy
-        const dx = (cursorX - endScreenX) / scale
-        const dy = (cursorY - endScreenY) / scale
+        const dx = (e.evt.clientX - endScreenX) / scale
+        const dy = (e.evt.clientY - endScreenY) / scale
         const distTiles = Math.sqrt(dx * dx + dy * dy) / TILE_PX
         const intensity = Math.min(1, distTiles / 10)
         const minC = Math.min(rStart.col, rEnd.col)
         const maxC = Math.max(rStart.col, rEnd.col)
         const minR = Math.min(rStart.row, rEnd.row)
         const maxR = Math.max(rStart.row, rEnd.row)
-        const preview = applyTileLevelNoise({ minC, minR, maxC, maxR }, intensity, roughSeedRef.current)
-        setRoughPreview(preview); roughPreviewRef.current = preview
+        const preview = applyTileLevelNoise({ minC, minR, maxC, maxR }, intensity, ds.seed)
+        dispatch({ type: 'ROUGH_UPDATE_NOISE', preview })
         return
       }
 
-      if (areaPhaseRef.current === 'selecting' && tile) {
-        setAreaEnd(tile); areaEndRef.current = tile
+      if (ds.tool === 'paint' && ds.phase === 'selecting' && tile) {
+        dispatch({ type: 'PAINT_UPDATE', tile })
       }
     },
     [cols, rows, showIso],
@@ -404,9 +369,10 @@ export default function App() {
       isPanningRef.current = false
       return
     }
-    // Rough mode click 2: drag release commits the base rect
-    if (roughPhaseRef.current === 'placed1' && roughStartRef.current) {
-      const start = roughStartRef.current
+    const ds = drawingStateRef.current
+
+    if (ds.tool === 'rough' && ds.phase === 'placed1') {
+      const start = ds.start
       const end = hoverTileRef.current ?? start
       const minC = Math.min(start.col, end.col)
       const maxC = Math.max(start.col, end.col)
@@ -417,34 +383,26 @@ export default function App() {
         for (let c = minC; c <= maxC; c++)
           rectTileList.push({ col: c, row: r })
       const seed = Math.floor(Math.random() * 2 ** 32)
-      roughSeedRef.current = seed
-      setRoughSeed(seed)
-      setRoughEnd(end)
-      setRoughPhase('placed2')
-      roughPhaseRef.current = 'placed2'
+      const baseGrid = getGrid(gridsRef.current, activeZRef.current, cols, rows)
       setHistory(h => {
-        if (roughBaseGrid.current === null) roughBaseGrid.current = getGrid(h.present.grids, activeZRef.current, cols, rows)
-        const next = paintTiles(roughBaseGrid.current, cols, rectTileList, FLOOR)
+        const next = paintTiles(baseGrid, cols, rectTileList, FLOOR)
         return { ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, next) } }
       })
+      dispatch({ type: 'ROUGH_COMMIT_RECT', end, seed, baseGrid })
       return
     }
 
-    if (areaPhaseRef.current === 'selecting' && areaStartRef.current && areaEndRef.current) {
-      const tiles = getAreaTiles(areaStartRef.current, areaEndRef.current, brushShapeRef.current)
+    if (ds.tool === 'paint' && ds.phase === 'selecting') {
+      const tiles = getAreaTiles(ds.start, ds.end, ds.brushShape)
       const az = activeZRef.current
-      const tileValue = paintMode.current
-
+      const tileValue = ds.paintValue
       setHistory(h => {
         const gridsNext = setGrid(h.present.grids, az, paintTiles(getGrid(h.present.grids, az, cols, rows), cols, tiles, tileValue))
-
         return push(h, { ...h.present, grids: gridsNext })
       })
-      setAreaPhase('idle'); areaPhaseRef.current = 'idle'
-      setAreaStart(null); areaStartRef.current = null
-      setAreaEnd(null); areaEndRef.current = null
+      dispatch({ type: 'PAINT_COMMIT' })
     }
-  }, [cols])
+  }, [cols, rows])
 
   useEffect(() => {
     window.addEventListener('mouseup', handleMouseUp)
@@ -528,11 +486,9 @@ export default function App() {
             e.cancelBubble = true
             if (e.evt.button === 2 && sid === selectedStepId) {
               setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, sid) }))
-              setSelectedStepId(null)
+              dispatch({ type: 'SELECT', id: null })
             } else {
-              setSelectedStampId(null)
-              setSelectedRampId(null)
-              setSelectedStepId(sid)
+              dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: sid } })
             }
           })
         }
@@ -542,11 +498,9 @@ export default function App() {
             e.cancelBubble = true
             if (e.evt.button === 2 && rid === selectedRampId) {
               setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, rid) }))
-              setSelectedRampId(null)
+              dispatch({ type: 'SELECT', id: null })
             } else {
-              setSelectedStampId(null)
-              setSelectedStepId(null)
-              setSelectedRampId(rid)
+              dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: rid } })
             }
           })
         }
@@ -556,75 +510,42 @@ export default function App() {
       return
     }
 
-    // Wall background — full opacity, drawn once
-    if (wallOpacity > 0) {
+    // Pure scene description — geometry, opacity, and grouping computed once;
+    // this effect only walks the result and creates/wires Konva nodes.
+    const scene = buildTileScene({
+      grids, steps, ramps, cols, rows, activeZ,
+      tilePx: TILE_PX, facePx: FACE_PX,
+      show3D, showGrid, showHatching, showWallOutline,
+      wallOutlineColor, wallOutlineStyle, wallColor, wallOpacity,
+      selectedStepId, selectedRampId,
+    })
+
+    if (scene.wallBackground) {
       layer.add(new Konva.Rect({
         x: 0, y: 0,
-        width: cols * TILE_PX,
-        height: rows * TILE_PX,
-        fill: wallColor,
-        opacity: wallOpacity,
+        width: scene.canvasW, height: scene.canvasH,
+        fill: scene.wallBackground.fill,
+        opacity: scene.wallBackground.opacity,
       }))
     }
 
-    // Render each Z level ≤ activeZ, lowest first, with halving opacity
-    const zSet = new Set(grids.keys())
-    for (const run of steps) zSet.add(run.z)
-    for (const run of ramps) zSet.add(run.z)
-    const sortedZs = [...zSet].filter(z => z <= activeZ).sort((a, b) => a - b)
-    for (const z of sortedZs) {
-      const levelGrid = grids.get(z) ?? createGrid(cols, rows)
-      const levelOpacity = Math.pow(0.5, activeZ - z)
-      const group = new Konva.Group({ opacity: levelOpacity })
+    for (const level of scene.levels) {
+      const group = new Konva.Group({ opacity: level.opacity, listening: level.interactive })
 
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (getTile(levelGrid, cols, c, r) === FLOOR) {
-            group.add(new Konva.Rect({
-              x: c * TILE_PX, y: r * TILE_PX,
-              width: TILE_PX, height: TILE_PX,
-              fill: FLOOR_COLOR,
-            }))
-          } else if (getTile(levelGrid, cols, c, r) === WATER) {
-            group.add(new Konva.Rect({
-              x: c * TILE_PX, y: r * TILE_PX,
-              width: TILE_PX, height: TILE_PX,
-              fill: WATER_COLOR,
-            }))
-          }
-        }
+      for (const tile of level.tiles) {
+        group.add(new Konva.Rect({ x: tile.rect.x, y: tile.rect.y, width: tile.rect.w, height: tile.rect.h, fill: tile.fill }))
       }
 
-      if (show3D) {
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            if (getTile(levelGrid, cols, c, r) !== FLOOR) continue
-            const southWall = r + 1 >= rows || getTile(levelGrid, cols, c, r + 1) === WALL
-            const eastWall = c + 1 >= cols || getTile(levelGrid, cols, c + 1, r) === WALL
-            if (southWall) {
-              group.add(new Konva.Rect({
-                x: c * TILE_PX, y: (r + 1) * TILE_PX,
-                width: TILE_PX, height: FACE_PX,
-                fill: FACE_COLOR,
-              }))
-            }
-            if (eastWall) {
-              group.add(new Konva.Rect({
-                x: (c + 1) * TILE_PX, y: r * TILE_PX,
-                width: FACE_PX, height: TILE_PX,
-                fill: FACE_COLOR,
-              }))
-            }
-          }
-        }
+      for (const face of level.faces) {
+        group.add(new Konva.Rect({ x: face.x, y: face.y, width: face.w, height: face.h, fill: FACE_COLOR }))
       }
 
       // Directional shadows — cast only from north/west walls onto floor tiles
-      if (showWallOutline) {
+      if (level.drawShadow) {
         const shadowCanvas = document.createElement('canvas')
         shadowCanvas.width = cols * TILE_PX
         shadowCanvas.height = rows * TILE_PX
-        drawShadow(shadowCanvas.getContext('2d')!, levelGrid, cols, rows, TILE_PX)
+        drawShadow(shadowCanvas.getContext('2d')!, level.grid, cols, rows, TILE_PX)
         group.add(new Konva.Image({
           image: shadowCanvas as unknown as HTMLImageElement,
           x: 0, y: 0,
@@ -633,114 +554,55 @@ export default function App() {
         }))
       }
 
-      if (showGrid) {
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            if (getTile(levelGrid, cols, c, r) === FLOOR) {
-              group.add(new Konva.Rect({
-                x: c * TILE_PX, y: r * TILE_PX,
-                width: TILE_PX, height: TILE_PX,
-                stroke: 'rgba(0,0,0,0.2)',
-                strokeWidth: 0.5,
-              }))
+      for (const gl of level.gridLines) {
+        group.add(new Konva.Rect({ x: gl.x, y: gl.y, width: gl.w, height: gl.h, stroke: 'rgba(0,0,0,0.2)', strokeWidth: 0.5 }))
+      }
+
+      // Steps/ramps belong to their level's group so they fade with it and
+      // stay under higher-level floors.
+      for (const run of level.runs) {
+        const runGroup = new Konva.Group()
+        if (run.faceRect) {
+          runGroup.add(new Konva.Rect({ x: run.faceRect.x, y: run.faceRect.y, width: run.faceRect.w, height: run.faceRect.h, fill: FACE_COLOR }))
+        }
+        for (const fp of run.footprint) {
+          runGroup.add(new Konva.Rect({
+            x: fp.x, y: fp.y, width: fp.w, height: fp.h,
+            fill: FLOOR_COLOR, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 1,
+          }))
+        }
+        if (run.selectionRect) {
+          const sel = run.selectionRect
+          runGroup.add(new Konva.Rect({
+            x: sel.x, y: sel.y, width: sel.w, height: sel.h,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
+        if (level.interactive) {
+          const isStep = run.runType === 'step'
+          runGroup.on('mousedown', (e) => {
+            e.cancelBubble = true
+            const currentSelectedId = isStep ? selectedStepId : selectedRampId
+            if (e.evt.button === 2 && run.id === currentSelectedId) {
+              setHistory(h => push(h, isStep
+                ? { ...h.present, steps: removeStepRun(h.present.steps, run.id) }
+                : { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
+              dispatch({ type: 'SELECT', id: null })
+            } else {
+              dispatch({ type: 'SET_TOOL', to: isStep ? { tool: 'steps', selectedId: run.id } : { tool: 'ramps', selectedId: run.id } })
             }
-          }
+          })
         }
-      }
-
-      // Steps belong to their level's group so they fade with it and stay
-      // under higher-level floors.
-      for (const run of steps) {
-        if (run.z !== z) continue
-        const stepGroup = new Konva.Group()
-        if (show3D) {
-          const band = topDownStepFaceRect(run, TILE_PX, FACE_PX)
-          stepGroup.add(new Konva.Rect({ ...band, fill: FACE_COLOR }))
-        }
-        for (const rect of topDownStepRects(run)) {
-          stepGroup.add(new Konva.Rect({
-            x: rect.x * TILE_PX, y: rect.y * TILE_PX,
-            width: rect.width * TILE_PX, height: rect.height * TILE_PX,
-            fill: FLOOR_COLOR,
-            stroke: 'rgba(0,0,0,0.35)',
-            strokeWidth: 1,
-          }))
-        }
-        if (run.id === selectedStepId) {
-          const tiles = stepRunTiles(run)
-          const minC = Math.min(...tiles.map(t => t.col))
-          const minR = Math.min(...tiles.map(t => t.row))
-          const maxC = Math.max(...tiles.map(t => t.col))
-          const maxR = Math.max(...tiles.map(t => t.row))
-          stepGroup.add(new Konva.Rect({
-            x: minC * TILE_PX - 1, y: minR * TILE_PX - 1,
-            width: (maxC - minC + 1) * TILE_PX + 2, height: (maxR - minR + 1) * TILE_PX + 2,
-            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
-          }))
-        }
-        stepGroup.on('mousedown', (e) => {
-          e.cancelBubble = true
-          if (e.evt.button === 2 && run.id === selectedStepId) {
-            setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, run.id) }))
-            setSelectedStepId(null)
-          } else {
-            setSelectedStampId(null)
-            setSelectedRampId(null)
-            setSelectedStepId(run.id)
-          }
-        })
-        group.add(stepGroup)
-      }
-
-      // Ramps render like steps: a single footprint rect with an exposed-edge face.
-      for (const run of ramps) {
-        if (run.z !== z) continue
-        const rampGroup = new Konva.Group()
-        if (show3D) {
-          const band = topDownRampFaceRect(run, TILE_PX, FACE_PX)
-          rampGroup.add(new Konva.Rect({ ...band, fill: FACE_COLOR }))
-        }
-        const rect = topDownRampRect(run)
-        rampGroup.add(new Konva.Rect({
-          x: rect.x * TILE_PX, y: rect.y * TILE_PX,
-          width: rect.width * TILE_PX, height: rect.height * TILE_PX,
-          fill: FLOOR_COLOR,
-          stroke: 'rgba(0,0,0,0.35)',
-          strokeWidth: 1,
-        }))
-        if (run.id === selectedRampId) {
-          const tiles = rampRunTiles(run)
-          const minC = Math.min(...tiles.map(t => t.col))
-          const minR = Math.min(...tiles.map(t => t.row))
-          const maxC = Math.max(...tiles.map(t => t.col))
-          const maxR = Math.max(...tiles.map(t => t.row))
-          rampGroup.add(new Konva.Rect({
-            x: minC * TILE_PX - 1, y: minR * TILE_PX - 1,
-            width: (maxC - minC + 1) * TILE_PX + 2, height: (maxR - minR + 1) * TILE_PX + 2,
-            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
-          }))
-        }
-        rampGroup.on('mousedown', (e) => {
-          e.cancelBubble = true
-          if (e.evt.button === 2 && run.id === selectedRampId) {
-            setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
-            setSelectedRampId(null)
-          } else {
-            setSelectedStampId(null)
-            setSelectedStepId(null)
-            setSelectedRampId(run.id)
-          }
-        })
-        group.add(rampGroup)
+        group.add(runGroup)
       }
 
       // Crosshatch overlay — Konva.Line nodes so they stay crisp at any zoom
-      if (showHatching) {
+      if (level.hatchPolylines) {
         const hatchGroup = new Konva.Group({
           clipFunc: (ctx) => {
             for (let r = 0; r < rows; r++) {
               for (let c = 0; c < cols; c++) {
-                if (getTile(levelGrid, cols, c, r) === WALL) {
+                if (getTile(level.grid, cols, c, r) === WALL) {
                   ctx.rect(c * TILE_PX, r * TILE_PX, TILE_PX, TILE_PX)
                 }
               }
@@ -748,8 +610,7 @@ export default function App() {
           },
           listening: false,
         })
-        const polylines = buildHatchPolylines(levelGrid, cols, rows, TILE_PX)
-        for (const polyline of polylines) {
+        for (const polyline of level.hatchPolylines) {
           if (polyline.length < 2) continue
           hatchGroup.add(new Konva.Line({
             points: polyline.flat(),
@@ -763,88 +624,19 @@ export default function App() {
       }
 
       // Wall outline
-      if (showWallOutline) {
-        const outlineSegs = buildWallOutlineSegments(levelGrid, cols, rows, TILE_PX)
+      if (level.outline) {
         const outlineGroup = new Konva.Group({ listening: false })
-        if (wallOutlineStyle === 'rough') {
-          const polylines = roughenSegments(mergeOutlineSegments(outlineSegs), OUTLINE_ROUGH_OPTS, 77)
-          const allSegs = polylines.flatMap((pl, i) => varyWidthsAlongStroke(pl, 2, 1, 77 + i))
-          for (const { a, b, width } of allSegs) {
-            outlineGroup.add(new Konva.Line({
-              points: [...a, ...b],
-              stroke: wallOutlineColor,
-              strokeWidth: width,
-              lineCap: 'round',
-              listening: false,
-            }))
-          }
-        } else {
-          for (const polyline of outlineSegs) {
-            if (polyline.length < 2) continue
-            outlineGroup.add(new Konva.Line({
-              points: (polyline as [number, number][]).flat(),
-              stroke: wallOutlineColor,
-              strokeWidth: 2,
-              lineCap: 'round',
-              lineJoin: 'round',
-              listening: false,
-            }))
-          }
-        }
-        group.add(outlineGroup)
-      }
-
-      layer.add(group)
-    }
-
-    // Render Z levels above activeZ as non-interactive ghosts for cross-level alignment
-    const aboveZs = [...zSet].filter(z => z > activeZ).sort((a, b) => a - b)
-    for (const z of aboveZs) {
-      const levelGrid = grids.get(z) ?? createGrid(cols, rows)
-      const ghostOpacity = 0.25 * Math.pow(0.6, z - activeZ - 1)
-      const group = new Konva.Group({ opacity: ghostOpacity, listening: false })
-
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (getTile(levelGrid, cols, c, r) === FLOOR) {
-            group.add(new Konva.Rect({
-              x: c * TILE_PX, y: r * TILE_PX,
-              width: TILE_PX, height: TILE_PX,
-              fill: FLOOR_COLOR,
-            }))
-          } else if (getTile(levelGrid, cols, c, r) === WATER) {
-            group.add(new Konva.Rect({
-              x: c * TILE_PX, y: r * TILE_PX,
-              width: TILE_PX, height: TILE_PX,
-              fill: WATER_COLOR,
-            }))
-          }
-        }
-      }
-
-      for (const run of steps) {
-        if (run.z !== z) continue
-        for (const rect of topDownStepRects(run)) {
-          group.add(new Konva.Rect({
-            x: rect.x * TILE_PX, y: rect.y * TILE_PX,
-            width: rect.width * TILE_PX, height: rect.height * TILE_PX,
-            fill: FLOOR_COLOR,
-            stroke: 'rgba(0,0,0,0.35)',
-            strokeWidth: 1,
+        for (const seg of level.outline.segments) {
+          outlineGroup.add(new Konva.Line({
+            points: seg.points,
+            stroke: level.outline.color,
+            strokeWidth: seg.strokeWidth,
+            lineCap: 'round',
+            lineJoin: 'round',
+            listening: false,
           }))
         }
-      }
-
-      for (const run of ramps) {
-        if (run.z !== z) continue
-        const rect = topDownRampRect(run)
-        group.add(new Konva.Rect({
-          x: rect.x * TILE_PX, y: rect.y * TILE_PX,
-          width: rect.width * TILE_PX, height: rect.height * TILE_PX,
-          fill: FLOOR_COLOR,
-          stroke: 'rgba(0,0,0,0.35)',
-          strokeWidth: 1,
-        }))
+        group.add(outlineGroup)
       }
 
       layer.add(group)
@@ -859,142 +651,95 @@ export default function App() {
     if (!layer || !stampImages) return
     layer.destroyChildren()
 
-    for (const stamp of stamps) {
-      const sz = stampSize(stamp.type)
-      const w = sz.cols * TILE_PX
-      const h = sz.rows * TILE_PX
+    const items = buildStampScene({ stamps, selectedStampId, stampImages, activeZ, tilePx: TILE_PX, showIso })
+
+    for (const item of items) {
+      const stamp = stamps.find(s => s.id === item.id)!
       const imgEl = stampImages.get(stamp.type)!
+      const v = item.variant
 
-      if (showIso) {
-        const isoCenter = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, TILE_PX * 2, TILE_PX)
-        const isoBottom = isoProject(stamp.col + sz.cols, stamp.row + sz.rows, TILE_PX * 2, TILE_PX)
-        if (isObjectStamp(stamp)) {
-          // Billboard: base anchored at tile bottom corner so the object sits on the floor.
-          const sc = stamp.scale ?? 1
-          const bw = sz.cols * TILE_PX * 2 * sc
-          const billboardH = imgEl.naturalWidth > 0 ? Math.round(bw * imgEl.naturalHeight / imgEl.naturalWidth) : h * sc
-          const pivotX = isoCenter.x
-          const zOffsetY = -stamp.z * Z_STEP_HEIGHT
-          const pivotY = isoBottom.y - billboardH / 2 + zOffsetY
-          const imgNode = new Konva.Image({
-            image: imgEl,
-            x: pivotX, y: pivotY,
-            width: bw, height: billboardH,
-            offsetX: bw / 2, offsetY: billboardH / 2,
-            rotation: stamp.rotation,
-            scaleX: stamp.mirrored ? -1 : 1,
-          })
-          imgNode.on('mousedown', (e) => {
-            e.cancelBubble = true
-            if (e.evt.button === 2 && stamp.id === selectedStampId) {
-              setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
-              setSelectedStampId(null)
-            } else {
-              setSelectedStepId(null)
-              setSelectedStampId(stamp.id)
-            }
-          })
-          layer.add(imgNode)
-          if (stamp.id === selectedStampId) {
-            layer.add(new Konva.Rect({
-              x: pivotX, y: pivotY,
-              width: bw + 2, height: billboardH + 2,
-              offsetX: (bw + 2) / 2, offsetY: (billboardH + 2) / 2,
-              rotation: stamp.rotation,
-              stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
-            }))
-          }
-        } else {
-          const sc = stamp.scale ?? 1
-          const effectiveW = w * sc
-          const effectiveH = h * sc
-          const t = isoStampTransform(stamp.rotation)
-          const zOffsetY = -stamp.z * Z_STEP_HEIGHT
-          // Group positioned at tile iso center; skewX is applied before the translate.
-          const group = new Konva.Group({
-            x: isoCenter.x, y: isoCenter.y + zOffsetY,
-            rotation: t.rotation,
-            scaleX: stamp.mirrored ? -t.scaleX : t.scaleX,
-            scaleY: t.scaleY,
-            skewX: t.skewX,
-          })
-          group.add(new Konva.Image({ image: imgEl, x: -effectiveW / 2, y: -effectiveH / 2, width: effectiveW, height: effectiveH }))
-          group.on('mousedown', (e) => {
-            e.cancelBubble = true
-            if (e.evt.button === 2 && stamp.id === selectedStampId) {
-              setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
-              setSelectedStampId(null)
-            } else {
-              setSelectedStepId(null)
-              setSelectedStampId(stamp.id)
-            }
-          })
-          if (stamp.id === selectedStampId) {
-            group.add(new Konva.Rect({
-              x: -effectiveW / 2 - 1, y: -effectiveH / 2 - 1,
-              width: effectiveW + 2, height: effectiveH + 2,
-              stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
-            }))
-          }
-          layer.add(group)
-        }
-        continue
-      }
-
-      // Top-down: stamps above activeZ render as non-interactive ghosts for alignment reference
-      const isAbove = stamp.z > activeZ
-      const stampOpacity = isAbove
-        ? 0.25 * Math.pow(0.6, stamp.z - activeZ - 1)
-        : Math.pow(0.5, activeZ - stamp.z)
-      const sc = stamp.scale ?? 1
-      const effectiveW = w * sc
-      const effectiveH = h * sc
-      const x = stamp.col * TILE_PX + w / 2
-      const y = stamp.row * TILE_PX + h / 2
-      const isGhost = isObjectStamp(stamp)
-      const node = new Konva.Image({
-        image: imgEl,
-        x, y,
-        width: effectiveW, height: effectiveH,
-        offsetX: effectiveW / 2, offsetY: effectiveH / 2,
-        rotation: stamp.rotation,
-        scaleX: stamp.mirrored ? -1 : 1,
-        draggable: !isGhost && !isAbove,
-        listening: !isAbove,
-        opacity: isAbove ? stampOpacity : (isGhost ? 0.25 * stampOpacity : stampOpacity),
-      })
-      if (!isGhost && !isAbove) {
+      const attachDelete = (node: Konva.Node) => {
         node.on('mousedown', (e) => {
           e.cancelBubble = true
-          if (e.evt.button === 2 && stamp.id === selectedStampId) {
-            setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, stamp.id) }))
-            setSelectedStampId(null)
+          if (e.evt.button === 2 && item.id === selectedStampId) {
+            setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, item.id) }))
+            dispatch({ type: 'SELECT', id: null })
           } else {
-            setSelectedStampId(stamp.id)
+            dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: stamp.type, selectedId: item.id } })
           }
         })
-        node.on('dragend', () => {
-          const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - effectiveW / 2) / TILE_PX)))
-          const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - effectiveH / 2) / TILE_PX)))
-          setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, stamp.id, snappedCol, snappedRow) }))
-        })
       }
-      layer.add(node)
 
-      if (!isGhost && !isAbove && stamp.id === selectedStampId) {
-        layer.add(new Konva.Rect({
-          x,
-          y,
-          width: effectiveW + 2,
-          height: effectiveH + 2,
-          offsetX: (effectiveW + 2) / 2,
-          offsetY: (effectiveH + 2) / 2,
-          rotation: stamp.rotation,
-          stroke: '#ffff00',
-          strokeWidth: 2,
-          fill: 'transparent',
-          listening: false,
-        }))
+      if (v.kind === 'isoBillboard') {
+        const imgNode = new Konva.Image({
+          image: imgEl,
+          x: v.x, y: v.y,
+          width: v.w, height: v.h,
+          offsetX: v.w / 2, offsetY: v.h / 2,
+          rotation: v.rotation,
+          scaleX: v.mirrored ? -1 : 1,
+        })
+        attachDelete(imgNode)
+        layer.add(imgNode)
+        if (item.selectionRect) {
+          const sel = item.selectionRect
+          layer.add(new Konva.Rect({
+            x: v.x, y: v.y,
+            width: sel.w, height: sel.h,
+            offsetX: sel.w / 2, offsetY: sel.h / 2,
+            rotation: v.rotation,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
+      } else if (v.kind === 'isoFloor') {
+        const group = new Konva.Group({
+          x: v.x, y: v.y,
+          rotation: v.rotation,
+          scaleX: v.scaleX, scaleY: v.scaleY, skewX: v.skewX,
+        })
+        group.add(new Konva.Image({ image: imgEl, x: -v.w / 2, y: -v.h / 2, width: v.w, height: v.h }))
+        attachDelete(group)
+        if (item.selected) {
+          group.add(new Konva.Rect({
+            x: -v.w / 2 - 1, y: -v.h / 2 - 1,
+            width: v.w + 2, height: v.h + 2,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
+        layer.add(group)
+      } else {
+        const node = new Konva.Image({
+          image: imgEl,
+          x: v.x, y: v.y,
+          width: v.w, height: v.h,
+          offsetX: v.w / 2, offsetY: v.h / 2,
+          rotation: v.rotation,
+          scaleX: v.mirrored ? -1 : 1,
+          draggable: v.draggable,
+          listening: v.listening,
+          opacity: v.opacity,
+        })
+        if (item.interactive) {
+          attachDelete(node)
+          node.on('dragend', () => {
+            const sz = stampSize(stamp.type)
+            const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - v.w / 2) / TILE_PX)))
+            const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - v.h / 2) / TILE_PX)))
+            setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, item.id, snappedCol, snappedRow) }))
+          })
+        }
+        layer.add(node)
+
+        if (item.selectionRect) {
+          const sel = item.selectionRect
+          layer.add(new Konva.Rect({
+            x: v.x, y: v.y,
+            width: sel.w, height: sel.h,
+            offsetX: sel.w / 2, offsetY: sel.h / 2,
+            rotation: v.rotation,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
       }
     }
 
@@ -1012,11 +757,11 @@ export default function App() {
       return
     }
 
-    if (wallOpacity > 0) {
-      const isLight = isLightColor(wallColor)
+    {
+      const isLight = isLightBackdrop(wallColor, wallOpacity)
       const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
       for (const z of sortedZsForDots) {
-        const levelOpacity = 0.2 * wallOpacity * Math.pow(0.5, activeZ - z)
+        const levelOpacity = 0.2 * Math.pow(0.5, activeZ - z)
         const dotColor = isLight
           ? `rgba(0,0,0,${levelOpacity})`
           : `rgba(255,255,255,${levelOpacity})`
@@ -1089,39 +834,38 @@ export default function App() {
     layer.destroyChildren()
     if (showIso) { layer.batchDraw(); return }
 
-    for (const label of labels) {
-      const displayText = label.number !== undefined ? `${label.number}` : label.text
-      const textWidth = TILE_PX * 4
+    const items = buildLabelScene(labels, selectedLabelId, TILE_PX)
+
+    for (const item of items) {
       const textNode = new Konva.Text({
-        x: label.col * TILE_PX + TILE_PX / 2 - textWidth / 2,
-        y: label.row * TILE_PX + TILE_PX / 2 - 7,
-        width: textWidth,
-        text: displayText,
-        fontSize: label.number !== undefined ? 14 : 10,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        text: item.text,
+        fontSize: item.fontSize,
         fontFamily: 'Arial',
         fill: '#000',
         align: 'center',
       })
       textNode.on('mousedown', (e) => {
         e.cancelBubble = true
-        if (e.evt.button === 2 && label.id === selectedLabelIdRef.current) {
-          setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, label.id) }))
-          setSelectedLabelId(null)
+        const ds = drawingStateRef.current
+        if (e.evt.button === 2 && ds.tool === 'label' && ds.phase === 'idle' && ds.selectedId === item.id) {
+          setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, item.id) }))
+          dispatch({ type: 'SELECT', id: null })
         } else {
-          setSelectedLabelId(label.id)
+          dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: item.id } })
         }
       })
       layer.add(textNode)
 
-      if (label.id === selectedLabelId) {
-        const textX = label.col * TILE_PX + TILE_PX / 2 - textWidth / 2
-        const textY = label.row * TILE_PX + TILE_PX / 2 - 7
-        const fontSize = label.number !== undefined ? 14 : 10
+      if (item.selectionRect) {
+        const sel = item.selectionRect
         layer.add(new Konva.Rect({
-          x: textX - 2,
-          y: textY - 2,
-          width: textWidth + 4,
-          height: fontSize + 4,
+          x: sel.x,
+          y: sel.y,
+          width: sel.w,
+          height: sel.h,
           stroke: '#ffff00',
           strokeWidth: 2,
           fill: 'transparent',
@@ -1134,10 +878,6 @@ export default function App() {
   }, [labels, showIso, selectedLabelId])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
-
-  useEffect(() => { selectedLabelIdRef.current = selectedLabelId }, [selectedLabelId])
-
-  useEffect(() => { if (mode !== 'paint') setLabelMode('none') }, [mode])
 
   useEffect(() => { setShow3D(showIso) }, [showIso])
 
@@ -1281,8 +1021,7 @@ export default function App() {
       setRows(save.rows)
       setWallColor(save.wallColor)
       setWallOpacity(save.wallOpacity)
-      setBrushShape(save.brushShape)
-      brushShapeRef.current = save.brushShape
+      dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape: save.brushShape } })
       setShowGrid(save.showGrid)
       setShow3D(save.show3D)
       setIsoFaceColor(save.isoFaceColor)
@@ -1291,9 +1030,6 @@ export default function App() {
       setShowWallOutline(save.showWallOutline)
       setWallOutlineColor(save.wallOutlineColor)
       setWallOutlineStyle(save.wallOutlineStyle)
-      setSelectedStampId(null)
-      setSelectedStepId(null)
-      setSelectedRampId(null)
       setLoadError(null)
       pendingFitRef.current = true
     } catch (err) {
@@ -1367,12 +1103,12 @@ export default function App() {
           {(['square', 'circle'] as BrushShape[]).map(s => (
             <button
               key={s}
-              onClick={() => { setBrushShape(s); brushShapeRef.current = s; setMode('paint') }}
+              onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })}
               style={{
                 flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: mode === 'paint' && brushShape === s ? '#555' : 'transparent',
+                background: drawingState.tool === 'paint' && brushShape === s ? '#555' : 'transparent',
                 color: '#eee',
-                border: mode === 'paint' && brushShape === s ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+                border: drawingState.tool === 'paint' && brushShape === s ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
                 borderRadius: 4,
               }}
             >
@@ -1382,34 +1118,27 @@ export default function App() {
         </div>
         <button
           onClick={() => {
-            if (mode === 'rough') {
-              setMode('paint')
-              setRoughPhase('idle')
-              roughPhaseRef.current = 'idle'
-              setRoughStart(null)
-              roughStartRef.current = null
-              setRoughEnd(null); roughEndRef.current = null
-              setRoughPreview([]); roughPreviewRef.current = []
-              if (roughBaseGrid.current !== null) {
-                const savedGrid = roughBaseGrid.current
-                roughBaseGrid.current = null
-                setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, savedGrid) } }))
+            const ds = drawingState
+            if (ds.tool === 'rough') {
+              if (ds.phase === 'placed2') {
+                setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
               }
+              dispatch({ type: 'ESCAPE' })
             } else {
-              setMode('rough')
+              dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
             }
           }}
           style={{
             padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: mode === 'rough' ? '#555' : 'transparent',
+            background: drawingState.tool === 'rough' ? '#555' : 'transparent',
             color: '#eee',
-            border: mode === 'rough' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+            border: drawingState.tool === 'rough' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
             borderRadius: 4,
           }}
         >
           ⌇ Cave
         </button>
-        {mode === 'rough' && (
+        {drawingState.tool === 'rough' && (
           <div style={{ fontSize: 11, color: '#aaa' }}>
             {roughPhase === 'idle' && 'Click 1: set start corner'}
             {roughPhase === 'placed1' && 'Click 2: set end corner'}
@@ -1417,35 +1146,41 @@ export default function App() {
           </div>
         )}
         <button
-          onClick={() => setMode(mode === 'steps' ? 'paint' : 'steps')}
+          onClick={() => {
+            if (drawingState.tool === 'steps') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
+            else dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: null } })
+          }}
           style={{
             padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: mode === 'steps' ? '#555' : 'transparent',
+            background: drawingState.tool === 'steps' ? '#555' : 'transparent',
             color: '#eee',
-            border: mode === 'steps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+            border: drawingState.tool === 'steps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
             borderRadius: 4,
           }}
         >
           ≣ Steps
         </button>
-        {mode === 'steps' && (
+        {drawingState.tool === 'steps' && (
           <div style={{ fontSize: 11, color: '#aaa' }}>
             Click: place steps descending Z{activeZ} → Z{activeZ - 1}
           </div>
         )}
         <button
-          onClick={() => setMode(mode === 'ramps' ? 'paint' : 'ramps')}
+          onClick={() => {
+            if (drawingState.tool === 'ramps') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
+            else dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: null } })
+          }}
           style={{
             padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: mode === 'ramps' ? '#555' : 'transparent',
+            background: drawingState.tool === 'ramps' ? '#555' : 'transparent',
             color: '#eee',
-            border: mode === 'ramps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+            border: drawingState.tool === 'ramps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
             borderRadius: 4,
           }}
         >
           ◣ Ramp
         </button>
-        {mode === 'ramps' && (
+        {drawingState.tool === 'ramps' && (
           <div style={{ fontSize: 11, color: '#aaa' }}>
             Click: place ramp descending Z{activeZ} → Z{activeZ - 1}
           </div>
@@ -1460,7 +1195,7 @@ export default function App() {
           ] as { label: string; value: TileState }[]).map(({ label, value }) => (
             <button
               key={value}
-              onClick={() => { setSelectedPaintState(value); selectedPaintStateRef.current = value }}
+              onClick={() => dispatch({ type: 'PAINT_SET_VALUE', paintValue: value })}
               style={{
                 flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
                 background: selectedPaintState === value ? '#555' : 'transparent',
@@ -1481,11 +1216,9 @@ export default function App() {
         <button
           onClick={() => {
             if (labelMode === 'place') {
-              setLabelMode('none')
+              dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: null } })
             } else {
-              setLabelMode('place')
-              setSelectedLabelId(null)
-              setMode('paint')
+              dispatch({ type: 'LABEL_START_PLACING' })
             }
           }}
           style={{
@@ -1524,7 +1257,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, selectedLabelId) }))
-                    setSelectedLabelId(null)
+                    dispatch({ type: 'SELECT', id: null })
                   }}
                   style={{
                     flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
@@ -1615,7 +1348,17 @@ export default function App() {
         )}
 
         {/* ── STAMPS ── */}
-        <StampPicker mode={mode} showIso={showIso} onModeChange={setMode} />
+        <StampPicker
+          mode={mode}
+          showIso={showIso}
+          onModeChange={newMode => {
+            if (newMode === 'paint' || newMode === 'rough' || newMode === 'steps' || newMode === 'ramps') {
+              dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+            } else {
+              dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: newMode, selectedId: null } })
+            }
+          }}
+        />
         {selectedStampId && (() => {
           const sel = stamps.find(s => s.id === selectedStampId)
           const currentScale = sel?.scale ?? 1
@@ -1864,7 +1607,7 @@ export default function App() {
         onMouseLeave={() => setHoverTile(null)}
         onWheel={handleWheel}
         onContextMenu={e => e.evt.preventDefault()}
-        style={{ cursor: showIso && (mode === 'paint' || mode === 'rough') ? 'not-allowed' : mode === 'paint' ? 'crosshair' : 'cell' }}
+        style={{ cursor: showIso && (drawingState.tool === 'paint' || drawingState.tool === 'rough') ? 'not-allowed' : drawingState.tool === 'paint' ? 'crosshair' : 'cell' }}
       >
         <Layer ref={layerRef} />
         <Layer ref={stampLayerRef} />
@@ -1875,9 +1618,13 @@ export default function App() {
   )
 }
 
-function isLightColor(hex: string): boolean {
+// The wall fill is painted over a white page background at `opacity`, so the
+// backdrop dots must contrast against is a blend toward white as opacity drops
+// (e.g. a black wall preset at 0 opacity reads as white, not black).
+function isLightBackdrop(hex: string, opacity: number): boolean {
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
-  return (r * 299 + g * 587 + b * 114) / 1000 > 128
+  const blend = (channel: number) => channel * opacity + 255 * (1 - opacity)
+  return (blend(r) * 299 + blend(g) * 587 + blend(b) * 114) / 1000 > 128
 }
