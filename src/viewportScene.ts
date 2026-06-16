@@ -319,14 +319,13 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
     const effectiveH = h * sc
     const x = stamp.col * tilePx + w / 2
     const y = stamp.row * tilePx + h / 2
-    const isGhost = isObjectStamp(stamp)
-    const interactive = !isGhost && !isAbove
+    const interactive = !isAbove
     items.push({
       id: stamp.id, stampType: stamp.type, selected: interactive && selected, interactive,
       variant: {
         kind: 'topdown', x, y, w: effectiveW, h: effectiveH, rotation: stamp.rotation, mirrored: !!stamp.mirrored,
-        opacity: isAbove ? stampOpacity : (isGhost ? 0.25 * stampOpacity : stampOpacity),
-        draggable: !isGhost && !isAbove,
+        opacity: stampOpacity,
+        draggable: !isAbove,
         listening: !isAbove,
       },
       selectionRect: interactive && selected

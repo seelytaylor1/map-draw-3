@@ -4,7 +4,16 @@ import secretDoorUrl from './stamps/secret-door.svg?url'
 import trapUrl from './stamps/trap.svg?url'
 import starUrl from './stamps/star.svg?url'
 import barsUrl from './stamps/bars.svg?url'
-import archwayUrl from './stamps/archway.svg?url'
+import isoArchwayUrl from './iso-objects/archway.svg?url'
+import isoBigpillarUrl from './iso-objects/bigpillar.svg?url'
+import isoIronDoorUrl from './iso-objects/iron-door.svg?url'
+import isoPassagewayArchUrl from './iso-objects/passageway-arch.svg?url'
+import isoPillarUrl from './iso-objects/pillar.svg?url'
+import isoPortculisUrl from './iso-objects/portculis.svg?url'
+import isoRampUrl from './iso-objects/ramp.svg?url'
+import isoWellUrl from './iso-objects/well.svg?url'
+import isoWoodDoorUrl from './iso-objects/wood-door.svg?url'
+import isoWoodDoubledoorUrl from './iso-objects/wood-doubledoor.svg?url'
 
 export type Mode = 'paint' | 'rough' | 'steps' | 'ramps' | StampType | ObjectStampType
 
@@ -25,16 +34,16 @@ export const FLOOR_STAMP_LABELS: Record<StampType, string> = {
 }
 
 const OBJECT_STAMP_URLS: Record<ObjectStampType, string> = {
-  archway: archwayUrl,
-  bigpillar: archwayUrl,
-  'iron-door': archwayUrl,
-  'passageway-arch': archwayUrl,
-  pillar: archwayUrl,
-  portculis: archwayUrl,
-  ramp: archwayUrl,
-  well: archwayUrl,
-  'wood-door': archwayUrl,
-  'wood-doubledoor': archwayUrl,
+  archway: isoArchwayUrl,
+  bigpillar: isoBigpillarUrl,
+  'iron-door': isoIronDoorUrl,
+  'passageway-arch': isoPassagewayArchUrl,
+  pillar: isoPillarUrl,
+  portculis: isoPortculisUrl,
+  ramp: isoRampUrl,
+  well: isoWellUrl,
+  'wood-door': isoWoodDoorUrl,
+  'wood-doubledoor': isoWoodDoubledoorUrl,
 }
 
 export const OBJECT_STAMP_LABELS: Record<ObjectStampType, string> = {
@@ -52,61 +61,46 @@ export const OBJECT_STAMP_LABELS: Record<ObjectStampType, string> = {
 
 interface Props {
   mode: Mode
-  showIso: boolean
   onModeChange: (mode: Mode) => void
 }
 
-export function StampPicker({ mode, showIso, onModeChange }: Props) {
+export function StampPicker({ mode, onModeChange }: Props) {
   const isStampMode = mode !== 'paint' && mode !== 'rough' && mode !== 'steps'
   const isFloorMode = isStampMode && (STAMP_TYPES as string[]).includes(mode)
   const isObjectMode = isStampMode && (OBJECT_STAMP_TYPES as string[]).includes(mode)
 
   return (
     <>
-      <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Floors</div>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      <div className="label-dim" style={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.08em' }}>Floors</div>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
         {STAMP_TYPES.map(type => (
           <button
             key={type}
             title={FLOOR_STAMP_LABELS[type]}
+            className={`stamp-btn${mode === type ? ' active' : ''}`}
             onClick={() => onModeChange(mode === type ? 'paint' : type)}
-            style={{
-              width: 32, height: 32, padding: 2, cursor: 'pointer',
-              background: mode === type ? '#555' : 'transparent',
-              border: mode === type ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
           >
-            <img src={FLOOR_STAMP_URLS[type]} alt={FLOOR_STAMP_LABELS[type]} style={{ width: 20, height: 20, imageRendering: 'crisp-edges' }} />
+            <img src={FLOOR_STAMP_URLS[type]} alt={FLOOR_STAMP_LABELS[type]} />
           </button>
         ))}
       </div>
 
-      <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 4 }}>Objects</div>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      <div className="label-dim" style={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.08em' }}>Objects</div>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
         {OBJECT_STAMP_TYPES.map(type => (
           <button
             key={type}
             title={OBJECT_STAMP_LABELS[type]}
-            disabled={!showIso}
+            className={`stamp-btn${mode === type ? ' active' : ''}`}
             onClick={() => onModeChange(mode === type ? 'paint' : type)}
-            style={{
-              width: 32, height: 32, padding: 2, cursor: showIso ? 'pointer' : 'not-allowed',
-              background: mode === type ? '#555' : 'transparent',
-              border: mode === type ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-              opacity: showIso ? 1 : 0.4,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
           >
-            <img src={OBJECT_STAMP_URLS[type]} alt={OBJECT_STAMP_LABELS[type]} style={{ width: 20, height: 20, imageRendering: 'crisp-edges' }} />
+            <img src={OBJECT_STAMP_URLS[type]} alt={OBJECT_STAMP_LABELS[type]} />
           </button>
         ))}
       </div>
 
       {isStampMode && (
-        <div style={{ fontSize: 11, color: '#aaa' }}>
+        <div className="hint">
           Placing: {isFloorMode ? FLOOR_STAMP_LABELS[mode as StampType] : isObjectMode ? OBJECT_STAMP_LABELS[mode as ObjectStampType] : ''} — click map to place
         </div>
       )}

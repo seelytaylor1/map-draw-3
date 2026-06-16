@@ -43,7 +43,7 @@ A placeable symbol snapped to the Tile Grid. Each Stamp type has a fixed size in
 A Stamp that renders flat on the floor plane. Types: door, trap, star, bars, stairs. Rendered as an SVG icon in both Top-Down View and Iso View. In Iso View, the icon is skew-transformed to lie on the isometric floor surface.
 
 ## Object Stamp
-A Stamp representing an upright dungeon prop. Types: archway, bigpillar, iron-door, passageway-arch, pillar, portculis, ramp, well, wood-door, wood-doubledoor. In Iso View, rendered as a Billboard anchored to the tile's front-bottom corner so it appears to stand on the floor. In Top-Down View, rendered as a ghost (reduced opacity) since the object has no meaningful top-down representation.
+A Stamp representing an upright dungeon prop. Types: archway, bigpillar, iron-door, passageway-arch, pillar, portculis, ramp, well, wood-door, wood-doubledoor. Can be placed and edited in both views. In Iso View, rendered as a Billboard anchored to the tile's front-bottom corner so it appears to stand on the floor. In Top-Down View, rendered the same as a Floor Stamp — full opacity, selectable, draggable.
 
 ## Billboard
 The render mode for Object Stamps in Iso View. The SVG is drawn upright, facing the viewer, with its base aligned to the front-bottom corner of the tile's isometric diamond.

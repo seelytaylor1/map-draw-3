@@ -25,6 +25,14 @@ import {
   type DrawingState, type BrushShape, type Tile,
 } from './drawingState'
 import { buildTileScene, buildStampScene, buildLabelScene } from './viewportScene'
+import './ui/theme.css'
+import { Section, ToolButton, IconToggle, Segmented, ColorField, Btn } from './ui/controls'
+import {
+  IconCompass, IconLayers, IconMinus, IconPlus, IconHash, IconCube,
+  IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconEraser, IconCave,
+  IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
+  IconStampFloor, IconSave, IconFolder, IconImage,
+} from './ui/icons'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -1060,542 +1068,295 @@ export default function App() {
       }}
     >
       {/* Toolbar */}
-      <div style={{
-        position: 'absolute', top: 12, left: 12, zIndex: 10,
-        background: 'rgba(30,30,30,0.9)', color: '#eee',
-        borderRadius: 8, padding: '10px 14px',
-        display: 'flex', flexDirection: 'column', gap: 8,
-        fontSize: 12, userSelect: 'none', minWidth: 190,
-      }}>
+      <div className="toolbar" style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, userSelect: 'none' }}>
+        <div className="toolbar-title"><IconCompass size={15} /> Map Draw</div>
 
-        {/* ── Z LEVEL ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Z Level</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button
-            onClick={() => setActiveZ(z => z - 1)}
-            style={{
-              width: 28, padding: '4px 0', fontSize: 13, cursor: 'pointer',
-              background: 'transparent', color: '#eee',
-              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-            }}
-          >
-            −
-          </button>
-          <span style={{ flex: 1, textAlign: 'center', color: '#eee', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-            {activeZ}
-          </span>
-          <button
-            onClick={() => setActiveZ(z => z + 1)}
-            style={{
-              width: 28, padding: '4px 0', fontSize: 13, cursor: 'pointer',
-              background: 'transparent', color: '#eee',
-              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-            }}
-          >
-            +
-          </button>
-        </div>
-        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
+        <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
+          <div className="stepper">
+            <button onClick={() => setActiveZ(z => z - 1)}><IconMinus size={13} /></button>
+            <span className="z-value">Z{activeZ}</span>
+            <button onClick={() => setActiveZ(z => z + 1)}><IconPlus size={13} /></button>
+          </div>
+          <div className="row">
+            <div style={{ flex: 1 }}>
+              <ToolButton icon={<IconHash size={14} />} label="Grid" active={showGrid} onClick={() => setShowGrid(v => !v)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
+            </div>
+          </div>
+          {showIso && <div className="hint" style={{ borderLeftColor: 'var(--iso)', color: 'var(--iso)' }}>Preview only — drawing disabled</div>}
+        </Section>
 
-        {/* ── TOOLS ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tools</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {(['square', 'circle'] as BrushShape[]).map(s => (
-            <button
-              key={s}
-              onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })}
-              style={{
-                flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: drawingState.tool === 'paint' && brushShape === s ? '#555' : 'transparent',
-                color: '#eee',
-                border: drawingState.tool === 'paint' && brushShape === s ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-                borderRadius: 4,
-              }}
-            >
-              {s === 'square' ? '▪ Square' : '● Circle'}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => {
-            const ds = drawingState
-            if (ds.tool === 'rough') {
-              if (ds.phase === 'placed2') {
-                setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
+        <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
+          <Segmented
+            value={brushShape}
+            onChange={(s: BrushShape) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })}
+            options={[
+              { value: 'square', label: 'Square', icon: <IconSquareBrush size={13} /> },
+              { value: 'circle', label: 'Circle', icon: <IconCircleBrush size={13} /> },
+            ]}
+          />
+          <Segmented
+            value={selectedPaintState}
+            onChange={(v: TileState) => dispatch({ type: 'PAINT_SET_VALUE', paintValue: v })}
+            tones={{ [WATER]: 'water', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'erase'>>}
+            options={[
+              { value: FLOOR as TileState, label: 'Floor', icon: <IconFloor size={13} /> },
+              { value: WATER as TileState, label: 'Water', icon: <IconDroplet size={13} /> },
+              { value: WALL as TileState, label: 'Erase', icon: <IconEraser size={13} /> },
+            ]}
+          />
+          <ToolButton
+            icon={<IconCave size={14} />}
+            label="Cave"
+            active={drawingState.tool === 'rough'}
+            onClick={() => {
+              const ds = drawingState
+              if (ds.tool === 'rough') {
+                if (ds.phase === 'placed2') {
+                  setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
+                }
+                dispatch({ type: 'ESCAPE' })
+              } else {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
               }
-              dispatch({ type: 'ESCAPE' })
-            } else {
-              dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
-            }
-          }}
-          style={{
-            padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: drawingState.tool === 'rough' ? '#555' : 'transparent',
-            color: '#eee',
-            border: drawingState.tool === 'rough' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-            borderRadius: 4,
-          }}
-        >
-          ⌇ Cave
-        </button>
-        {drawingState.tool === 'rough' && (
-          <div style={{ fontSize: 11, color: '#aaa' }}>
-            {roughPhase === 'idle' && 'Click 1: set start corner'}
-            {roughPhase === 'placed1' && 'Click 2: set end corner'}
-            {roughPhase === 'placed2' && 'Move to adjust edges · Click 3: commit · Esc: cancel'}
-          </div>
-        )}
-        <button
-          onClick={() => {
-            if (drawingState.tool === 'steps') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
-            else dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: null } })
-          }}
-          style={{
-            padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: drawingState.tool === 'steps' ? '#555' : 'transparent',
-            color: '#eee',
-            border: drawingState.tool === 'steps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-            borderRadius: 4,
-          }}
-        >
-          ≣ Steps
-        </button>
-        {drawingState.tool === 'steps' && (
-          <div style={{ fontSize: 11, color: '#aaa' }}>
-            Click: place steps descending Z{activeZ} → Z{activeZ - 1}
-          </div>
-        )}
-        <button
-          onClick={() => {
-            if (drawingState.tool === 'ramps') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
-            else dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: null } })
-          }}
-          style={{
-            padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: drawingState.tool === 'ramps' ? '#555' : 'transparent',
-            color: '#eee',
-            border: drawingState.tool === 'ramps' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-            borderRadius: 4,
-          }}
-        >
-          ◣ Ramp
-        </button>
-        {drawingState.tool === 'ramps' && (
-          <div style={{ fontSize: 11, color: '#aaa' }}>
-            Click: place ramp descending Z{activeZ} → Z{activeZ - 1}
-          </div>
-        )}
+            }}
+          />
+          {drawingState.tool === 'rough' && (
+            <div className="hint">
+              {roughPhase === 'idle' && 'Click 1: set start corner'}
+              {roughPhase === 'placed1' && 'Click 2: set end corner'}
+              {roughPhase === 'placed2' && 'Move to adjust edges · Click 3: commit · Esc: cancel'}
+            </div>
+          )}
+        </Section>
 
-        {/* Paint state selector: Floor | Water | Erase */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {([
-            { label: '▫ Floor', value: FLOOR as TileState },
-            { label: '~ Water', value: WATER as TileState },
-            { label: '✕ Erase', value: WALL as TileState },
-          ] as { label: string; value: TileState }[]).map(({ label, value }) => (
-            <button
-              key={value}
-              onClick={() => dispatch({ type: 'PAINT_SET_VALUE', paintValue: value })}
-              style={{
-                flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: selectedPaintState === value ? '#555' : 'transparent',
-                color: '#eee',
-                border: selectedPaintState === value ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-                borderRadius: 4,
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Section title="Structures" icon={<IconStairs size={14} />}>
+          <ToolButton
+            icon={<IconStairs size={14} />}
+            label="Steps"
+            active={drawingState.tool === 'steps'}
+            onClick={() => {
+              if (drawingState.tool === 'steps') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
+              else dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: null } })
+            }}
+          />
+          {drawingState.tool === 'steps' && (
+            <div className="hint">Click: place steps descending Z{activeZ} → Z{activeZ - 1}</div>
+          )}
+          {selectedStepId && (
+            <>
+              <Btn onClick={() => setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))}>
+                <IconRotate size={13} /> Rotate Steps
+              </Btn>
+              <div className="hint">R: rotate · Del: delete · Esc: deselect</div>
+            </>
+          )}
+          <ToolButton
+            icon={<IconRamp size={14} />}
+            label="Ramp"
+            active={drawingState.tool === 'ramps'}
+            onClick={() => {
+              if (drawingState.tool === 'ramps') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
+              else dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: null } })
+            }}
+          />
+          {drawingState.tool === 'ramps' && (
+            <div className="hint">Click: place ramp descending Z{activeZ} → Z{activeZ - 1}</div>
+          )}
+          {selectedRampId && (
+            <>
+              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))}>
+                <IconRotate size={13} /> Rotate Ramp
+              </Btn>
+              <div className="hint">R: rotate · Del: delete · Esc: deselect</div>
+            </>
+          )}
+        </Section>
 
-        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
+        <Section title="Stamps" icon={<IconStampFloor size={14} />} defaultOpen>
+          <StampPicker
+            mode={mode}
+            onModeChange={newMode => {
+              if (newMode === 'paint' || newMode === 'rough' || newMode === 'steps' || newMode === 'ramps') {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+              } else {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: newMode, selectedId: null } })
+              }
+            }}
+          />
+          {selectedStampId && (() => {
+            const sel = stamps.find(s => s.id === selectedStampId)
+            const currentScale = sel?.scale ?? 1
+            return (
+              <>
+                <div className="row">
+                  <Btn onClick={() => setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, selectedStampId) }))}>
+                    <IconRotate size={13} /> Rotate
+                  </Btn>
+                  <Btn onClick={() => setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))}>
+                    <IconMirror size={13} /> Mirror
+                  </Btn>
+                </div>
+                <div className="row">
+                  <label className="label-dim" style={{ width: 40 }}>Scale</label>
+                  <input
+                    type="range" min={0.5} max={4} step={0.25} value={currentScale}
+                    onChange={e => {
+                      const v = Number(e.target.value)
+                      setHistory(h => push(h, { ...h.present, stamps: scaleStamp(h.present.stamps, selectedStampId, v) }))
+                    }}
+                  />
+                  <span className="label-dim" style={{ width: 28, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{currentScale}×</span>
+                </div>
+                <div className="hint">R: rotate · E: mirror · Del: delete · Esc: deselect</div>
+              </>
+            )
+          })()}
+        </Section>
 
-        {/* ── LABELS ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Labels</div>
-        <button
-          onClick={() => {
-            if (labelMode === 'place') {
-              dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: null } })
-            } else {
-              dispatch({ type: 'LABEL_START_PLACING' })
-            }
-          }}
-          style={{
-            width: '100%', padding: '4px 0', fontSize: 11, cursor: 'pointer',
-            background: labelMode === 'place' ? '#555' : 'transparent',
-            color: '#eee',
-            border: labelMode === 'place' ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-            borderRadius: 4,
-          }}
-        >
-          + Label
-        </button>
-        {selectedLabelId && (() => {
-          const label = labels.find(l => l.id === selectedLabelId)
-          return label ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <input
-                type="text"
-                value={label.text}
-                onChange={e => setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { text: e.target.value }) }))}
-                placeholder="Label text"
-                style={{ background: '#222', color: '#eee', border: '1px solid #555', borderRadius: 3, padding: '4px', fontSize: 11 }}
-              />
-              <div style={{ display: 'flex', gap: 4 }}>
+        <Section title="Labels" icon={<IconTag size={14} />}>
+          <ToolButton
+            icon={<IconTag size={14} />}
+            label="Add Label"
+            active={labelMode === 'place'}
+            onClick={() => {
+              if (labelMode === 'place') {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: null } })
+              } else {
+                dispatch({ type: 'LABEL_START_PLACING' })
+              }
+            }}
+          />
+          {selectedLabelId && (() => {
+            const label = labels.find(l => l.id === selectedLabelId)
+            return label ? (
+              <>
                 <input
-                  type="number"
-                  value={label.number ?? ''}
-                  onChange={e => {
-                    const parsed = parseInt(e.target.value, 10)
-                    const num = e.target.value === '' || isNaN(parsed) ? undefined : parsed
-                    setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { number: num }) }))
-                  }}
-                  placeholder="Number"
-                  style={{ width: 50, background: '#222', color: '#eee', border: '1px solid #555', borderRadius: 3, padding: '4px', fontSize: 11 }}
+                  className="text-field"
+                  type="text"
+                  value={label.text}
+                  onChange={e => setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { text: e.target.value }) }))}
+                  placeholder="Label text"
                 />
-                <button
-                  onClick={() => {
+                <div className="row">
+                  <input
+                    className="text-field"
+                    type="number"
+                    value={label.number ?? ''}
+                    onChange={e => {
+                      const parsed = parseInt(e.target.value, 10)
+                      const num = e.target.value === '' || isNaN(parsed) ? undefined : parsed
+                      setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { number: num }) }))
+                    }}
+                    placeholder="Number"
+                    style={{ width: 60 }}
+                  />
+                  <Btn variant="danger" onClick={() => {
                     setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, selectedLabelId) }))
                     dispatch({ type: 'SELECT', id: null })
-                  }}
-                  style={{
-                    flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                    background: 'transparent', color: '#eee',
-                    border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ) : null
-        })()}
+                  }}>Delete</Btn>
+                </div>
+              </>
+            ) : null
+          })()}
+        </Section>
 
-        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
+        <Section title="Style" icon={<IconHatch size={14} />}>
+          <div className="row">
+            <IconToggle icon={<IconHatch size={15} />} active={showHatching} onClick={() => setShowHatching(v => !v)} title="Hatching" />
+            {showHatching && <ColorField label="Hatch" value={hatchColor} onChange={setHatchColor} />}
+          </div>
 
-        {/* ── HATCHING ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Hatching</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setShowHatching(v => !v)}
-            style={{
-              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
-              background: showHatching ? '#555' : 'transparent',
-              color: '#eee',
-              border: showHatching ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-            }}
-          >
-            ⌇ Hatch
-          </button>
-          {showHatching && (
-            <input
-              type="color" value={hatchColor}
-              onChange={e => setHatchColor(e.target.value)}
-              style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
+          <div className="row">
+            <IconToggle icon={<IconFrame size={15} />} active={showWallOutline} onClick={() => setShowWallOutline(v => !v)} title="Outline" />
+            {showWallOutline && <ColorField label="Outline" value={wallOutlineColor} onChange={setWallOutlineColor} />}
+          </div>
+          {showWallOutline && (
+            <Segmented
+              value={wallOutlineStyle}
+              onChange={setWallOutlineStyle}
+              options={[
+                { value: 'clean', label: 'Clean' },
+                { value: 'rough', label: 'Rough' },
+              ]}
             />
           )}
-          {showHatching && (
-            <span style={{ color: '#aaa', fontSize: 11 }}>{hatchColor}</span>
-          )}
-        </div>
 
-        {/* ── OUTLINE ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Outline</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setShowWallOutline(v => !v)}
-            style={{
-              padding: '4px 8px', fontSize: 11, cursor: 'pointer',
-              background: showWallOutline ? '#555' : 'transparent',
-              color: '#eee',
-              border: showWallOutline ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-            }}
-          >
-            ◻ Outline
-          </button>
-          {showWallOutline && (
-            <input
-              type="color" value={wallOutlineColor}
-              onChange={e => setWallOutlineColor(e.target.value)}
-              style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
-            />
-          )}
-          {showWallOutline && (
-            <span style={{ color: '#aaa', fontSize: 11 }}>{wallOutlineColor}</span>
-          )}
-        </div>
-        {showWallOutline && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['clean', 'rough'] as const).map(s => (
+          <div className="row" style={{ marginTop: 4 }}>
+            {WALL_PRESETS.map(p => (
               <button
-                key={s}
-                onClick={() => setWallOutlineStyle(s)}
+                key={p.label}
+                onClick={() => applyPreset(p)}
+                title={p.label}
+                className="btn"
                 style={{
-                  flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                  background: wallOutlineStyle === s ? '#555' : 'transparent',
-                  color: '#eee',
-                  border: wallOutlineStyle === s ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-                  borderRadius: 4,
+                  background: p.opacity === 0 ? 'rgba(255,255,255,0.03)' : p.color,
+                  color: p.color === '#000000' ? '#fff' : '#222',
+                  borderColor: wallColor === p.color && wallOpacity === p.opacity ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
+                  outline: p.opacity === 0 ? '1px dashed rgba(255,255,255,0.25)' : 'none',
+                  outlineOffset: -1,
                 }}
               >
-                {s === 'clean' ? '— Clean' : '⌇ Rough'}
+                {p.label}
               </button>
             ))}
           </div>
-        )}
 
-        {/* ── STAMPS ── */}
-        <StampPicker
-          mode={mode}
-          showIso={showIso}
-          onModeChange={newMode => {
-            if (newMode === 'paint' || newMode === 'rough' || newMode === 'steps' || newMode === 'ramps') {
-              dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
-            } else {
-              dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: newMode, selectedId: null } })
-            }
-          }}
-        />
-        {selectedStampId && (() => {
-          const sel = stamps.find(s => s.id === selectedStampId)
-          const currentScale = sel?.scale ?? 1
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <button
-                onClick={() => setHistory(h => push(h, { ...h.present, stamps: rotateStamp(h.present.stamps, selectedStampId) }))}
-                style={{
-                  padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                  background: 'transparent', color: '#eee',
-                  border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-                }}
-              >
-                ↻ Rotate
-              </button>
-              <button
-                onClick={() => setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))}
-                style={{
-                  padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                  background: 'transparent', color: '#eee',
-                  border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-                }}
-              >
-                ⇔ Mirror
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <label style={{ width: 36, color: '#aaa', fontSize: 11 }}>Scale</label>
-                <input
-                  type="range" min={0.5} max={4} step={0.25} value={currentScale}
-                  onChange={e => {
-                    const v = Number(e.target.value)
-                    setHistory(h => push(h, { ...h.present, stamps: scaleStamp(h.present.stamps, selectedStampId, v) }))
-                  }}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ color: '#aaa', fontSize: 11, width: 28, textAlign: 'right' }}>{currentScale}×</span>
-              </div>
-              <div style={{ fontSize: 11, color: '#aaa' }}>
-                R: rotate · E: mirror · Del: delete · Esc: deselect
-              </div>
-            </div>
-          )
-        })()}
-        {selectedStepId && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button
-              onClick={() => setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))}
-              style={{
-                padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: 'transparent', color: '#eee',
-                border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-              }}
-            >
-              ↻ Rotate Steps
-            </button>
-            <div style={{ fontSize: 11, color: '#aaa' }}>
-              R: rotate · Del: delete · Esc: deselect
-            </div>
+          <ColorField label="Wall" value={wallColor} onChange={setWallColor} />
+          {showIso && <ColorField label="Face" value={isoFaceColor} onChange={setIsoFaceColor} />}
+
+          <div className="row">
+            <label className="label-dim" style={{ width: 56 }}>Opacity</label>
+            <input type="range" min={0} max={1} step={0.01} value={wallOpacity} onChange={e => setWallOpacity(Number(e.target.value))} />
+            <span className="label-dim" style={{ width: 30, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{Math.round(wallOpacity * 100)}%</span>
           </div>
-        )}
-        {selectedRampId && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button
-              onClick={() => setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))}
-              style={{
-                padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: 'transparent', color: '#eee',
-                border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-              }}
-            >
-              ↻ Rotate Ramp
-            </button>
-            <div style={{ fontSize: 11, color: '#aaa' }}>
-              R: rotate · Del: delete · Esc: deselect
-            </div>
-          </div>
-        )}
+        </Section>
 
-        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
-
-        {/* ── SETTINGS ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Settings</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={() => setShowGrid(v => !v)}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-              background: showGrid ? '#555' : 'transparent',
-              color: '#eee',
-              border: showGrid ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-            }}
-          >
-            # Grid
-          </button>
-          <button
-            onClick={() => setShowIso(v => !v)}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-              background: showIso ? '#4a3a6a' : 'transparent',
-              color: '#eee',
-              border: showIso ? '2px solid #bf9fff' : '2px solid rgba(255,255,255,0.2)',
-              borderRadius: 4,
-            }}
-          >
-            ⬡ Iso
-          </button>
-        </div>
-        {showIso && (
-          <div style={{ fontSize: 11, color: '#bf9fff' }}>Preview only — drawing disabled</div>
-        )}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <label style={{ width: 52, color: '#aaa', fontSize: 11 }}>Canvas</label>
-          <input
-            type="number" min={1} max={36} step={0.5}
-            value={+(cols / TILES_PER_INCH).toFixed(1)}
-            onChange={e => handleWidthChange(Number(e.target.value))}
-            style={{ width: 42, background: '#222', color: '#eee', border: '1px solid #555', borderRadius: 3, padding: '2px 4px' }}
-          />
-          <span style={{ color: '#666' }}>×</span>
-          <input
-            type="number" min={1} max={36} step={0.5}
-            value={+(rows / TILES_PER_INCH).toFixed(1)}
-            onChange={e => handleHeightChange(Number(e.target.value))}
-            style={{ width: 42, background: '#222', color: '#eee', border: '1px solid #555', borderRadius: 3, padding: '2px 4px' }}
-          />
-          <span style={{ color: '#666', fontSize: 10 }}>in</span>
-        </div>
-
-        <div style={{ display: 'flex', gap: 6 }}>
-          {WALL_PRESETS.map(p => (
-            <button
-              key={p.label}
-              onClick={() => applyPreset(p)}
-              title={p.label}
-              style={{
-                flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-                background: p.opacity === 0 ? 'transparent' : p.color,
-                color: p.color === '#000000' ? '#fff' : '#222',
-                border: wallColor === p.color && wallOpacity === p.opacity
-                  ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
-                borderRadius: 4,
-                outline: p.opacity === 0 ? '1px dashed #888' : 'none',
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ width: 52, color: '#aaa', fontSize: 11 }}>Wall</label>
-          <input
-            type="color" value={wallColor}
-            onChange={e => setWallColor(e.target.value)}
-            style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
-          />
-          <span style={{ color: '#aaa', fontSize: 11 }}>{wallColor}</span>
-        </div>
-
-        {showIso && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ width: 52, color: '#aaa', fontSize: 11 }}>Face</label>
+        <Section title="Canvas & File" icon={<IconImage size={14} />} defaultOpen>
+          <div className="row">
+            <label className="label-dim" style={{ width: 44 }}>Size</label>
             <input
-              type="color" value={isoFaceColor}
-              onChange={e => setIsoFaceColor(e.target.value)}
-              style={{ width: 36, height: 22, padding: 0, border: 'none', cursor: 'pointer', background: 'none' }}
+              className="num-field"
+              type="number" min={1} max={36} step={0.5}
+              value={+(cols / TILES_PER_INCH).toFixed(1)}
+              onChange={e => handleWidthChange(Number(e.target.value))}
             />
-            <span style={{ color: '#aaa', fontSize: 11 }}>{isoFaceColor}</span>
+            <span className="label-dim">×</span>
+            <input
+              className="num-field"
+              type="number" min={1} max={36} step={0.5}
+              value={+(rows / TILES_PER_INCH).toFixed(1)}
+              onChange={e => handleHeightChange(Number(e.target.value))}
+            />
+            <span className="label-dim" style={{ fontSize: 10 }}>in</span>
           </div>
-        )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ width: 52, color: '#aaa', fontSize: 11 }}>Opacity</label>
+          <div className="row">
+            <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
+            <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
+          </div>
+          <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
+            <IconImage size={13} /> Export PNG
+          </button>
+
+          {loadError && (
+            <div className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{loadError}</div>
+          )}
+
           <input
-            type="range" min={0} max={1} step={0.01} value={wallOpacity}
-            onChange={e => setWallOpacity(Number(e.target.value))}
-            style={{ flex: 1 }}
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) handleFileLoad(file)
+              e.target.value = ''
+            }}
           />
-          <span style={{ color: '#aaa', fontSize: 11, width: 28, textAlign: 'right' }}>{Math.round(wallOpacity * 100)}%</span>
-        </div>
-
-        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '2px 0' }} />
-
-        {/* ── EXPORT ── */}
-        <div style={{ fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Export</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={handleSave}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-              background: 'transparent', color: '#eee',
-              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-            }}
-          >
-            Save
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-              background: 'transparent', color: '#eee',
-              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-            }}
-          >
-            Load
-          </button>
-          <button
-            onClick={handleExport}
-            style={{
-              flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer',
-              background: 'transparent', color: '#eee',
-              border: '2px solid rgba(255,255,255,0.2)', borderRadius: 4,
-            }}
-          >
-            PNG
-          </button>
-        </div>
-
-        {loadError && (
-          <div style={{ color: '#f88', fontSize: 11, wordBreak: 'break-word' }}>
-            {loadError}
-          </div>
-        )}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          style={{ display: 'none' }}
-          onChange={e => {
-            const file = e.target.files?.[0]
-            if (file) handleFileLoad(file)
-            e.target.value = ''
-          }}
-        />
+        </Section>
       </div>
 
       <Stage

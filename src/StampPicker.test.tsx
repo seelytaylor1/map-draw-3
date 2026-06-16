@@ -15,24 +15,19 @@ afterEach(cleanup)
 
 describe('StampPicker', () => {
   it('renders archway button', () => {
-    render(<StampPicker mode="paint" showIso={true} onModeChange={vi.fn()} />)
+    render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
     expect(screen.getByTitle('Archway')).toBeInTheDocument()
   })
 
-  it('archway button is disabled in flat mode', () => {
-    render(<StampPicker mode="paint" showIso={false} onModeChange={vi.fn()} />)
-    expect(screen.getByTitle('Archway')).toBeDisabled()
-  })
-
-  it('archway button is enabled in ISO mode', () => {
-    render(<StampPicker mode="paint" showIso={true} onModeChange={vi.fn()} />)
+  it('archway button is enabled', () => {
+    render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
     expect(screen.getByTitle('Archway')).not.toBeDisabled()
   })
 
-  it('clicking archway in ISO mode calls onModeChange with archway', async () => {
+  it('clicking archway calls onModeChange with archway', async () => {
     const user = userEvent.setup()
     const onModeChange = vi.fn()
-    render(<StampPicker mode="paint" showIso={true} onModeChange={onModeChange} />)
+    render(<StampPicker mode="paint" onModeChange={onModeChange} />)
     await user.click(screen.getByTitle('Archway'))
     expect(onModeChange).toHaveBeenCalledWith('archway')
   })
