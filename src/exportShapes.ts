@@ -1,4 +1,4 @@
-import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, WALL, WATER_COLOR } from './constants'
+import { DARKNESS_COLOR, FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, LAVA_COLOR, TILE_PX, WALL, WATER_COLOR } from './constants'
 import { getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
@@ -205,6 +205,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
     ramps: [],
     cols, rows, show3D, wallColor, wallOpacity,
     frontFaceColor, eastFaceColor,
+    waterColor: WATER_COLOR, lavaColor: LAVA_COLOR, darknessColor: DARKNESS_COLOR,
     selectedStepId: null, selectedRampId: null,
     tileW: ITW, tileH: ITH,
     facePx: Math.round(FACE_PX * T / TILE_PX),

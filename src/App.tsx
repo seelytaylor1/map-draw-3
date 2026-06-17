@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, type TileState } from './constants'
+import { DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, LAVA_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -478,6 +478,7 @@ export default function App() {
       const shapes = buildIsoScene({
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
+        waterColor: WATER_COLOR, lavaColor: LAVA_COLOR, darknessColor: DARKNESS_COLOR,
       })
       for (const shape of shapes) {
         const node = new Konva.Line({
