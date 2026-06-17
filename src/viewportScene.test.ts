@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildStampScene } from './viewportScene'
+import { buildTileScene, buildStampScene } from './viewportScene'
+import { createGrid, paintTiles } from './grid'
+import { FLOOR, WATER, LAVA, DARKNESS, WATER_COLOR } from './constants'
 import type { Stamp } from './stamps'
 
 const TILE_PX = 60
@@ -62,5 +64,58 @@ describe('buildStampScene — top-down view of object stamps', () => {
 
     expect(items[0].selected).toBe(true)
     expect(items[0].selectionRect).not.toBeNull()
+  })
+})
+
+function tileSceneParams(overrides = {}) {
+  return {
+    grids: new Map([[0, createGrid(3, 3)]]),
+    steps: [],
+    ramps: [],
+    cols: 3,
+    rows: 3,
+    activeZ: 0,
+    tilePx: 20,
+    facePx: 8,
+    show3D: false,
+    showGrid: false,
+    showHatching: false,
+    showWallOutline: false,
+    wallOutlineColor: '#000000',
+    wallOutlineStyle: 'clean' as const,
+    wallColor: '#000000',
+    wallOpacity: 0,
+    selectedStepId: null,
+    selectedRampId: null,
+    waterColor: WATER_COLOR,
+    lavaColor: '#c1440e',
+    darknessColor: '#1a0a2e',
+    ...overrides,
+  }
+}
+
+describe('buildTileScene — fluid tile fill colors', () => {
+  it('water tile uses waterColor param', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], WATER)
+    const grids = new Map([[0, grid]])
+    const { levels } = buildTileScene(tileSceneParams({ grids, waterColor: '#aabbcc' }))
+    const tile = levels[0].tiles.find(t => t.rect.x === 20 && t.rect.y === 20)
+    expect(tile?.fill).toBe('#aabbcc')
+  })
+
+  it('lava tile uses lavaColor param', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 0, row: 0 }], LAVA)
+    const grids = new Map([[0, grid]])
+    const { levels } = buildTileScene(tileSceneParams({ grids, lavaColor: '#ff3300' }))
+    const tile = levels[0].tiles.find(t => t.rect.x === 0 && t.rect.y === 0)
+    expect(tile?.fill).toBe('#ff3300')
+  })
+
+  it('darkness tile uses darknessColor param', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 2, row: 1 }], DARKNESS)
+    const grids = new Map([[0, grid]])
+    const { levels } = buildTileScene(tileSceneParams({ grids, darknessColor: '#220033' }))
+    const tile = levels[0].tiles.find(t => t.rect.x === 40 && t.rect.y === 20)
+    expect(tile?.fill).toBe('#220033')
   })
 })

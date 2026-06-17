@@ -527,6 +527,7 @@ export default function App() {
       show3D, showGrid, showHatching, showWallOutline,
       wallOutlineColor, wallOutlineStyle, wallColor, wallOpacity,
       selectedStepId, selectedRampId,
+      waterColor: WATER_COLOR, lavaColor: LAVA_COLOR, darknessColor: DARKNESS_COLOR,
     })
 
     if (scene.wallBackground) {
