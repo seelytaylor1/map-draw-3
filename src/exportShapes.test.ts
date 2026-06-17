@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildExportShapes } from './exportShapes'
 import { createGrid, paintTiles } from './grid'
-import { FLOOR, FLOOR_COLOR, WATER, WATER_COLOR } from './constants'
+import { FLOOR, FLOOR_COLOR, LAVA, LAVA_COLOR, DARKNESS, DARKNESS_COLOR, WATER, WATER_COLOR } from './constants'
 import { isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints, isoProject } from './iso'
 import { type Stamp } from './stamps'
 import { deriveFaceColors } from './faceColors'
@@ -23,6 +23,9 @@ function baseParams(cols: number, rows: number, grid?: Uint8Array) {
     eastFaceColor: EAST_COLOR,
     stamps: [],
     exportTile: ET,
+    waterColor: WATER_COLOR,
+    lavaColor: LAVA_COLOR,
+    darknessColor: DARKNESS_COLOR,
   }
 }
 
@@ -82,6 +85,24 @@ describe('buildExportShapes – water tiles (top-down)', () => {
     const waterRect = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === WATER_COLOR)
     expect(floorRect).toBeDefined()
     expect(waterRect).toBeDefined()
+  })
+})
+
+// ── Lava and darkness tiles ───────────────────────────────────────────────────
+
+describe('buildExportShapes – lava and darkness tiles (top-down)', () => {
+  it('lava tile produces a rect filled with lavaColor', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 0, row: 0 }], LAVA)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), lavaColor: '#ff4400' })
+    const lava = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === '#ff4400')
+    expect(lava).toMatchObject({ x: 0, y: 0, w: ET, h: ET })
+  })
+
+  it('darkness tile produces a rect filled with darknessColor', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 2 }], DARKNESS)
+    const { shapes } = buildExportShapes({ ...baseParams(3, 3, grid), darknessColor: '#110022' })
+    const dark = shapes.find(s => s.kind === 'rect' && 'fill' in s && s.fill === '#110022')
+    expect(dark).toMatchObject({ x: ET, y: 2 * ET, w: ET, h: ET })
   })
 })
 

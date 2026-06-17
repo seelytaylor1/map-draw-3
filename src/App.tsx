@@ -933,6 +933,9 @@ export default function App() {
       wallOutlineColor,
       wallOutlineStyle,
       exportTile: 60,
+      waterColor: WATER_COLOR,
+      lavaColor: LAVA_COLOR,
+      darknessColor: DARKNESS_COLOR,
     })
 
     const container = document.createElement('div')

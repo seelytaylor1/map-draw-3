@@ -19,6 +19,7 @@ import { buildExportShapes } from './exportShapes'
 import { createGrid } from './grid'
 import type { ImageSpec } from './exportShapes'
 import { deriveFaceColors } from './faceColors'
+import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR } from './constants'
 
 const T = 60     // export tile size — same as handleExport uses
 const ITW = T * 2
@@ -38,6 +39,9 @@ function baseParams(cols = 4, rows = 4) {
     eastFaceColor: EAST_COLOR,
     stamps: [] as any[],
     exportTile: T,
+    waterColor: WATER_COLOR,
+    lavaColor: LAVA_COLOR,
+    darknessColor: DARKNESS_COLOR,
   }
 }
 

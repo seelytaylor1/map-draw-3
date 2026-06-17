@@ -1,4 +1,4 @@
-import { DARKNESS_COLOR, FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, LAVA_COLOR, TILE_PX, WALL, WATER_COLOR } from './constants'
+import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, WALL, LAVA, DARKNESS } from './constants'
 import { getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'
@@ -78,15 +78,18 @@ export type BuildExportParams = {
   wallOutlineColor?: string
   wallOutlineStyle?: 'clean' | 'rough'
   exportTile: number
+  waterColor: string
+  lavaColor: string
+  darknessColor: string
 }
 
 export function buildExportShapes(params: BuildExportParams): ExportLayout {
-  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, exportTile: T } = params
+  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, exportTile: T, waterColor, lavaColor, darknessColor } = params
 
   if (showIso) {
-    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T })
+    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, waterColor, lavaColor, darknessColor })
   }
-  const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T })
+  const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, waterColor, lavaColor, darknessColor })
   if (showHatching && hatchColor) {
     const hatchCanvas = document.createElement('canvas')
     hatchCanvas.width = cols * T
@@ -120,11 +123,12 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
   return layout
 }
 
-function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T }: {
+function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, waterColor, lavaColor, darknessColor }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean; showGrid: boolean
   wallColor: string; wallOpacity: number
   stamps: Stamp[]; T: number
+  waterColor: string; lavaColor: string; darknessColor: string
 }): ExportLayout {
   const canvasW = cols * T
   const canvasH = rows * T
@@ -141,7 +145,13 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
         shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: FLOOR_COLOR })
         break
       case 'water':
-        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: WATER_COLOR })
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: waterColor })
+        break
+      case 'lava':
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: lavaColor })
+        break
+      case 'darkness':
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: darknessColor })
         break
       case 'face':
         if (s.side === 'south') {
@@ -186,12 +196,13 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
   return { canvasW, canvasH, offsetX: 0, shapes }
 }
 
-function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T }: {
+function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, waterColor, lavaColor, darknessColor }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean
   wallColor: string; wallOpacity: number
   frontFaceColor: string; eastFaceColor: string
   stamps: Stamp[]; T: number
+  waterColor: string; lavaColor: string; darknessColor: string
 }): ExportLayout {
   const ITW = T * 2
   const ITH = T
@@ -205,7 +216,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
     ramps: [],
     cols, rows, show3D, wallColor, wallOpacity,
     frontFaceColor, eastFaceColor,
-    waterColor: WATER_COLOR, lavaColor: LAVA_COLOR, darknessColor: DARKNESS_COLOR,
+    waterColor, lavaColor, darknessColor,
     selectedStepId: null, selectedRampId: null,
     tileW: ITW, tileH: ITH,
     facePx: Math.round(FACE_PX * T / TILE_PX),
