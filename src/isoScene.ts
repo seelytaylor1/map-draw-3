@@ -105,8 +105,8 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
           if (p.show3D) {
             const southNeighbor = r + 1 < p.rows ? getTile(grid, p.cols, c, r + 1) : null
             const eastNeighbor = c + 1 < p.cols ? getTile(grid, p.cols, c + 1, r) : null
-            const southExposed = r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === WATER
-            const eastExposed = c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === WATER
+            const southExposed = r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === WATER || southNeighbor === LAVA || southNeighbor === DARKNESS
+            const eastExposed = c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === WATER || eastNeighbor === LAVA || eastNeighbor === DARKNESS
             if (southExposed) {
               shapes.push({ points: isoFrontFacePoints(c, r, p.tileW, p.tileH, facePx), fill: p.frontFaceColor })
             }
