@@ -234,9 +234,13 @@ export function deserialize(raw: unknown): DeserializedMap {
   const showWallOutline = s['showWallOutline'] === true
   const wallOutlineColor = typeof s['wallOutlineColor'] === 'string' ? s['wallOutlineColor'] : '#000000'
   const wallOutlineStyle: 'clean' | 'rough' = s['wallOutlineStyle'] === 'rough' ? 'rough' : 'clean'
-  const waterColor = typeof s['waterColor'] === 'string' ? s['waterColor'] : WATER_COLOR
-  const lavaColor = typeof s['lavaColor'] === 'string' ? s['lavaColor'] : LAVA_COLOR
-  const darknessColor = typeof s['darknessColor'] === 'string' ? s['darknessColor'] : DARKNESS_COLOR
+
+  function isHexColor(v: unknown): v is string {
+    return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
+  }
+  const waterColor = isHexColor(s['waterColor']) ? s['waterColor'] : WATER_COLOR
+  const lavaColor = isHexColor(s['lavaColor']) ? s['lavaColor'] : LAVA_COLOR
+  const darknessColor = isHexColor(s['darknessColor']) ? s['darknessColor'] : DARKNESS_COLOR
 
   return {
     version: 1,
