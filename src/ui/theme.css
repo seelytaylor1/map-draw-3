@@ -25,6 +25,8 @@
 
   --water: #5b9bc1;
   --erase: #c1604a;
+  --lava: #c1440e;
+  --darkness: #4a3580;
   --danger: #c1503c;
 
   --radius: 6px;
@@ -157,6 +159,8 @@
 }
 .segmented button.tone-water.active { background: rgba(91, 155, 193, 0.22); color: #8cc4e8; }
 .segmented button.tone-erase.active { background: rgba(193, 96, 74, 0.22); color: #e08b71; }
+.segmented button.tone-lava.active     { background: rgba(193, 68, 14, 0.22);  color: #e88050; }
+.segmented button.tone-darkness.active { background: rgba(74, 53, 128, 0.22); color: #9a80d0; }
 
 /* tool buttons (full width, icon + label, left accent bar when active) */
 .tool-btn {

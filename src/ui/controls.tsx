@@ -59,7 +59,7 @@ export function Segmented<T extends string | number>({ options, value, onChange,
   options: { value: T; label: string; icon?: ReactNode }[]
   value: T
   onChange: (v: T) => void
-  tones?: Partial<Record<T, 'water' | 'erase'>>
+  tones?: Partial<Record<T, 'water' | 'lava' | 'darkness' | 'erase'>>
 }) {
   return (
     <div className="segmented">

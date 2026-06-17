@@ -48,6 +48,10 @@ export const IconDroplet = (p: IconProps) => (
   <Base {...p}><path d="M12 3c3 4 6 7.2 6 10.5a6 6 0 1 1-12 0C6 10.2 9 7 12 3Z" /></Base>
 )
 
+export const IconFlame = (p: IconProps) => (
+  <Base {...p}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z" /></Base>
+)
+
 export const IconEraser = (p: IconProps) => (
   <Base {...p}>
     <path d="M3 17.5 11.5 9a2 2 0 0 1 2.8 0l3.7 3.7a2 2 0 0 1 0 2.8L13.5 20H7Z" />
