@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, LAVA_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, LAVA, LAVA_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -29,7 +29,7 @@ import './ui/theme.css'
 import { Section, ToolButton, IconToggle, Segmented, ColorField, Btn } from './ui/controls'
 import {
   IconCompass, IconLayers, IconMinus, IconPlus, IconHash, IconCube,
-  IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconEraser, IconCave,
+  IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconFlame, IconEraser, IconCave,
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
 } from './ui/icons'
@@ -42,6 +42,13 @@ const WALL_PRESETS = [
   { label: 'Repro Blue', color: '#A8C8E8', opacity: 1 },
   { label: 'Transparent', color: '#000000', opacity: 0 },
 ]
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${alpha})`
+}
 
 type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[] }
 
@@ -481,7 +488,7 @@ export default function App() {
       const shapes = buildIsoScene({
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
-        waterColor: WATER_COLOR, lavaColor: LAVA_COLOR, darknessColor: DARKNESS_COLOR,
+        waterColor, lavaColor, darknessColor,
       })
       for (const shape of shapes) {
         const node = new Konva.Line({
@@ -530,7 +537,7 @@ export default function App() {
       show3D, showGrid, showHatching, showWallOutline,
       wallOutlineColor, wallOutlineStyle, wallColor, wallOpacity,
       selectedStepId, selectedRampId,
-      waterColor: WATER_COLOR, lavaColor: LAVA_COLOR, darknessColor: DARKNESS_COLOR,
+      waterColor, lavaColor, darknessColor,
     })
 
     if (scene.wallBackground) {
@@ -656,7 +663,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle])
+  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor])
 
   // Stamp layer
   useEffect(() => {
@@ -794,7 +801,11 @@ export default function App() {
       }
     }
 
-    const ghostFill = selectedPaintState === WATER ? 'rgba(107,174,214,0.45)' : GHOST_COLOR
+    const ghostFill =
+      selectedPaintState === WATER    ? hexToRgba(waterColor,    0.45) :
+      selectedPaintState === LAVA     ? hexToRgba(lavaColor,     0.45) :
+      selectedPaintState === DARKNESS ? hexToRgba(darknessColor, 0.45) :
+      GHOST_COLOR
     for (const t of ghostTiles) {
       if (t.col < 0 || t.row < 0 || t.col >= cols || t.row >= rows) continue
       layer.add(new Konva.Rect({
@@ -838,7 +849,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState])
+  }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState, waterColor, lavaColor, darknessColor])
 
   // Labels layer
   useEffect(() => {
@@ -936,9 +947,9 @@ export default function App() {
       wallOutlineColor,
       wallOutlineStyle,
       exportTile: 60,
-      waterColor: WATER_COLOR,
-      lavaColor: LAVA_COLOR,
-      darknessColor: DARKNESS_COLOR,
+      waterColor,
+      lavaColor,
+      darknessColor,
     })
 
     const container = document.createElement('div')
@@ -1111,13 +1122,18 @@ export default function App() {
           <Segmented
             value={selectedPaintState}
             onChange={(v: TileState) => dispatch({ type: 'PAINT_SET_VALUE', paintValue: v })}
-            tones={{ [WATER]: 'water', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'erase'>>}
+            tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
             options={[
-              { value: FLOOR as TileState, label: 'Floor', icon: <IconFloor size={13} /> },
-              { value: WATER as TileState, label: 'Water', icon: <IconDroplet size={13} /> },
-              { value: WALL as TileState, label: 'Erase', icon: <IconEraser size={13} /> },
+              { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} /> },
+              { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} /> },
+              { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} /> },
+              { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} /> },
+              { value: WALL      as TileState, label: 'Erase',    icon: <IconEraser  size={13} /> },
             ]}
           />
+          {selectedPaintState === WATER    && <ColorField label="Water color"    value={waterColor}    onChange={setWaterColor} />}
+          {selectedPaintState === LAVA     && <ColorField label="Lava color"     value={lavaColor}     onChange={setLavaColor} />}
+          {selectedPaintState === DARKNESS && <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} />}
           <ToolButton
             icon={<IconCave size={14} />}
             label="Cave"
