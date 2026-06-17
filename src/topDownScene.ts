@@ -24,10 +24,10 @@ export function buildTopDownShapes(
         if (show3D) {
           const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
           const eastNeighbor  = c + 1 < cols ? getTile(grid, cols, c + 1, r) : null
-          if (r + 1 >= rows || southNeighbor === WALL) {
+          if (r + 1 >= rows || southNeighbor === WALL || southNeighbor === WATER || southNeighbor === LAVA || southNeighbor === DARKNESS) {
             out.push({ kind: 'face', col: c, row: r, side: 'south' })
           }
-          if (c + 1 >= cols || eastNeighbor === WALL) {
+          if (c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === WATER || eastNeighbor === LAVA || eastNeighbor === DARKNESS) {
             out.push({ kind: 'face', col: c, row: r, side: 'east' })
           }
         }

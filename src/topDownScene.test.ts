@@ -82,6 +82,27 @@ describe('buildTopDownShapes: 3D faces', () => {
     const shapes = buildTopDownShapes(g, 3, 3, true)
     expect(shapes).toContainEqual({ kind: 'face', col: 2, row: 1, side: 'east' })
   })
+
+  it('emits a south face when floor is adjacent to water at row+1', () => {
+    let g = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 0 }], FLOOR)
+    g = paintTiles(g, 3, [{ col: 1, row: 1 }], WATER)
+    const shapes = buildTopDownShapes(g, 3, 3, true)
+    expect(shapes).toContainEqual({ kind: 'face', col: 1, row: 0, side: 'south' })
+  })
+
+  it('emits a south face when floor is adjacent to lava at row+1', () => {
+    let g = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 0 }], FLOOR)
+    g = paintTiles(g, 3, [{ col: 1, row: 1 }], LAVA)
+    const shapes = buildTopDownShapes(g, 3, 3, true)
+    expect(shapes).toContainEqual({ kind: 'face', col: 1, row: 0, side: 'south' })
+  })
+
+  it('emits a south face when floor is adjacent to darkness at row+1', () => {
+    let g = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 0 }], FLOOR)
+    g = paintTiles(g, 3, [{ col: 1, row: 1 }], DARKNESS)
+    const shapes = buildTopDownShapes(g, 3, 3, true)
+    expect(shapes).toContainEqual({ kind: 'face', col: 1, row: 0, side: 'south' })
+  })
 })
 
 describe('buildTopDownShapes: shape ordering', () => {

@@ -187,8 +187,10 @@ export function buildTileScene(state: TileSceneState): TileScene {
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           if (getTile(levelGrid, cols, c, r) !== FLOOR) continue
-          const southWall = r + 1 >= rows || getTile(levelGrid, cols, c, r + 1) === WALL
-          const eastWall = c + 1 >= cols || getTile(levelGrid, cols, c + 1, r) === WALL
+          const southN = r + 1 < rows ? getTile(levelGrid, cols, c, r + 1) : null
+          const eastN  = c + 1 < cols ? getTile(levelGrid, cols, c + 1, r) : null
+          const southWall = r + 1 >= rows || southN === WALL || southN === WATER || southN === LAVA || southN === DARKNESS
+          const eastWall = c + 1 >= cols || eastN === WALL || eastN === WATER || eastN === LAVA || eastN === DARKNESS
           if (southWall) faces.push(rect(c, r + 1, 1, facePx / tilePx, tilePx))
           if (eastWall) faces.push(rect(c + 1, r, facePx / tilePx, 1, tilePx))
         }
