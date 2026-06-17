@@ -1,4 +1,4 @@
-import { FACE_PX, FLOOR, FLOOR_COLOR, WALL, WATER, WATER_COLOR, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
+import { DARKNESS, FACE_PX, FLOOR, FLOOR_COLOR, LAVA, WALL, WATER, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
@@ -20,6 +20,9 @@ export interface IsoSceneParams {
   facePx?: number
   frontFaceColor: string
   eastFaceColor: string
+  waterColor: string
+  lavaColor: string
+  darknessColor: string
 }
 
 export interface IsoShape {
@@ -43,6 +46,26 @@ interface Renderable {
 function offsetY(points: number[], yOff: number): number[] {
   if (yOff === 0) return points
   return points.map((v, i) => (i % 2 === 1 ? v + yOff : v))
+}
+
+function buildFluidShapes(
+  c: number, r: number, color: string,
+  tileW: number, tileH: number, facePx: number,
+  show3D: boolean, grid: Uint8Array, cols: number, rows: number,
+): IsoShape[] {
+  const waterFaceH = facePx - WATER_OFFSET_Y
+  const shapes: IsoShape[] = [{ points: isoWaterPoints(c, r, tileW, tileH), fill: color }]
+  if (show3D) {
+    const southNeighbor = r + 1 < rows ? getTile(grid, cols, c, r + 1) : null
+    const eastNeighbor  = c + 1 < cols ? getTile(grid, cols, c + 1, r) : null
+    if (r + 1 >= rows || southNeighbor === WALL || southNeighbor === FLOOR) {
+      shapes.push({ points: offsetY(isoFrontFacePoints(c, r, tileW, tileH, waterFaceH), WATER_OFFSET_Y), fill: color })
+    }
+    if (c + 1 >= cols || eastNeighbor === WALL || eastNeighbor === FLOOR) {
+      shapes.push({ points: offsetY(isoEastFacePoints(c, r, tileW, tileH, waterFaceH), WATER_OFFSET_Y), fill: color })
+    }
+  }
+  return shapes
 }
 
 export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
@@ -93,19 +116,11 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
           }
           items.push({ depth: c + r + 1, shapes })
         } else if (state === WATER) {
-          const shapes: IsoShape[] = [{ points: isoWaterPoints(c, r, p.tileW, p.tileH), fill: WATER_COLOR }]
-          if (p.show3D) {
-            const waterFaceH = facePx - WATER_OFFSET_Y
-            const southNeighbor = r + 1 < p.rows ? getTile(grid, p.cols, c, r + 1) : null
-            const eastNeighbor = c + 1 < p.cols ? getTile(grid, p.cols, c + 1, r) : null
-            if (r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === FLOOR) {
-              shapes.push({ points: offsetY(isoFrontFacePoints(c, r, p.tileW, p.tileH, waterFaceH), WATER_OFFSET_Y), fill: WATER_COLOR })
-            }
-            if (c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === FLOOR) {
-              shapes.push({ points: offsetY(isoEastFacePoints(c, r, p.tileW, p.tileH, waterFaceH), WATER_OFFSET_Y), fill: WATER_COLOR })
-            }
-          }
-          items.push({ depth: c + r + 1, shapes })
+          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.waterColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
+        } else if (state === LAVA) {
+          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.lavaColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
+        } else if (state === DARKNESS) {
+          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.darknessColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
         }
       }
     }

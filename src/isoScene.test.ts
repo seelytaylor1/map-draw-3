@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildIsoScene, type IsoSceneParams } from './isoScene'
 import { createGrid, paintTiles } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
-import { FACE_PX, FLOOR, FLOOR_COLOR, WATER, WATER_COLOR, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
+import { FACE_PX, FLOOR, FLOOR_COLOR, LAVA, DARKNESS, WATER, WATER_COLOR, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
 import { STEP_TREAD_COUNT, isoStepTreads, type StepRun } from './steps'
 import { isoRampSurface, type RampRun } from './ramps'
 import { deriveFaceColors } from './faceColors'
@@ -36,6 +36,9 @@ function params(overrides: Partial<IsoSceneParams> = {}): IsoSceneParams {
     tileH: TILE_H,
     frontFaceColor: FRONT_COLOR,
     eastFaceColor: EAST_COLOR,
+    waterColor: WATER_COLOR,
+    lavaColor: '#c1440e',
+    darknessColor: '#1a0a2e',
     ...overrides,
   }
 }
@@ -109,6 +112,43 @@ describe('buildIsoScene: tile emission', () => {
     expect(shapes.length).toBe(6)
     const southWaterFace = shiftY(isoFrontFacePoints(3, 3, TILE_W, TILE_H, waterFaceH), WATER_OFFSET_Y)
     expect(shapes.some(s => JSON.stringify(s.points) === JSON.stringify(southWaterFace) && s.fill === WATER_COLOR)).toBe(true)
+  })
+
+  it('water tile uses the waterColor param instead of the default', () => {
+    const grid = paintTiles(createGrid(8, 8), 8, [{ col: 2, row: 2 }], WATER)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: false, waterColor: '#ff0000' }))
+    expect(shapes[0].fill).toBe('#ff0000')
+  })
+
+  it('lava tile emits the water-surface shape using lavaColor', () => {
+    const grid = paintTiles(createGrid(8, 8), 8, [{ col: 2, row: 2 }], LAVA)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: false, lavaColor: '#c1440e' }))
+    expect(shapes.length).toBe(1)
+    expect(shapes[0].points).toEqual(isoWaterPoints(2, 2, TILE_W, TILE_H))
+    expect(shapes[0].fill).toBe('#c1440e')
+  })
+
+  it('darkness tile emits the water-surface shape using darknessColor', () => {
+    const grid = paintTiles(createGrid(8, 8), 8, [{ col: 3, row: 1 }], DARKNESS)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: false, darknessColor: '#1a0a2e' }))
+    expect(shapes.length).toBe(1)
+    expect(shapes[0].points).toEqual(isoWaterPoints(3, 1, TILE_W, TILE_H))
+    expect(shapes[0].fill).toBe('#1a0a2e')
+  })
+
+  it('show3D lava emits surface + south + east faces when surrounded by walls', () => {
+    const grid = paintTiles(createGrid(8, 8), 8, [{ col: 2, row: 2 }], LAVA)
+    const grids = new Map([[0, grid]])
+    const shapes = buildIsoScene(params({ grids, show3D: true, lavaColor: '#c1440e' }))
+    const waterFaceH = FACE_PX - WATER_OFFSET_Y
+    expect(shapes.length).toBe(3)
+    expect(shapes[0].fill).toBe('#c1440e')
+    expect(shapes[1].points).toEqual(shiftY(isoFrontFacePoints(2, 2, TILE_W, TILE_H, waterFaceH), WATER_OFFSET_Y))
+    expect(shapes[1].fill).toBe('#c1440e')
+    expect(shapes[2].fill).toBe('#c1440e')
   })
 
   it('show3D floor emits its south and east faces immediately after its top', () => {
