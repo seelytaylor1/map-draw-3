@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { serialize, deserialize } from './serialization'
-import { WATER } from './constants'
+import { WATER, WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR } from './constants'
 import { type Stamp } from './stamps'
 import { type StepRun } from './steps'
 import { type RampRun } from './ramps'
@@ -23,6 +23,9 @@ const BASE = {
   showWallOutline: false,
   wallOutlineColor: '#000000',
   wallOutlineStyle: 'clean' as const,
+  waterColor: WATER_COLOR,
+  lavaColor: LAVA_COLOR,
+  darknessColor: DARKNESS_COLOR,
   stamps: [] as Stamp[],
   steps: [] as StepRun[],
   ramps: [] as RampRun[],
@@ -73,6 +76,13 @@ describe('serialize', () => {
   it('does not include grid (old field) in output', () => {
     const save = serialize(BASE)
     expect('grid' in save).toBe(false)
+  })
+
+  it('serializes fluid colors', () => {
+    const save = serialize({ ...BASE, waterColor: '#001122', lavaColor: '#c1440e', darknessColor: '#1a0a2e' })
+    expect(save.waterColor).toBe('#001122')
+    expect(save.lavaColor).toBe('#c1440e')
+    expect(save.darknessColor).toBe('#1a0a2e')
   })
 })
 
@@ -209,6 +219,26 @@ describe('deserialize', () => {
   it('throws on invalid stamp rotation', () => {
     const bad = { ...serialize(BASE), stamps: [{ ...STAMP, rotation: 45 }] }
     expect(() => deserialize(bad)).toThrow('Invalid stamp rotation')
+  })
+
+  it('restores fluid colors from save', () => {
+    const save = serialize({ ...BASE, waterColor: '#aabbcc', lavaColor: '#ff0000', darknessColor: '#000011' })
+    const result = deserialize(save)
+    expect(result.waterColor).toBe('#aabbcc')
+    expect(result.lavaColor).toBe('#ff0000')
+    expect(result.darknessColor).toBe('#000011')
+  })
+
+  it('defaults fluid colors when absent (old save format)', () => {
+    const save = serialize(BASE)
+    const raw = JSON.parse(JSON.stringify(save))
+    delete raw.waterColor
+    delete raw.lavaColor
+    delete raw.darknessColor
+    const result = deserialize(raw)
+    expect(result.waterColor).toBe(WATER_COLOR)
+    expect(result.lavaColor).toBe(LAVA_COLOR)
+    expect(result.darknessColor).toBe(DARKNESS_COLOR)
   })
 })
 

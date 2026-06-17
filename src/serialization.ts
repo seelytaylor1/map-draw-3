@@ -2,6 +2,7 @@ import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type Objec
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
 import { type Label } from './labels'
+import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR } from './constants'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
 const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
@@ -22,6 +23,9 @@ export interface MapSave {
   showWallOutline?: boolean
   wallOutlineColor?: string
   wallOutlineStyle?: 'clean' | 'rough'
+  waterColor?: string
+  lavaColor?: string
+  darknessColor?: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -44,6 +48,9 @@ export interface DeserializedMap {
   showWallOutline: boolean
   wallOutlineColor: string
   wallOutlineStyle: 'clean' | 'rough'
+  waterColor: string
+  lavaColor: string
+  darknessColor: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -65,6 +72,9 @@ export function serialize(params: {
   showWallOutline: boolean
   wallOutlineColor: string
   wallOutlineStyle: 'clean' | 'rough'
+  waterColor: string
+  lavaColor: string
+  darknessColor: string
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
@@ -90,6 +100,9 @@ export function serialize(params: {
     showWallOutline: params.showWallOutline,
     wallOutlineColor: params.wallOutlineColor,
     wallOutlineStyle: params.wallOutlineStyle,
+    waterColor: params.waterColor,
+    lavaColor: params.lavaColor,
+    darknessColor: params.darknessColor,
     stamps: params.stamps.map(s => {
       const { scale, mirrored, z, ...rest } = s
       const out: Partial<Stamp> = { ...rest }
@@ -221,6 +234,9 @@ export function deserialize(raw: unknown): DeserializedMap {
   const showWallOutline = s['showWallOutline'] === true
   const wallOutlineColor = typeof s['wallOutlineColor'] === 'string' ? s['wallOutlineColor'] : '#000000'
   const wallOutlineStyle: 'clean' | 'rough' = s['wallOutlineStyle'] === 'rough' ? 'rough' : 'clean'
+  const waterColor = typeof s['waterColor'] === 'string' ? s['waterColor'] : WATER_COLOR
+  const lavaColor = typeof s['lavaColor'] === 'string' ? s['lavaColor'] : LAVA_COLOR
+  const darknessColor = typeof s['darknessColor'] === 'string' ? s['darknessColor'] : DARKNESS_COLOR
 
   return {
     version: 1,
@@ -238,6 +254,9 @@ export function deserialize(raw: unknown): DeserializedMap {
     showWallOutline,
     wallOutlineColor,
     wallOutlineStyle,
+    waterColor,
+    lavaColor,
+    darknessColor,
     stamps,
     steps,
     ramps,

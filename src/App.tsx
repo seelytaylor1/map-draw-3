@@ -118,6 +118,9 @@ export default function App() {
   const [show3D, setShow3D] = useState(false)
   const [showIso, setShowIso] = useState(false)
   const [isoFaceColor, setIsoFaceColor] = useState('#6a5040')
+  const [waterColor, setWaterColor] = useState(WATER_COLOR)
+  const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
+  const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const stageRef = useRef<Konva.Stage>(null)
@@ -1016,7 +1019,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor])
 
   const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, stamps, steps, ramps, labels })
+    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -1043,6 +1046,9 @@ export default function App() {
       setShowWallOutline(save.showWallOutline)
       setWallOutlineColor(save.wallOutlineColor)
       setWallOutlineStyle(save.wallOutlineStyle)
+      setWaterColor(save.waterColor)
+      setLavaColor(save.lavaColor)
+      setDarknessColor(save.darknessColor)
       setLoadError(null)
       pendingFitRef.current = true
     } catch (err) {
