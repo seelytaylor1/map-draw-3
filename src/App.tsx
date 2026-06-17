@@ -1027,7 +1027,7 @@ export default function App() {
         a.click()
       },
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, waterColor, lavaColor, darknessColor])
 
   const handleSave = () => {
     const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels })
