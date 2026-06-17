@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildTopDownShapes } from './topDownScene'
 import { createGrid, paintTiles } from './grid'
-import { FLOOR, WATER, type TileState } from './constants'
+import { FLOOR, WATER, LAVA, DARKNESS, type TileState } from './constants'
 
 function grid(cols: number, rows: number, tiles: { col: number; row: number }[], state: TileState = FLOOR) {
   return paintTiles(createGrid(cols, rows), cols, tiles, state)
@@ -19,6 +19,18 @@ describe('buildTopDownShapes: tile emission', () => {
     const g = grid(3, 3, [{ col: 0, row: 0 }], WATER)
     const shapes = buildTopDownShapes(g, 3, 3, false)
     expect(shapes).toContainEqual({ kind: 'water', col: 0, row: 0 })
+  })
+
+  it('emits a lava shape for each painted lava tile', () => {
+    const g = grid(3, 3, [{ col: 1, row: 0 }], LAVA)
+    const shapes = buildTopDownShapes(g, 3, 3, false)
+    expect(shapes).toContainEqual({ kind: 'lava', col: 1, row: 0 })
+  })
+
+  it('emits a darkness shape for each painted darkness tile', () => {
+    const g = grid(3, 3, [{ col: 2, row: 0 }], DARKNESS)
+    const shapes = buildTopDownShapes(g, 3, 3, false)
+    expect(shapes).toContainEqual({ kind: 'darkness', col: 2, row: 0 })
   })
 
   it('emits nothing for wall tiles', () => {

@@ -1,9 +1,11 @@
-import { FLOOR, WALL, WATER } from './constants'
+import { FLOOR, LAVA, DARKNESS, WALL, WATER } from './constants'
 import { getTile } from './grid'
 
 export type TileShape =
   | { kind: 'floor'; col: number; row: number }
   | { kind: 'water'; col: number; row: number }
+  | { kind: 'lava'; col: number; row: number }
+  | { kind: 'darkness'; col: number; row: number }
   | { kind: 'face'; col: number; row: number; side: 'south' | 'east' }
 
 export function buildTopDownShapes(
@@ -31,6 +33,10 @@ export function buildTopDownShapes(
         }
       } else if (state === WATER) {
         out.push({ kind: 'water', col: c, row: r })
+      } else if (state === LAVA) {
+        out.push({ kind: 'lava', col: c, row: r })
+      } else if (state === DARKNESS) {
+        out.push({ kind: 'darkness', col: c, row: r })
       }
     }
   }
