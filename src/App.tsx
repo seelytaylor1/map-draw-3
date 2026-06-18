@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, LAVA, LAVA_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
-import { isoUnproject, isoProject } from './iso'
+import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
@@ -822,11 +822,22 @@ export default function App() {
       GHOST_COLOR
     for (const t of ghostTiles) {
       if (t.col < 0 || t.row < 0 || t.col >= cols || t.row >= rows) continue
-      layer.add(new Konva.Rect({
-        x: t.col * TILE_PX, y: t.row * TILE_PX,
-        width: TILE_PX, height: TILE_PX,
-        fill: ghostFill,
-      }))
+      if (showIso) {
+        layer.add(new Konva.Line({
+          points: isoFloorPoints(t.col, t.row, TILE_PX * 2, TILE_PX),
+          closed: true,
+          fill: ghostFill,
+          stroke: undefined,
+          strokeWidth: 0,
+          listening: false,
+        }))
+      } else {
+        layer.add(new Konva.Rect({
+          x: t.col * TILE_PX, y: t.row * TILE_PX,
+          width: TILE_PX, height: TILE_PX,
+          fill: ghostFill,
+        }))
+      }
     }
 
     // Rough mode: anchor dot + ghost rect preview during placed1
