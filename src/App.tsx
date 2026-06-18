@@ -842,9 +842,12 @@ export default function App() {
 
     // Rough mode: anchor dot + ghost rect preview during placed1
     if (roughStart && roughPhase !== 'idle') {
+      const dotPos = showIso
+        ? isoProject(roughStart.col + 0.5, roughStart.row + 0.5, TILE_PX * 2, TILE_PX)
+        : { x: roughStart.col * TILE_PX + TILE_PX / 2, y: roughStart.row * TILE_PX + TILE_PX / 2 }
       layer.add(new Konva.Circle({
-        x: roughStart.col * TILE_PX + TILE_PX / 2,
-        y: roughStart.row * TILE_PX + TILE_PX / 2,
+        x: dotPos.x,
+        y: dotPos.y,
         radius: 4,
         fill: '#ff8800',
       }))
@@ -854,23 +857,47 @@ export default function App() {
       const maxC = Math.max(roughStart.col, roughEnd.col)
       const minR = Math.min(roughStart.row, roughEnd.row)
       const maxR = Math.max(roughStart.row, roughEnd.row)
-      layer.add(new Konva.Rect({
-        x: minC * TILE_PX, y: minR * TILE_PX,
-        width: (maxC - minC + 1) * TILE_PX,
-        height: (maxR - minR + 1) * TILE_PX,
-        fill: GHOST_COLOR,
-        listening: false,
-      }))
+      if (showIso) {
+        for (let r = minR; r <= maxR; r++) {
+          for (let c = minC; c <= maxC; c++) {
+            layer.add(new Konva.Line({
+              points: isoFloorPoints(c, r, TILE_PX * 2, TILE_PX),
+              closed: true,
+              fill: GHOST_COLOR,
+              strokeWidth: 0,
+              listening: false,
+            }))
+          }
+        }
+      } else {
+        layer.add(new Konva.Rect({
+          x: minC * TILE_PX, y: minR * TILE_PX,
+          width: (maxC - minC + 1) * TILE_PX,
+          height: (maxR - minR + 1) * TILE_PX,
+          fill: GHOST_COLOR,
+          listening: false,
+        }))
+      }
     }
 
     // Rough mode: noise preview overlay (tiles to be removed)
     for (const flip of roughPreview) {
       if (flip.col < 0 || flip.row < 0 || flip.col >= cols || flip.row >= rows) continue
-      layer.add(new Konva.Rect({
-        x: flip.col * TILE_PX, y: flip.row * TILE_PX,
-        width: TILE_PX, height: TILE_PX,
-        fill: 'rgba(255,80,0,0.45)',
-      }))
+      if (showIso) {
+        layer.add(new Konva.Line({
+          points: isoFloorPoints(flip.col, flip.row, TILE_PX * 2, TILE_PX),
+          closed: true,
+          fill: 'rgba(255,80,0,0.45)',
+          strokeWidth: 0,
+          listening: false,
+        }))
+      } else {
+        layer.add(new Konva.Rect({
+          x: flip.col * TILE_PX, y: flip.row * TILE_PX,
+          width: TILE_PX, height: TILE_PX,
+          fill: 'rgba(255,80,0,0.45)',
+        }))
+      }
     }
 
     layer.batchDraw()
