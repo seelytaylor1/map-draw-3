@@ -788,11 +788,6 @@ export default function App() {
     if (!layer) return
     layer.destroyChildren()
 
-    if (showIso) {
-      layer.batchDraw()
-      return
-    }
-
     {
       const isLight = isLightBackdrop(wallColor, wallOpacity)
       const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
@@ -805,9 +800,12 @@ export default function App() {
         for (let r = 0; r < rows; r += 2) {
           for (let c = 0; c < cols; c += 2) {
             if (getTile(levelGrid, cols, c, r) === WALL) {
+              const dotPos = showIso
+                ? isoProject(c + 0.5, r + 0.5, TILE_PX * 2, TILE_PX)
+                : { x: c * TILE_PX + TILE_PX, y: r * TILE_PX + TILE_PX }
               layer.add(new Konva.Circle({
-                x: c * TILE_PX + TILE_PX,
-                y: r * TILE_PX + TILE_PX,
+                x: dotPos.x,
+                y: dotPos.y,
                 radius: DOT_RADIUS,
                 fill: dotColor,
               }))
