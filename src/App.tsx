@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, LAVA, LAVA_COLOR, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
-import { isoUnproject } from './iso'
+import { isoUnproject, isoProject } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
@@ -344,9 +344,13 @@ export default function App() {
         stage.position({ x: stage.x() + dx, y: stage.y() + dy })
         return
       }
-      if (showIso) return
       const stage = e.target.getStage()!
-      const tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
+      let tile: Tile | null
+      if (showIso) {
+        tile = stageToIsoTile(stage, e.evt.clientX, e.evt.clientY)
+      } else {
+        tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
+      }
       setHoverTile(tile)
       hoverTileRef.current = tile
 
@@ -362,8 +366,16 @@ export default function App() {
         const ox = stage.x(); const oy = stage.y()
         const rEnd = ds.end
         const rStart = ds.start
-        const endWorldX = rEnd.col * TILE_PX + TILE_PX / 2
-        const endWorldY = rEnd.row * TILE_PX + TILE_PX / 2
+        let endWorldX: number
+        let endWorldY: number
+        if (showIso) {
+          const center = isoProject(rEnd.col + 0.5, rEnd.row + 0.5, TILE_PX * 2, TILE_PX)
+          endWorldX = center.x
+          endWorldY = center.y
+        } else {
+          endWorldX = rEnd.col * TILE_PX + TILE_PX / 2
+          endWorldY = rEnd.row * TILE_PX + TILE_PX / 2
+        }
         const endScreenX = endWorldX * scale + stageRect.left + ox
         const endScreenY = endWorldY * scale + stageRect.top + oy
         const dx = (e.evt.clientX - endScreenX) / scale
