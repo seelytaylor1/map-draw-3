@@ -1122,7 +1122,7 @@ export default function App() {
           />
           <Segmented
             value={selectedPaintState}
-            onChange={(v: TileState) => dispatch({ type: 'PAINT_SET_VALUE', paintValue: v })}
+            onChange={(v: TileState) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: v, brushShape: brushShape } })}
             tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
             options={[
               { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} /> },
@@ -1145,7 +1145,7 @@ export default function App() {
                 if (ds.phase === 'placed2') {
                   setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
                 }
-                dispatch({ type: 'ESCAPE' })
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
               } else {
                 dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
               }
