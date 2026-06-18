@@ -1159,7 +1159,6 @@ export default function App() {
               <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
             </div>
           </div>
-          {showIso && <div className="hint" style={{ borderLeftColor: 'var(--iso)', color: 'var(--iso)' }}>Preview only — drawing disabled</div>}
         </Section>
 
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
@@ -1447,7 +1446,7 @@ export default function App() {
         onMouseLeave={() => setHoverTile(null)}
         onWheel={handleWheel}
         onContextMenu={e => e.evt.preventDefault()}
-        style={{ cursor: showIso && (drawingState.tool === 'paint' || drawingState.tool === 'rough') ? 'not-allowed' : drawingState.tool === 'paint' ? 'crosshair' : 'cell' }}
+        style={{ cursor: (drawingState.tool === 'paint' || drawingState.tool === 'rough') ? 'crosshair' : 'cell' }}
       >
         <Layer ref={layerRef} />
         <Layer ref={stampLayerRef} />
