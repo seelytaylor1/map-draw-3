@@ -218,6 +218,17 @@ export default function App() {
     return { col, row }
   }
 
+  const stageToIsoTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
+    const rect = stage.container().getBoundingClientRect()
+    const scale = stage.scaleX()
+    const worldX = (clientX - rect.left - stage.x()) / scale
+    const worldY = (clientY - rect.top - stage.y()) / scale
+    const { col: fc, row: fr } = isoUnproject(worldX, worldY, TILE_PX * 2, TILE_PX)
+    const col = Math.floor(fc)
+    const row = Math.floor(fr)
+    return (col >= 0 && row >= 0 && col < cols && row < rows) ? { col, row } : null
+  }
+
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       if (e.evt.button === 1) {
@@ -227,18 +238,10 @@ export default function App() {
         return
       }
       const ds = drawingStateRef.current
-      if (showIso && (ds.tool === 'paint' || ds.tool === 'rough')) return
       const stage = e.target.getStage()!
       let tile: Tile | null
       if (showIso) {
-        const rect = stage.container().getBoundingClientRect()
-        const scale = stage.scaleX()
-        const worldX = (e.evt.clientX - rect.left - stage.x()) / scale
-        const worldY = (e.evt.clientY - rect.top - stage.y()) / scale
-        const { col: fc, row: fr } = isoUnproject(worldX, worldY, TILE_PX * 2, TILE_PX)
-        const col = Math.floor(fc)
-        const row = Math.floor(fr)
-        tile = (col >= 0 && row >= 0 && col < cols && row < rows) ? { col, row } : null
+        tile = stageToIsoTile(stage, e.evt.clientX, e.evt.clientY)
       } else {
         tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
       }
