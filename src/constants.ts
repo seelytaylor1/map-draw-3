@@ -23,7 +23,7 @@ export const LAVA_COLOR = '#c1440e'
 export const DARKNESS_COLOR = '#1a0a2e'
 export const FACE_COLOR = '#6a5040'
 
-export const ENVIRONMENTAL_DEFAULTS: Record<number, string> = {
+export const ENVIRONMENTAL_DEFAULTS: Partial<Record<TileState, string>> = {
   [GRASS]: '#4a7c3c',
   [ROAD]: '#c4a574',
   [SAND]: '#e8d4b8',
