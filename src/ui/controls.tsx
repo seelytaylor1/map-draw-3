@@ -78,13 +78,13 @@ export function Segmented<T extends string | number>({ options, value, onChange,
 }
 
 export function ColorField({ label, value, onChange }: {
-  label: string
+  label?: string
   value: string
   onChange: (v: string) => void
 }) {
   return (
     <div className="color-field">
-      <label>{label}</label>
+      {label && <label>{label}</label>}
       <input className="swatch" type="color" value={value} onChange={e => onChange(e.target.value)} />
       <span className="hex">{value}</span>
     </div>

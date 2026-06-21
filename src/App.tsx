@@ -138,6 +138,7 @@ export default function App() {
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [paintTab, setPaintTab] = useState<'basic' | 'environments'>('basic')
+  const [colorPickerOpen, setColorPickerOpen] = useState<number | null>(null)
 
   const stageRef = useRef<Konva.Stage>(null)
   const pendingFitRef = useRef(false)
@@ -1219,13 +1220,31 @@ export default function App() {
                 { value: MOSSY_STONE as TileState, label: 'Mossy' },
                 { value: RUBBLE as TileState,      label: 'Rubble' },
               ] as { value: TileState; label: string }[]).map((env) => (
-                <ToolButton
-                  key={env.value}
-                  active={drawingState.tool === 'paint' && selectedPaintState === env.value}
-                  label={env.label}
-                  onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } })}
-                  style={{ backgroundColor: environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] }}
-                />
+                <div key={env.value} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <ToolButton
+                    active={drawingState.tool === 'paint' && selectedPaintState === env.value}
+                    label={env.label}
+                    onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } })}
+                    style={{ backgroundColor: environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] }}
+                  />
+                  <button
+                    onClick={() => setColorPickerOpen(colorPickerOpen === env.value ? null : env.value)}
+                    style={{ fontSize: '10px', padding: '2px 6px' }}
+                  >
+                    ▼
+                  </button>
+                  {colorPickerOpen === env.value && (
+                    <ColorField
+                      value={environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] ?? '#000000'}
+                      onChange={(color) => {
+                        setHistory(push(history, {
+                          ...history.present,
+                          environmentalColors: new Map(environmentalColors).set(env.value, color),
+                        }))
+                      }}
+                    />
+                  )}
+                </div>
               ))}
             </>
           )}
