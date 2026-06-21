@@ -51,7 +51,14 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
-type AppSnapshot = { grids: Map<number, Uint8Array>; stamps: Stamp[]; steps: StepRun[]; ramps: RampRun[]; labels: Label[] }
+type AppSnapshot = {
+  grids: Map<number, Uint8Array>
+  stamps: Stamp[]
+  steps: StepRun[]
+  ramps: RampRun[]
+  labels: Label[]
+  environmentalColors: Map<number, string>
+}
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
   if (shape === 'square') {
@@ -72,9 +79,9 @@ export default function App() {
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [] }),
+    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], environmentalColors: new Map() }),
   )
-  const { grids, stamps, steps, ramps, labels } = history.present
+  const { grids, stamps, steps, ramps, labels, environmentalColors } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
 
@@ -966,7 +973,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
   }
@@ -980,7 +987,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels })
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
     })
     setRows(newRows)
   }
@@ -1095,7 +1102,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels }))
+      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, environmentalColors: new Map() }))
       setCols(save.cols)
       setRows(save.rows)
       setWallColor(save.wallColor)
