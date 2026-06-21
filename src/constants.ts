@@ -40,9 +40,9 @@ export function getTileColor(
   switch (tileState) {
     case WALL: return 'transparent'
     case FLOOR: return FLOOR_COLOR
-    case WATER: return WATER_COLOR
-    case LAVA: return LAVA_COLOR
-    case DARKNESS: return DARKNESS_COLOR
+    case WATER: return customColors.get(WATER) ?? WATER_COLOR
+    case LAVA: return customColors.get(LAVA) ?? LAVA_COLOR
+    case DARKNESS: return customColors.get(DARKNESS) ?? DARKNESS_COLOR
     case GRASS:
     case ROAD:
     case SAND:

@@ -10,7 +10,7 @@
 // rough-mode preview) is ephemeral cursor feedback, not map content, and stays
 // imperative in App.tsx.
 
-import { FACE_COLOR, FLOOR, FLOOR_COLOR, LAVA, DARKNESS, GRASS, ROAD, SAND, MUD, STONE, MOSSY_STONE, RUBBLE, WALL, WATER, getTileColor, type TileState, Z_STEP_HEIGHT } from './constants'
+import { FACE_COLOR, FLOOR, LAVA, DARKNESS, WALL, WATER, getTileColor, type TileState, Z_STEP_HEIGHT } from './constants'
 import { createGrid, getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import {
@@ -152,18 +152,16 @@ function buildRunShapes(steps: StepRun[], ramps: RampRun[], z: number, tilePx: n
   return runs
 }
 
-function buildTileFills(grid: Uint8Array, cols: number, rows: number, tilePx: number, waterColor: string, lavaColor: string, darknessColor: string, environmentalColors: Map<TileState, string>): TileFillShape[] {
+function buildTileFills(grid: Uint8Array, cols: number, rows: number, tilePx: number, customColors: Map<TileState, string>): TileFillShape[] {
   const tiles: TileFillShape[] = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const t = getTile(grid, cols, c, r) as TileState
-      if (t === FLOOR)       tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: FLOOR_COLOR })
-      else if (t === WATER)    tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: waterColor })
-      else if (t === LAVA)     tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: lavaColor })
-      else if (t === DARKNESS) tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: darknessColor })
-      else if (t === GRASS || t === ROAD || t === SAND || t === MUD || t === STONE || t === MOSSY_STONE || t === RUBBLE) {
-        const color = getTileColor(t, environmentalColors)
-        tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: color })
+      if (t !== WALL) {
+        const color = getTileColor(t, customColors)
+        if (color !== 'transparent') {
+          tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: color })
+        }
       }
     }
   }
@@ -177,6 +175,11 @@ export function buildTileScene(state: TileSceneState): TileScene {
     wallColor, wallOpacity, selectedStepId, selectedRampId,
     waterColor, lavaColor, darknessColor, environmentalColors,
   } = state
+
+  const allCustomColors = new Map(environmentalColors)
+  allCustomColors.set(WATER, waterColor)
+  allCustomColors.set(LAVA, lavaColor)
+  allCustomColors.set(DARKNESS, darknessColor)
 
   const zSet = new Set(grids.keys())
   for (const run of steps) zSet.add(run.z)
@@ -214,7 +217,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
       opacity: Math.pow(0.5, activeZ - z),
       interactive: true,
       grid: levelGrid,
-      tiles: buildTileFills(levelGrid, cols, rows, tilePx, waterColor, lavaColor, darknessColor, environmentalColors),
+      tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors),
       faces,
       gridLines,
       runs: buildRunShapes(steps, ramps, z, tilePx, facePx, show3D, selectedStepId, selectedRampId),
@@ -233,7 +236,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
       opacity: 0.25 * Math.pow(0.6, z - activeZ - 1),
       interactive: false,
       grid: levelGrid,
-      tiles: buildTileFills(levelGrid, cols, rows, tilePx, waterColor, lavaColor, darknessColor, environmentalColors),
+      tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors),
       faces: [],
       gridLines: [],
       runs: runs.map(r => ({ ...r, selected: false, selectionRect: null })),
