@@ -863,7 +863,8 @@ export function drawShadow(
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (tile(c, r) !== FLOOR) continue
+      // Apply shadows to all walkable tiles (everything except WALL) for visual consistency.
+      if (tile(c, r) === WALL) continue
       const northWall = tile(c, r - 1) === WALL
       const westWall  = tile(c - 1, r) === WALL
       // Inside-corner: NW diagonal is wall but direct N/W neighbours are floor
