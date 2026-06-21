@@ -30,6 +30,7 @@ export interface MapSave {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  environmentalColors?: Record<string, string>
 }
 
 export interface DeserializedMap {
@@ -55,6 +56,7 @@ export interface DeserializedMap {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  environmentalColors: Map<number, string>
 }
 
 export function serialize(params: {
@@ -79,6 +81,7 @@ export function serialize(params: {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  environmentalColors: Map<number, string>
 }): MapSave {
   const grids: Record<string, number[]> = {}
   for (const [z, grid] of params.grids) {
@@ -114,6 +117,7 @@ export function serialize(params: {
     steps: params.steps.map(s => ({ ...s })),
     ramps: params.ramps.map(r => ({ ...r })),
     labels: params.labels,
+    environmentalColors: Object.fromEntries(Array.from(params.environmentalColors.entries())),
   }
 }
 
@@ -242,6 +246,15 @@ export function deserialize(raw: unknown): DeserializedMap {
   const lavaColor = isHexColor(s['lavaColor']) ? s['lavaColor'] : LAVA_COLOR
   const darknessColor = isHexColor(s['darknessColor']) ? s['darknessColor'] : DARKNESS_COLOR
 
+  const rawEnvColors = (typeof s['environmentalColors'] === 'object' && s['environmentalColors'] !== null && !Array.isArray(s['environmentalColors']))
+    ? s['environmentalColors'] as Record<string, string>
+    : {}
+  const environmentalColors = new Map<number, string>(
+    Object.entries(rawEnvColors)
+      .filter(([, v]) => typeof v === 'string')
+      .map(([k, v]) => [Number(k), v])
+  )
+
   return {
     version: 1,
     cols: s['cols'] as number,
@@ -265,5 +278,6 @@ export function deserialize(raw: unknown): DeserializedMap {
     steps,
     ramps,
     labels,
+    environmentalColors,
   }
 }

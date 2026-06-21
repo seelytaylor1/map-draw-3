@@ -30,6 +30,7 @@ const BASE = {
   steps: [] as StepRun[],
   ramps: [] as RampRun[],
   labels: [] as Label[],
+  environmentalColors: new Map<number, string>(),
 }
 
 const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90, z: 0 }
