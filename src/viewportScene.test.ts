@@ -90,6 +90,7 @@ function tileSceneParams(overrides = {}) {
     waterColor: WATER_COLOR,
     lavaColor: '#c1440e',
     darknessColor: '#1a0a2e',
+    environmentalColors: new Map(),
     ...overrides,
   }
 }

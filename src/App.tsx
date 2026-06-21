@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-// TODO: wire getTileColor to replace inline color logic (Task 4)
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
@@ -562,6 +561,7 @@ export default function App() {
       wallOutlineColor, wallOutlineStyle, wallColor, wallOpacity,
       selectedStepId, selectedRampId,
       waterColor, lavaColor, darknessColor,
+      environmentalColors: environmentalColors as Map<TileState, string>,
     })
 
     if (scene.wallBackground) {
