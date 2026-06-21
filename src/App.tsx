@@ -1089,6 +1089,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, waterColor, lavaColor, darknessColor])
 
   const handleSave = () => {
+    // TODO: include environmentalColors in serialize call (wired in Task 8)
     const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels })
     const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -1102,6 +1103,7 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
+      // TODO: restore environmentalColors from save once serialize/deserialize include it (Task 8)
       setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, environmentalColors: new Map() }))
       setCols(save.cols)
       setRows(save.rows)
