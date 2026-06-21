@@ -35,7 +35,7 @@ export const ENVIRONMENTAL_DEFAULTS: Partial<Record<TileState, string>> = {
 
 export function getTileColor(
   tileState: TileState,
-  customColors: Map<number, string>,
+  customColors: Map<TileState, string>,
 ): string {
   switch (tileState) {
     case WALL: return 'transparent'
@@ -50,9 +50,11 @@ export function getTileColor(
     case STONE:
     case MOSSY_STONE:
     case RUBBLE:
-      return customColors.get(tileState) ?? ENVIRONMENTAL_DEFAULTS[tileState]!
-    default:
+      return customColors.get(tileState) ?? ENVIRONMENTAL_DEFAULTS[tileState] ?? FLOOR_COLOR
+    default: {
+      const _exhaustive: never = tileState
       return FLOOR_COLOR
+    }
   }
 }
 
