@@ -514,6 +514,7 @@ export default function App() {
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
         waterColor, lavaColor, darknessColor,
+        environmentalColors: environmentalColors as Map<TileState, string>,
       })
       for (const shape of shapes) {
         const node = new Konva.Line({
@@ -1012,6 +1013,7 @@ export default function App() {
       waterColor,
       lavaColor,
       darknessColor,
+      environmentalColors: environmentalColors as Map<TileState, string>,
     })
 
     const container = document.createElement('div')
