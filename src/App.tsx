@@ -1237,9 +1237,9 @@ export default function App() {
                     <ColorField
                       value={environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] ?? '#000000'}
                       onChange={(color) => {
-                        setHistory(push(history, {
-                          ...history.present,
-                          environmentalColors: new Map(environmentalColors).set(env.value, color),
+                        setHistory(h => push(h, {
+                          ...h.present,
+                          environmentalColors: new Map(h.present.environmentalColors).set(env.value, color),
                         }))
                       }}
                     />
