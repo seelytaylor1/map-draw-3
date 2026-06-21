@@ -251,8 +251,8 @@ export function deserialize(raw: unknown): DeserializedMap {
     : {}
   const environmentalColors = new Map<number, string>(
     Object.entries(rawEnvColors)
-      .filter(([, v]) => typeof v === 'string')
-      .map(([k, v]) => [Number(k), v])
+      .filter(([k, v]) => typeof v === 'string' && Number.isFinite(Number(k)))
+      .map(([k, v]) => [Number.parseInt(k, 10), v])
   )
 
   return {
