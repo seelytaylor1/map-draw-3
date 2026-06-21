@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -137,6 +137,7 @@ export default function App() {
   const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [paintTab, setPaintTab] = useState<'basic' | 'environments'>('basic')
 
   const stageRef = useRef<Konva.Stage>(null)
   const pendingFitRef = useRef(false)
@@ -1181,20 +1182,53 @@ export default function App() {
             ]}
           />
           <Segmented
-            value={selectedPaintState}
-            onChange={(v: TileState) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: v, brushShape: brushShape } })}
-            tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
+            value={paintTab}
+            onChange={(v: 'basic' | 'environments') => setPaintTab(v)}
             options={[
-              { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} /> },
-              { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} /> },
-              { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} /> },
-              { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} /> },
-              { value: WALL      as TileState, label: 'Erase',    icon: <IconEraser  size={13} /> },
+              { value: 'basic' as const, label: 'Basic' },
+              { value: 'environments' as const, label: 'Environments' },
             ]}
           />
-          {selectedPaintState === WATER    && <ColorField label="Water color"    value={waterColor}    onChange={setWaterColor} />}
-          {selectedPaintState === LAVA     && <ColorField label="Lava color"     value={lavaColor}     onChange={setLavaColor} />}
-          {selectedPaintState === DARKNESS && <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} />}
+          {paintTab === 'basic' && (
+            <>
+              <Segmented
+                value={selectedPaintState}
+                onChange={(v: TileState) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: v, brushShape: brushShape } })}
+                tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
+                options={[
+                  { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} /> },
+                  { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} /> },
+                  { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} /> },
+                  { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} /> },
+                  { value: WALL      as TileState, label: 'Erase',    icon: <IconEraser  size={13} /> },
+                ]}
+              />
+              {selectedPaintState === WATER    && <ColorField label="Water color"    value={waterColor}    onChange={setWaterColor} />}
+              {selectedPaintState === LAVA     && <ColorField label="Lava color"     value={lavaColor}     onChange={setLavaColor} />}
+              {selectedPaintState === DARKNESS && <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} />}
+            </>
+          )}
+          {paintTab === 'environments' && (
+            <>
+              {([
+                { value: GRASS as TileState,       label: 'Grass' },
+                { value: ROAD as TileState,        label: 'Road' },
+                { value: SAND as TileState,        label: 'Sand' },
+                { value: MUD as TileState,         label: 'Mud' },
+                { value: STONE as TileState,       label: 'Stone' },
+                { value: MOSSY_STONE as TileState, label: 'Mossy' },
+                { value: RUBBLE as TileState,      label: 'Rubble' },
+              ] as { value: TileState; label: string }[]).map((env) => (
+                <ToolButton
+                  key={env.value}
+                  active={drawingState.tool === 'paint' && selectedPaintState === env.value}
+                  label={env.label}
+                  onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } })}
+                  style={{ backgroundColor: environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] }}
+                />
+              ))}
+            </>
+          )}
           <ToolButton
             icon={<IconCave size={14} />}
             label="Cave"

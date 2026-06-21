@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { IconChevron } from './icons'
 
 export function Section({ title, icon, defaultOpen = false, children }: {
@@ -20,16 +20,17 @@ export function Section({ title, icon, defaultOpen = false, children }: {
   )
 }
 
-export function ToolButton({ icon, label, active, onClick, tone }: {
-  icon: ReactNode
+export function ToolButton({ icon, label, active, onClick, tone, style }: {
+  icon?: ReactNode
   label: string
   active: boolean
   onClick: () => void
   tone?: 'iso'
+  style?: CSSProperties
 }) {
   return (
-    <button className={`tool-btn${active ? ' active' : ''}${tone ? ` ${tone}` : ''}`} onClick={onClick}>
-      <span className="icon">{icon}</span>
+    <button className={`tool-btn${active ? ' active' : ''}${tone ? ` ${tone}` : ''}`} onClick={onClick} style={style}>
+      {icon && <span className="icon">{icon}</span>}
       {label}
     </button>
   )
