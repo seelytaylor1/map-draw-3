@@ -33,5 +33,28 @@ export const ENVIRONMENTAL_DEFAULTS: Partial<Record<TileState, string>> = {
   [RUBBLE]: '#6b6b6b',
 }
 
+export function getTileColor(
+  tileState: TileState,
+  customColors: Map<number, string>,
+): string {
+  switch (tileState) {
+    case WALL: return 'transparent'
+    case FLOOR: return FLOOR_COLOR
+    case WATER: return WATER_COLOR
+    case LAVA: return LAVA_COLOR
+    case DARKNESS: return DARKNESS_COLOR
+    case GRASS:
+    case ROAD:
+    case SAND:
+    case MUD:
+    case STONE:
+    case MOSSY_STONE:
+    case RUBBLE:
+      return customColors.get(tileState) ?? ENVIRONMENTAL_DEFAULTS[tileState]!
+    default:
+      return FLOOR_COLOR
+  }
+}
+
 export const Z_STEP_HEIGHT = TILE_PX / 2 + FACE_PX  // 18px at current constants
 export const WATER_OFFSET_Y = 4
