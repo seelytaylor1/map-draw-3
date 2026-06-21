@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { serialize, deserialize } from './serialization'
-import { WATER, WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR } from './constants'
+import { WATER, WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, GRASS, ROAD, SAND } from './constants'
 import { type Stamp } from './stamps'
 import { type StepRun } from './steps'
 import { type RampRun } from './ramps'
@@ -395,5 +395,34 @@ describe('ramps round-trip', () => {
     const bad = { ...serialize(BASE), ramps: [{ id: 'r', col: 1, row: 1, direction: 'N' }] }
     const restored = deserialize(bad)
     expect(restored.ramps[0].z).toBe(0)
+  })
+})
+
+describe('environmental colors round-trip', () => {
+  it('should round-trip environmental colors', () => {
+    const snap = {
+      ...BASE,
+      grids: new Map([[0, new Uint8Array([GRASS, ROAD, SAND])]]),
+      environmentalColors: new Map<number, string>([
+        [GRASS, '#111111'],
+        [ROAD, '#222222'],
+      ]),
+    }
+
+    const json = JSON.stringify(serialize(snap))
+    const restored = deserialize(JSON.parse(json))
+
+    expect(restored.environmentalColors.get(GRASS)).toBe('#111111')
+    expect(restored.environmentalColors.get(ROAD)).toBe('#222222')
+    expect(restored.grids.get(0)).toEqual(new Uint8Array([GRASS, ROAD, SAND]))
+  })
+
+  it('should handle missing environmental colors in old saves', () => {
+    const save = serialize(BASE)
+    const { environmentalColors: _, ...noEnvColors } = save
+
+    const restored = deserialize(noEnvColors)
+    expect(restored.environmentalColors).toBeInstanceOf(Map)
+    expect(restored.environmentalColors.size).toBe(0)
   })
 })
