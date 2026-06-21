@@ -10,7 +10,7 @@
 // rough-mode preview) is ephemeral cursor feedback, not map content, and stays
 // imperative in App.tsx.
 
-import { FACE_COLOR, FLOOR, LAVA, DARKNESS, WALL, WATER, getTileColor, type TileState, Z_STEP_HEIGHT } from './constants'
+import { FLOOR, LAVA, DARKNESS, WALL, WATER, getTileColor, type TileState, Z_STEP_HEIGHT } from './constants'
 import { createGrid, getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import {
