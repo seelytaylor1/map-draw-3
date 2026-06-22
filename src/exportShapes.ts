@@ -88,7 +88,7 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
   const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, exportTile: T, waterColor, lavaColor, darknessColor, environmentalColors = new Map() } = params
 
   if (showIso) {
-    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, waterColor, lavaColor, darknessColor })
+    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, waterColor, lavaColor, darknessColor, environmentalColors })
   }
   const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, waterColor, lavaColor, darknessColor, environmentalColors })
   if (showHatching && hatchColor) {
@@ -205,13 +205,14 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
   return { canvasW, canvasH, offsetX: 0, shapes }
 }
 
-function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, waterColor, lavaColor, darknessColor }: {
+function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, waterColor, lavaColor, darknessColor, environmentalColors }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean
   wallColor: string; wallOpacity: number
   frontFaceColor: string; eastFaceColor: string
   stamps: Stamp[]; T: number
   waterColor: string; lavaColor: string; darknessColor: string
+  environmentalColors?: Map<number, string>
 }): ExportLayout {
   const ITW = T * 2
   const ITH = T
@@ -226,6 +227,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
     cols, rows, show3D, wallColor, wallOpacity,
     frontFaceColor, eastFaceColor,
     waterColor, lavaColor, darknessColor,
+    environmentalColors: environmentalColors ?? new Map(),
     selectedStepId: null, selectedRampId: null,
     tileW: ITW, tileH: ITH,
     facePx: Math.round(FACE_PX * T / TILE_PX),
