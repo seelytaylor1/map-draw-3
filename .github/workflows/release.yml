@@ -47,5 +47,5 @@ jobs:
           tagName: build-${{ github.sha }}
           releaseName: 'Map Draw ${{ github.sha }}'
           releaseBody: 'See the included installers for your platform.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
