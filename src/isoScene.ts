@@ -1,4 +1,4 @@
-import { DARKNESS, FACE_PX, FLOOR, FLOOR_COLOR, LAVA, WALL, WATER, WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
+import { DARKNESS, FACE_PX, FLOOR, FLOOR_COLOR, GRASS, LAVA, MUD, MOSSY_STONE, ROAD, RUBBLE, SAND, STONE, WALL, WATER, WATER_OFFSET_Y, Z_STEP_HEIGHT, getTileColor, type TileState } from './constants'
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
@@ -23,6 +23,7 @@ export interface IsoSceneParams {
   waterColor: string
   lavaColor: string
   darknessColor: string
+  environmentalColors?: Map<TileState, string>
 }
 
 export interface IsoShape {
@@ -121,6 +122,27 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
           items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.lavaColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
         } else if (state === DARKNESS) {
           items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.darknessColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
+        } else if (state === GRASS || state === ROAD || state === SAND || state === MUD || state === STONE || state === MOSSY_STONE || state === RUBBLE) {
+          const envColor = getTileColor(state, p.environmentalColors ?? new Map())
+          const shapes: IsoShape[] = [{
+            points: isoFloorPoints(c, r, p.tileW, p.tileH),
+            fill: envColor,
+            stroke: 'rgba(0,0,0,0.15)',
+            strokeWidth: 0.5,
+          }]
+          if (p.show3D) {
+            const southNeighbor = r + 1 < p.rows ? getTile(grid, p.cols, c, r + 1) : null
+            const eastNeighbor = c + 1 < p.cols ? getTile(grid, p.cols, c + 1, r) : null
+            const southExposed = r + 1 >= p.rows || southNeighbor === WALL || southNeighbor === WATER || southNeighbor === LAVA || southNeighbor === DARKNESS
+            const eastExposed = c + 1 >= p.cols || eastNeighbor === WALL || eastNeighbor === WATER || eastNeighbor === LAVA || eastNeighbor === DARKNESS
+            if (southExposed) {
+              shapes.push({ points: isoFrontFacePoints(c, r, p.tileW, p.tileH, facePx), fill: p.frontFaceColor })
+            }
+            if (eastExposed) {
+              shapes.push({ points: isoEastFacePoints(c, r, p.tileW, p.tileH, facePx), fill: p.eastFaceColor })
+            }
+          }
+          items.push({ depth: c + r + 1, shapes })
         }
       }
     }
