@@ -16,6 +16,7 @@ pub fn run() {
                     "save"       => "menu-save",
                     "save-as"    => "menu-save-as",
                     "export-png" => "menu-export-png",
+                    "quit"       => "menu-quit",
                     _            => return,
                 };
                 handle.emit(event_name, ()).ok();
@@ -34,6 +35,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let save_as_item = MenuItem::with_id(app, "save-as",    "Save As...",    true, Some("CmdOrCtrl+Shift+S"))?;
     let sep2         = PredefinedMenuItem::separator(app)?;
     let export_item  = MenuItem::with_id(app, "export-png", "Export PNG...", true, Some("CmdOrCtrl+E"))?;
+    let sep3         = PredefinedMenuItem::separator(app)?;
+    let quit_item    = MenuItem::with_id(app, "quit",       "Quit",          true, Some("CmdOrCtrl+Q"))?;
 
     let file_menu = Submenu::with_items(app, "File", true, &[
         &new_item,
@@ -43,6 +46,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &save_as_item,
         &sep2,
         &export_item,
+        &sep3,
+        &quit_item,
     ])?;
 
     Menu::with_items(app, &[&file_menu])

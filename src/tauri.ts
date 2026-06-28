@@ -1,4 +1,4 @@
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { open, save, confirm } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile, writeFile } from '@tauri-apps/plugin-fs'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -65,4 +65,14 @@ export async function onCloseRequested(handler: (prevent: () => void) => void): 
   return getCurrentWindow().onCloseRequested((e) => {
     handler(() => e.preventDefault())
   })
+}
+
+export async function confirmDialog(message: string, title?: string): Promise<boolean> {
+  if (!isTauri()) return window.confirm(message)
+  return confirm(message, { title })
+}
+
+export async function closeWindow(): Promise<void> {
+  if (!isTauri()) return window.close()
+  await getCurrentWindow().close()
 }

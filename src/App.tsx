@@ -33,7 +33,7 @@ import {
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
 } from './ui/icons'
-import { isTauri, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested } from './tauri'
+import { isTauri, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow } from './tauri'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -1092,7 +1092,7 @@ export default function App() {
       }
     }
 
-    offLayer.batchDraw()
+    offLayer.draw()
     offStage.toDataURL({
       mimeType: 'image/png',
       callback: async (dataUrl: string) => {
@@ -1184,10 +1184,19 @@ export default function App() {
       unlisteners.push(await onMenuEvent('menu-save', handleSave))
       unlisteners.push(await onMenuEvent('menu-save-as', handleSaveAs))
       unlisteners.push(await onMenuEvent('menu-export-png', handleExport))
-      unlisteners.push(await onCloseRequested((prevent) => {
+      unlisteners.push(await onMenuEvent('menu-quit', async () => {
+        if (isDirty) {
+          const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
+          if (yes) await closeWindow()
+        } else {
+          await closeWindow()
+        }
+      }))
+      unlisteners.push(await onCloseRequested(async (prevent) => {
         if (isDirty) {
           prevent()
-          window.confirm('You have unsaved changes. Quit anyway?') && window.close()
+          const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
+          if (yes) await closeWindow()
         }
       }))
     }
