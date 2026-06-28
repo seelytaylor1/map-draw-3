@@ -4,6 +4,15 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 
 <img width="905" height="589" alt="image" src="https://github.com/user-attachments/assets/9d9b36f1-1395-443c-bde5-322b5a2b9f17" />
 
+## Use It
+
+- **Live in browser**: [seelytaylor1.github.io/map-draw-3](https://seelytaylor1.github.io/map-draw-3/) — always the latest build
+- **Desktop app**: download the installer for your platform from the [latest release](../../releases/latest)
+  - Windows: `.msi` or `.exe`
+  - macOS: `.dmg`
+  - Linux: `.AppImage` or `.deb`
+- **Standalone HTML**: grab `index.html` from the release and open it in any browser — no install needed
+
 ## Features
 
 - **Draw & Paint**: Brush tool with adjustable size for painting floors and walls
@@ -15,59 +24,18 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 - **Save/Load**: Export and import maps as JSON files
 - **High-Res Export**: Generate 300dpi PNG output
 
-## Releases
+## Development
 
-No install required — two ways to use it:
-
-- **Live in browser**: [seelytaylor1.github.io/map-draw-3](https://seelytaylor1.github.io/map-draw-3/) — always the latest build
-- **Download**: grab `index.html` from the [latest release](../../releases/latest) and open it locally in any browser
-
-## Requirements
-
-- **Node.js** 16+ and **npm** 7+
-
-## Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/seelytaylor1/map-draw-3.git
-   cd map-draw-3
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-## Running the App
-
-### Development Mode
-Start the dev server with hot reload:
-```bash
-npm run dev
-```
-
-The app will open at `http://localhost:5173` (or another port if 5173 is busy).
-
-### Build for Production
-```bash
-npm run build
-```
-
-Outputs a single self-contained `dist/index.html` with all assets inlined — open it directly in any browser, no server needed.
-
-### Preview Production Build
-```bash
-npm run preview
-```
-
-## Running Tests
+**Requirements**: Node.js 16+ and npm 7+
 
 ```bash
-npm test
+git clone https://github.com/seelytaylor1/map-draw-3.git
+cd map-draw-3
+npm install
+npm run dev        # dev server at http://localhost:5173
+npm run build      # single self-contained dist/index.html
+npm test           # Vitest unit tests
 ```
-
-Runs the Vitest suite for unit tests.
 
 ## Technologies
 
