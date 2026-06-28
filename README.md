@@ -36,26 +36,3 @@ npm run dev        # dev server at http://localhost:5173
 npm run build      # single self-contained dist/index.html
 npm test           # Vitest unit tests
 ```
-
-## Technologies
-
-- **React** 19 with TypeScript
-- **Vite** for fast development and optimized builds
-- **Konva** for canvas rendering
-- **react-konva** for React integration with Konva
-- **Vitest** for unit testing
-- **Playwright** for E2E testing
-
-## Project Structure
-
-- `src/` — Application source code
-  - `App.tsx` — Main component
-  - `grid.ts` — Tile grid logic
-  - `stamps.ts` — Stamp placement and rendering
-  - `iso.ts` — Isometric projection
-  - `exportShapes.ts` — PNG export
-  - `serialization.ts` — Save/load functionality
-  - `history.ts` — Undo/redo implementation
-- `docs/` — Design specs and planning
-- `index.html` — Entry point
-- `vite.config.ts` — Vite configuration
