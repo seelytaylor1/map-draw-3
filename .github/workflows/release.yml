@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
 
 jobs:
   release:
@@ -44,8 +44,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Map Draw ${{ github.ref_name }}'
+          tagName: build-${{ github.sha }}
+          releaseName: 'Map Draw ${{ github.sha }}'
           releaseBody: 'See the included installers for your platform.'
           releaseDraft: true
           prerelease: false
