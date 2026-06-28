@@ -1,28 +1,51 @@
-name: Create Release
+name: Release
 
 on:
   push:
-    branches: [master]
-
-permissions:
-  contents: write
+    tags:
+      - 'v*'
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: npm install
-      - run: npm run build
-      - name: Update latest release
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --yes 2>/dev/null || true
-          git push origin :refs/tags/latest 2>/dev/null || true
-          gh release create latest dist/index.html \
-            --title "Latest Build" \
-            --notes "Built from commit ${{ github.sha }}"
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Map Draw ${{ github.ref_name }}'
+          releaseBody: 'See the included installers for your platform.'
+          releaseDraft: true
+          prerelease: false
