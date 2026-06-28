@@ -33,6 +33,7 @@ import {
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
 } from './ui/icons'
+import { isTauri, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested } from './tauri'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -137,6 +138,19 @@ export default function App() {
   const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
+  const [savedHistoryLength, setSavedHistoryLength] = useState(0)
+  const isDirty = history.past.length !== savedHistoryLength
+
+  useEffect(() => {
+    if (!isTauri()) return
+    const name = currentFilePath
+      ? currentFilePath.split(/[\\/]/).pop() ?? 'Untitled'
+      : 'Untitled'
+    const marker = isDirty ? '● ' : ''
+    setWindowTitle(`${marker}Map Draw — ${name}`)
+  }, [currentFilePath, isDirty])
+
   const [paintTab, setPaintTab] = useState<'basic' | 'environments'>('basic')
   const [colorPickerOpen, setColorPickerOpen] = useState<number | null>(null)
 
@@ -1081,28 +1095,105 @@ export default function App() {
     offLayer.batchDraw()
     offStage.toDataURL({
       mimeType: 'image/png',
-      callback: (dataUrl: string) => {
+      callback: async (dataUrl: string) => {
         document.body.removeChild(container)
         offStage.destroy()
         const ts = new Date().toISOString().replace(/[:.]/g, '-')
-        const a = document.createElement('a')
-        a.download = `dungeon-map-${ts}.png`
-        a.href = dataUrl
-        a.click()
+        if (isTauri()) {
+          await savePngFile(`dungeon-map-${ts}.png`, dataUrl)
+        } else {
+          const a = document.createElement('a')
+          a.download = `dungeon-map-${ts}.png`
+          a.href = dataUrl
+          a.click()
+        }
       },
     })
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, waterColor, lavaColor, darknessColor])
 
-  const handleSave = () => {
-    const save = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
-    const blob = new Blob([JSON.stringify(save, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'dungeon-map.json'
-    a.click()
-    URL.revokeObjectURL(url)
+  const getSerializedMap = () => {
+    const mapSave = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
+    return JSON.stringify(mapSave, null, 2)
   }
+
+  const handleSave = useCallback(async () => {
+    const content = getSerializedMap()
+    if (isTauri()) {
+      if (currentFilePath) {
+        await saveJsonFile(currentFilePath, content)
+        setSavedHistoryLength(history.past.length)
+      } else {
+        await handleSaveAs()
+      }
+    } else {
+      const blob = new Blob([content], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'dungeon-map.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+  }, [currentFilePath, history.past.length, grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+
+  const handleSaveAs = useCallback(async () => {
+    if (!isTauri()) return
+    const content = getSerializedMap()
+    const defaultName = currentFilePath
+      ? currentFilePath.split(/[\\/]/).pop() ?? 'dungeon-map.json'
+      : 'dungeon-map.json'
+    const path = await saveJsonFileAs(defaultName, content)
+    if (path) {
+      setCurrentFilePath(path)
+      setSavedHistoryLength(history.past.length)
+    }
+  }, [currentFilePath, history.past.length, grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+
+  const handleOpen = useCallback(async () => {
+    if (!isTauri()) return
+    if (isDirty) {
+      const confirmed = window.confirm('You have unsaved changes. Open a new file anyway?')
+      if (!confirmed) return
+    }
+    const result = await openJsonFile()
+    if (!result) return
+    applyLoad(result.content)
+    setCurrentFilePath(result.path)
+    setSavedHistoryLength(0)
+  }, [isDirty])
+
+  const handleNew = useCallback(async () => {
+    if (isDirty) {
+      const confirmed = window.confirm('You have unsaved changes. Start a new map anyway?')
+      if (!confirmed) return
+    }
+    setHistory(createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], environmentalColors: new Map() }))
+    setCols(DEFAULT_COLS)
+    setRows(DEFAULT_ROWS)
+    setCurrentFilePath(null)
+    setSavedHistoryLength(0)
+    pendingFitRef.current = true
+  }, [isDirty])
+
+  useEffect(() => {
+    if (!isTauri()) return
+    const unlisteners: Array<() => void> = []
+    const setup = async () => {
+      unlisteners.push(await onMenuEvent('menu-new', handleNew))
+      unlisteners.push(await onMenuEvent('menu-open', handleOpen))
+      unlisteners.push(await onMenuEvent('menu-save', handleSave))
+      unlisteners.push(await onMenuEvent('menu-save-as', handleSaveAs))
+      unlisteners.push(await onMenuEvent('menu-export-png', handleExport))
+      unlisteners.push(await onCloseRequested((prevent) => {
+        if (isDirty) {
+          prevent()
+          window.confirm('You have unsaved changes. Quit anyway?') && window.close()
+        }
+      }))
+    }
+    setup()
+    return () => { unlisteners.forEach(fn => fn()) }
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, isDirty])
 
   const applyLoad = (text: string) => {
     try {
@@ -1126,6 +1217,8 @@ export default function App() {
       setDarknessColor(save.darknessColor)
       setLoadError(null)
       pendingFitRef.current = true
+      setSavedHistoryLength(0)
+      setCurrentFilePath(null)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load file')
     }
