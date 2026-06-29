@@ -2,6 +2,7 @@ import { open, save, confirm } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile, writeFile } from '@tauri-apps/plugin-fs'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { relaunch as tauriRelaunch } from '@tauri-apps/plugin-process'
 
 export function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -75,4 +76,9 @@ export async function confirmDialog(message: string, title?: string): Promise<bo
 export async function closeWindow(): Promise<void> {
   if (!isTauri()) return window.close()
   await getCurrentWindow().close()
+}
+
+export async function relaunch(): Promise<void> {
+  if (!isTauri()) return
+  await tauriRelaunch()
 }
