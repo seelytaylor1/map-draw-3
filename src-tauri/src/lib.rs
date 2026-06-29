@@ -5,19 +5,22 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
             let handle = app.handle().clone();
             app.on_menu_event(move |_app, event| {
                 let event_name = match event.id().as_ref() {
-                    "new"        => "menu-new",
-                    "open"       => "menu-open",
-                    "save"       => "menu-save",
-                    "save-as"    => "menu-save-as",
-                    "export-png" => "menu-export-png",
-                    "quit"       => "menu-quit",
-                    _            => return,
+                    "new"           => "menu-new",
+                    "open"          => "menu-open",
+                    "save"          => "menu-save",
+                    "save-as"       => "menu-save-as",
+                    "export-png"    => "menu-export-png",
+                    "quit"          => "menu-quit",
+                    "check-updates" => "menu-check-updates",
+                    _               => return,
                 };
                 handle.emit(event_name, ()).ok();
             });
@@ -50,5 +53,10 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &quit_item,
     ])?;
 
-    Menu::with_items(app, &[&file_menu])
+    let check_updates_item = MenuItem::with_id(app, "check-updates", "Check for Updates...", true, None::<&str>)?;
+    let help_menu = Submenu::with_items(app, "Help", true, &[
+        &check_updates_item,
+    ])?;
+
+    Menu::with_items(app, &[&file_menu, &help_menu])
 }
