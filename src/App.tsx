@@ -33,7 +33,9 @@ import {
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
 } from './ui/icons'
-import { isTauri, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow } from './tauri'
+import { isTauri, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
+import { useUpdater } from './hooks/useUpdater'
+import { UpdateNotification } from './ui/UpdateNotification'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -163,6 +165,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const stampImages = useStampImages()
+  const { state: updaterState, checkForUpdate, downloadAndInstall } = useUpdater()
 
   useEffect(() => {
     const obs = new ResizeObserver(() => {
@@ -1184,6 +1187,7 @@ export default function App() {
       unlisteners.push(await onMenuEvent('menu-save', handleSave))
       unlisteners.push(await onMenuEvent('menu-save-as', handleSaveAs))
       unlisteners.push(await onMenuEvent('menu-export-png', handleExport))
+      unlisteners.push(await onMenuEvent('menu-check-updates', checkForUpdate))
       unlisteners.push(await onMenuEvent('menu-quit', async () => {
         if (isDirty) {
           const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
@@ -1202,7 +1206,7 @@ export default function App() {
     }
     setup()
     return () => { unlisteners.forEach(fn => fn()) }
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, isDirty])
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, isDirty, checkForUpdate])
 
   const applyLoad = (text: string) => {
     try {
@@ -1600,6 +1604,11 @@ export default function App() {
             }}
           />
         </Section>
+        <UpdateNotification
+          state={updaterState}
+          onInstall={downloadAndInstall}
+          onRelaunch={relaunch}
+        />
       </div>
 
       <Stage

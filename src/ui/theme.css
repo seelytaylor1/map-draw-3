@@ -350,3 +350,17 @@ input[type='range'] {
 }
 .stamp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .stamp-btn img { width: 20px; height: 20px; image-rendering: crisp-edges; }
+
+.update-notification {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.update-error {
+  color: #f87171;
+  font-size: 11px;
+}
