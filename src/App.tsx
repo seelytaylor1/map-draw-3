@@ -1178,35 +1178,48 @@ export default function App() {
     pendingFitRef.current = true
   }, [isDirty])
 
+  const isDirtyRef = useRef(isDirty)
+  isDirtyRef.current = isDirty
+
   useEffect(() => {
     if (!isTauri()) return
-    const unlisteners: Array<() => void> = []
+    let cancelled = false
     const setup = async () => {
-      unlisteners.push(await onMenuEvent('menu-new', handleNew))
-      unlisteners.push(await onMenuEvent('menu-open', handleOpen))
-      unlisteners.push(await onMenuEvent('menu-save', handleSave))
-      unlisteners.push(await onMenuEvent('menu-save-as', handleSaveAs))
-      unlisteners.push(await onMenuEvent('menu-export-png', handleExport))
-      unlisteners.push(await onMenuEvent('menu-check-updates', checkForUpdate))
-      unlisteners.push(await onMenuEvent('menu-quit', async () => {
-        if (isDirty) {
-          const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
-          if (yes) await closeWindow()
-        } else {
-          await closeWindow()
-        }
-      }))
-      unlisteners.push(await onCloseRequested(async (prevent) => {
-        if (isDirty) {
-          prevent()
-          const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
-          if (yes) await closeWindow()
-        }
-      }))
+      const listeners = await Promise.all([
+        onMenuEvent('menu-new', handleNew),
+        onMenuEvent('menu-open', handleOpen),
+        onMenuEvent('menu-save', handleSave),
+        onMenuEvent('menu-save-as', handleSaveAs),
+        onMenuEvent('menu-export-png', handleExport),
+        onMenuEvent('menu-check-updates', checkForUpdate),
+        onMenuEvent('menu-quit', async () => {
+          if (isDirtyRef.current) {
+            const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
+            if (yes) await closeWindow()
+          } else {
+            await closeWindow()
+          }
+        }),
+        onCloseRequested(async (prevent) => {
+          if (isDirtyRef.current) {
+            prevent()
+            const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
+            if (yes) await closeWindow()
+          }
+        }),
+      ])
+      if (cancelled) {
+        listeners.forEach(fn => fn())
+        return
+      }
+      return () => listeners.forEach(fn => fn())
     }
-    setup()
-    return () => { unlisteners.forEach(fn => fn()) }
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, isDirty, checkForUpdate])
+    const teardownPromise = setup()
+    return () => {
+      cancelled = true
+      teardownPromise.then(fn => fn?.())
+    }
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, checkForUpdate])
 
   const applyLoad = (text: string) => {
     try {
