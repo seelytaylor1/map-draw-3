@@ -1,5 +1,5 @@
 import { check, type Update } from '@tauri-apps/plugin-updater'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isTauri } from '../tauri'
 
 export type UpdaterState =
@@ -40,17 +40,25 @@ export function useUpdater(): {
     let contentLength = 0
     let downloaded = 0
     setState({ status: 'downloading', progress: 0 })
-    await update.downloadAndInstall((event) => {
-      if (event.event === 'Started') {
-        contentLength = event.data.contentLength ?? 0
-      } else if (event.event === 'Progress') {
-        downloaded += event.data.chunkLength
-        const progress = contentLength > 0 ? Math.round((downloaded / contentLength) * 100) : 0
-        setState({ status: 'downloading', progress })
-      }
-    })
-    setState({ status: 'relaunch-pending' })
+    try {
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          contentLength = event.data.contentLength ?? 0
+        } else if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength
+          const progress = contentLength > 0 ? Math.round((downloaded / contentLength) * 100) : 0
+          setState({ status: 'downloading', progress })
+        }
+      })
+      setState({ status: 'relaunch-pending' })
+    } catch (e) {
+      setState({ status: 'error', message: e instanceof Error ? e.message : String(e) })
+    }
   }, [])
+
+  useEffect(() => {
+    checkForUpdate()
+  }, [checkForUpdate])
 
   return { state, checkForUpdate, downloadAndInstall }
 }

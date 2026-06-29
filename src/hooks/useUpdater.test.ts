@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useUpdater } from './useUpdater'
+import type { Update } from '@tauri-apps/plugin-updater'
 
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: vi.fn(),
@@ -22,10 +23,11 @@ beforeEach(() => {
 })
 
 describe('useUpdater', () => {
-  it('starts idle', async () => {
+  it('starts checking on mount', async () => {
     mockCheck.mockResolvedValue(null)
     const { result } = renderHook(() => useUpdater())
-    expect(result.current.state.status).toBe('idle')
+    await act(async () => {})
+    expect(result.current.state.status).toBe('idle') // settled after check returns null
   })
 
   it('transitions to idle when no update available', async () => {
@@ -38,7 +40,7 @@ describe('useUpdater', () => {
   })
 
   it('transitions to available when update found', async () => {
-    mockCheck.mockResolvedValue({ version: '0.2.0', downloadAndInstall: vi.fn() })
+    mockCheck.mockResolvedValue({ version: '0.2.0', downloadAndInstall: vi.fn() } as unknown as Update)
     const { result } = renderHook(() => useUpdater())
     await act(async () => {
       await result.current.checkForUpdate()
@@ -57,11 +59,20 @@ describe('useUpdater', () => {
 
   it('transitions to relaunch-pending after successful download', async () => {
     const mockDownloadAndInstall = vi.fn().mockResolvedValue(undefined)
-    mockCheck.mockResolvedValue({ version: '0.2.0', downloadAndInstall: mockDownloadAndInstall })
+    mockCheck.mockResolvedValue({ version: '0.2.0', downloadAndInstall: mockDownloadAndInstall } as unknown as Update)
     const { result } = renderHook(() => useUpdater())
     await act(async () => { await result.current.checkForUpdate() })
     await act(async () => { await result.current.downloadAndInstall() })
     expect(result.current.state.status).toBe('relaunch-pending')
+  })
+
+  it('transitions to error when download throws', async () => {
+    const mockDownloadAndInstall = vi.fn().mockRejectedValue(new Error('disk full'))
+    mockCheck.mockResolvedValue({ version: '0.2.0', downloadAndInstall: mockDownloadAndInstall } as unknown as Update)
+    const { result } = renderHook(() => useUpdater())
+    await act(async () => { await result.current.checkForUpdate() })
+    await act(async () => { await result.current.downloadAndInstall() })
+    expect(result.current.state).toEqual({ status: 'error', message: 'disk full' })
   })
 
   it('is a no-op when not in Tauri', async () => {
