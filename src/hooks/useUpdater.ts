@@ -18,7 +18,7 @@ export function useUpdater(): {
   const [state, setState] = useState<UpdaterState>({ status: 'idle' })
   const updateRef = useRef<Update | null>(null)
 
-  const checkForUpdate = useCallback(async () => {
+  const checkForUpdate = useCallback(async (silent = false) => {
     if (!isTauri()) return
     setState({ status: 'checking' })
     try {
@@ -30,7 +30,11 @@ export function useUpdater(): {
         setState({ status: 'idle' })
       }
     } catch (e) {
-      setState({ status: 'error', message: e instanceof Error ? e.message : String(e) })
+      if (silent) {
+        setState({ status: 'idle' })
+      } else {
+        setState({ status: 'error', message: e instanceof Error ? e.message : String(e) })
+      }
     }
   }, [])
 
@@ -57,7 +61,7 @@ export function useUpdater(): {
   }, [])
 
   useEffect(() => {
-    checkForUpdate()
+    checkForUpdate(true) // silent: swallow errors on mount
   }, [checkForUpdate])
 
   return { state, checkForUpdate, downloadAndInstall }

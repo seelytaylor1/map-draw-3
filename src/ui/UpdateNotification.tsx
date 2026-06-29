@@ -22,7 +22,9 @@ export function UpdateNotification({ state, onInstall, onRelaunch }: {
         <button className="btn btn-primary" onClick={onRelaunch}>Relaunch to finish</button>
       )}
       {state.status === 'error' && (
-        <span className="update-error">{state.message}</span>
+        <span className="update-error">
+          {state.message} <button className="update-retry" onClick={onInstall}>Retry</button>
+        </span>
       )}
     </div>
   )

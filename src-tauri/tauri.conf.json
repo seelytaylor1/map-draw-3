@@ -37,5 +37,13 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_PUBLIC_KEY_AFTER_RUNNING_npm_run_tauri_signer_generate",
+      "endpoints": [
+        "https://github.com/seelytaylor/map-draw-3/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -27,6 +27,7 @@ describe('useUpdater', () => {
     mockCheck.mockResolvedValue(null)
     const { result } = renderHook(() => useUpdater())
     await act(async () => {})
+    expect(mockCheck).toHaveBeenCalledOnce()
     expect(result.current.state.status).toBe('idle') // settled after check returns null
   })
 
@@ -48,13 +49,20 @@ describe('useUpdater', () => {
     expect(result.current.state).toEqual({ status: 'available', version: '0.2.0' })
   })
 
-  it('transitions to error when check throws', async () => {
+  it('transitions to error when check throws (explicit call)', async () => {
     mockCheck.mockRejectedValue(new Error('network failure'))
     const { result } = renderHook(() => useUpdater())
     await act(async () => {
       await result.current.checkForUpdate()
     })
     expect(result.current.state).toEqual({ status: 'error', message: 'network failure' })
+  })
+
+  it('stays idle on mount when check throws (silent)', async () => {
+    mockCheck.mockRejectedValue(new Error('network failure'))
+    const { result } = renderHook(() => useUpdater())
+    await act(async () => {})
+    expect(result.current.state.status).toBe('idle')
   })
 
   it('transitions to relaunch-pending after successful download', async () => {

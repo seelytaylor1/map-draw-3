@@ -64,5 +64,6 @@ describe('UpdateNotification', () => {
       <UpdateNotification state={{ status: 'error', message: 'network failure' }} onInstall={noop} onRelaunch={noop} />
     )
     expect(screen.getByText(/network failure/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 })
