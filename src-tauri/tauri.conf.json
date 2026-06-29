@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_PUBLIC_KEY_AFTER_RUNNING_npm_run_tauri_signer_generate",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5Nzg3NDVGMDEwMEE3OEUKUldTT3B3QUJYM1I0ZVRTRUNST2lUQUNnSkpZaHlXT2N1TlR3N3VDREg5MjZYQ3l5QmVxSEdJbkcK",
       "endpoints": [
         "https://github.com/seelytaylor/map-draw-3/releases/latest/download/latest.json"
       ]
