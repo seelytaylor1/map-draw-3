@@ -1154,7 +1154,7 @@ export default function App() {
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
-    if (isDirty) {
+    if (isDirtyRef.current) {
       const confirmed = window.confirm('You have unsaved changes. Open a new file anyway?')
       if (!confirmed) return
     }
@@ -1163,10 +1163,10 @@ export default function App() {
     applyLoad(result.content)
     setCurrentFilePath(result.path)
     setSavedHistoryLength(0)
-  }, [isDirty])
+  }, [])
 
   const handleNew = useCallback(async () => {
-    if (isDirty) {
+    if (isDirtyRef.current) {
       const confirmed = window.confirm('You have unsaved changes. Start a new map anyway?')
       if (!confirmed) return
     }
@@ -1176,22 +1176,36 @@ export default function App() {
     setCurrentFilePath(null)
     setSavedHistoryLength(0)
     pendingFitRef.current = true
-  }, [isDirty])
+  }, [])
 
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
+
+  const handleNewRef = useRef(handleNew)
+  const handleOpenRef = useRef(handleOpen)
+  const handleSaveRef = useRef(handleSave)
+  const handleSaveAsRef = useRef(handleSaveAs)
+  const handleExportRef = useRef(handleExport)
+  const checkForUpdateRef = useRef(checkForUpdate)
+
+  useEffect(() => { handleNewRef.current = handleNew }, [handleNew])
+  useEffect(() => { handleOpenRef.current = handleOpen }, [handleOpen])
+  useEffect(() => { handleSaveRef.current = handleSave }, [handleSave])
+  useEffect(() => { handleSaveAsRef.current = handleSaveAs }, [handleSaveAs])
+  useEffect(() => { handleExportRef.current = handleExport }, [handleExport])
+  useEffect(() => { checkForUpdateRef.current = checkForUpdate }, [checkForUpdate])
 
   useEffect(() => {
     if (!isTauri()) return
     let cancelled = false
     const setup = async () => {
       const listeners = await Promise.all([
-        onMenuEvent('menu-new', handleNew),
-        onMenuEvent('menu-open', handleOpen),
-        onMenuEvent('menu-save', handleSave),
-        onMenuEvent('menu-save-as', handleSaveAs),
-        onMenuEvent('menu-export-png', handleExport),
-        onMenuEvent('menu-check-updates', checkForUpdate),
+        onMenuEvent('menu-new', () => handleNewRef.current()),
+        onMenuEvent('menu-open', () => handleOpenRef.current()),
+        onMenuEvent('menu-save', () => handleSaveRef.current()),
+        onMenuEvent('menu-save-as', () => handleSaveAsRef.current()),
+        onMenuEvent('menu-export-png', () => handleExportRef.current()),
+        onMenuEvent('menu-check-updates', () => checkForUpdateRef.current?.()),
         onMenuEvent('menu-quit', async () => {
           if (isDirtyRef.current) {
             const yes = await confirmDialog('You have unsaved changes. Quit anyway?', 'Unsaved Changes')
@@ -1219,7 +1233,7 @@ export default function App() {
       cancelled = true
       teardownPromise.then(fn => fn?.())
     }
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleExport, checkForUpdate])
+  }, [])
 
   const applyLoad = (text: string) => {
     try {
@@ -1244,7 +1258,6 @@ export default function App() {
       setLoadError(null)
       pendingFitRef.current = true
       setSavedHistoryLength(0)
-      setCurrentFilePath(null)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load file')
     }
