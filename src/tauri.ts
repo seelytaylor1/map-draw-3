@@ -2,7 +2,8 @@ import { open as openDialog, save, confirm } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile, writeFile } from '@tauri-apps/plugin-fs'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { relaunch as tauriRelaunch } from '@tauri-apps/plugin-process'
+import { openPath as openTauriPath } from '@tauri-apps/plugin-opener'
+import { exit as tauriExit, relaunch as tauriRelaunch } from '@tauri-apps/plugin-process'
 
 export function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -10,11 +11,21 @@ export function isTauri(): boolean {
 
 export async function openAssetFolder(): Promise<void> {
   if (!isTauri()) return
-  const folder = 'D:/Taylor Projects/code/map-draw-3/src'
-  const opener = await (Function('return import("@tauri-apps/plugin-opener")')() as Promise<{
-    openPath: (path: string) => Promise<void>
-  }>)
-  await opener.openPath(folder)
+
+  const candidates = [
+    'D:/Taylor Projects/code/map-draw-3/src',
+    'D:\\Taylor Projects\\code\\map-draw-3\\src',
+    'src',
+  ]
+
+  for (const folder of candidates) {
+    try {
+      await openTauriPath(folder)
+      return
+    } catch {
+      // Keep trying the next candidate if the folder path cannot be opened.
+    }
+  }
 }
 
 export async function openJsonFile(): Promise<{ path: string; content: string } | null> {
@@ -84,7 +95,7 @@ export async function confirmDialog(message: string, title?: string): Promise<bo
 
 export async function closeWindow(): Promise<void> {
   if (!isTauri()) return window.close()
-  await getCurrentWindow().close()
+  await tauriExit(0)
 }
 
 export async function relaunch(): Promise<void> {
