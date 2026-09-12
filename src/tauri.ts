@@ -10,9 +10,11 @@ export function isTauri(): boolean {
 
 export async function openAssetFolder(): Promise<void> {
   if (!isTauri()) return
-  const { openPath } = await import(/* @vite-ignore */ '@tauri-apps/plugin-opener')
   const folder = 'D:/Taylor Projects/code/map-draw-3/src'
-  await openPath(folder)
+  const opener = await (Function('return import("@tauri-apps/plugin-opener")')() as Promise<{
+    openPath: (path: string) => Promise<void>
+  }>)
+  await opener.openPath(folder)
 }
 
 export async function openJsonFile(): Promise<{ path: string; content: string } | null> {
