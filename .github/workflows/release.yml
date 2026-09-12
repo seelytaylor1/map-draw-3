@@ -43,9 +43,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: build-${{ github.sha }}
-          releaseName: 'Map Draw ${{ github.sha }}'
+          tagName: app-v__VERSION__
+          releaseName: 'Map Draw v__VERSION__'
           releaseBody: 'See the included installers for your platform.'
           releaseDraft: false
           prerelease: false
