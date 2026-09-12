@@ -1627,19 +1627,29 @@ export default function App() {
         <Section title="Canvas & File" icon={<IconImage size={14} />} defaultOpen>
           <div className="row">
             <label className="label-dim" style={{ width: 44 }}>Size</label>
-            <input
-              className="num-field"
-              type="number" min={1} max={36} step={0.1}
-              value={+(cols / TILES_PER_INCH).toFixed(1)}
-              onChange={e => handleWidthChange(Number(e.target.value))}
-            />
+            <div className="stepper compact" style={{ flex: 1 }}>
+              <button type="button" aria-label="Decrease width" onClick={() => handleWidthChange((cols / TILES_PER_INCH) - 0.1)}><IconMinus size={13} /></button>
+              <input
+                className="num-field"
+                type="number" min={1} max={36} step={0.1}
+                value={+(cols / TILES_PER_INCH).toFixed(1)}
+                onChange={e => handleWidthChange(Number(e.target.value))}
+                style={{ width: 52 }}
+              />
+              <button type="button" aria-label="Increase width" onClick={() => handleWidthChange((cols / TILES_PER_INCH) + 0.1)}><IconPlus size={13} /></button>
+            </div>
             <span className="label-dim">×</span>
-            <input
-              className="num-field"
-              type="number" min={1} max={36} step={0.1}
-              value={+(rows / TILES_PER_INCH).toFixed(1)}
-              onChange={e => handleHeightChange(Number(e.target.value))}
-            />
+            <div className="stepper compact">
+              <button type="button" aria-label="Decrease height" onClick={() => handleHeightChange((rows / TILES_PER_INCH) - 0.1)}><IconMinus size={13} /></button>
+              <input
+                className="num-field"
+                type="number" min={1} max={36} step={0.1}
+                value={+(rows / TILES_PER_INCH).toFixed(1)}
+                onChange={e => handleHeightChange(Number(e.target.value))}
+                style={{ width: 52 }}
+              />
+              <button type="button" aria-label="Increase height" onClick={() => handleHeightChange((rows / TILES_PER_INCH) + 0.1)}><IconPlus size={13} /></button>
+            </div>
             <span className="label-dim" style={{ fontSize: 10 }}>in</span>
           </div>
 

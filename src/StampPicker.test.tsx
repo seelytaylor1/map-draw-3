@@ -14,6 +14,12 @@ vi.mock('./stamps/archway.svg?url', () => ({ default: 'archway.svg' }))
 afterEach(cleanup)
 
 describe('StampPicker', () => {
+  it('renders the icons and iso objects groups', () => {
+    render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
+    expect(screen.getByText('Icons')).toBeInTheDocument()
+    expect(screen.getByText('Iso Objects')).toBeInTheDocument()
+  })
+
   it('renders archway button', () => {
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
     expect(screen.getByTitle('Archway')).toBeInTheDocument()

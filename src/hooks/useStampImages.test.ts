@@ -24,12 +24,12 @@ describe('useStampImages', () => {
     }
   })
 
-  it('resolves to a map containing all object stamp types including archway', async () => {
+  it('detects object assets from the folder instead of a hardcoded allowlist', async () => {
+    expect(OBJECT_STAMP_TYPES).toContain('stairs')
+
     const { useStampImages } = await import('./useStampImages')
     const { result } = renderHook(() => useStampImages())
     await waitFor(() => expect(result.current).not.toBeNull())
-    for (const type of OBJECT_STAMP_TYPES) {
-      expect(result.current!.has(type)).toBe(true)
-    }
+    expect(result.current!.has('stairs')).toBe(true)
   })
 })

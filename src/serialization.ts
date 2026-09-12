@@ -114,8 +114,16 @@ export function serialize(params: {
       if (mirrored) out.mirrored = mirrored
       return out as Stamp
     }),
-    steps: params.steps.map(s => ({ ...s })),
-    ramps: params.ramps.map(r => ({ ...r })),
+    steps: params.steps.map(s => {
+      const out = { ...s }
+      if (!out.ascending) delete out.ascending
+      return out
+    }),
+    ramps: params.ramps.map(r => {
+      const out = { ...r }
+      if (!out.ascending) delete out.ascending
+      return out
+    }),
     labels: params.labels,
     environmentalColors: Object.fromEntries(Array.from(params.environmentalColors.entries())),
   }
@@ -188,12 +196,14 @@ export function deserialize(raw: unknown): DeserializedMap {
     if (typeof o['row'] !== 'number') throw new Error('Invalid step row')
     if (!STEP_DIRECTIONS.includes(o['direction'] as StepDirection)) throw new Error('Invalid step direction')
     const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
+    const ascending = o['ascending'] === true
     return {
       id: o['id'] as string,
       col: o['col'] as number,
       row: o['row'] as number,
       z,
       direction: o['direction'] as StepDirection,
+      ascending,
     }
   })
 
@@ -206,12 +216,14 @@ export function deserialize(raw: unknown): DeserializedMap {
     if (typeof o['row'] !== 'number') throw new Error('Invalid ramp row')
     if (!RAMP_DIRECTIONS.includes(o['direction'] as RampDirection)) throw new Error('Invalid ramp direction')
     const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
+    const ascending = o['ascending'] === true
     return {
       id: o['id'] as string,
       col: o['col'] as number,
       row: o['row'] as number,
       z,
       direction: o['direction'] as RampDirection,
+      ascending,
     }
   })
 

@@ -50,15 +50,15 @@ export function isoStepSideFaces(run: StepRun, tileW: number, tileH: number, fac
   for (let i = 0; i < STEP_TREAD_COUNT; i++) {
     const u0 = (i * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
     const u1 = ((i + 1) * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
-    const d = i * drop * sign
-    const bottom = Math.min(d + faceH * sign, Z_STEP_HEIGHT * sign)
+    const start = i * drop * sign
+    const end = Z_STEP_HEIGHT * sign
     const ga = uvToGrid(run, u0, 1)
     const gb = uvToGrid(run, u1, 1)
     const a = isoProject(ga.col, ga.row, tileW, tileH)
     const b = isoProject(gb.col, gb.row, tileW, tileH)
     faces.push({
       side,
-      points: [a.x, a.y + d, b.x, b.y + d, b.x, b.y + bottom, a.x, a.y + bottom],
+      points: [a.x, a.y + start, b.x, b.y + start, b.x, b.y + end, a.x, a.y + end],
     })
   }
   return faces

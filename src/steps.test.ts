@@ -121,6 +121,17 @@ describe('isoStepTreads descent', () => {
     }
   })
 
+  it('can rise upward instead of descending', () => {
+    const up = isoStepTreads(run({ col: 0, row: 0, direction: 'E', ascending: true }), TILE_W, TILE_H)
+    const drop = Z_STEP_HEIGHT / STEP_TREAD_COUNT
+    for (let i = 1; i < up.length; i++) {
+      const u0 = (i * 2) / STEP_TREAD_COUNT
+      const flat = isoProject(u0, 0, TILE_W, TILE_H)
+      expect(up[i].top[0]).toBe(flat.x)
+      expect(up[i].top[1]).toBeCloseTo(flat.y - i * drop, 10)
+    }
+  })
+
   it('riser of each tread connects its top to the next tread elevation', () => {
     for (let i = 0; i < treads.length; i++) {
       const f = treads[i].front
@@ -209,14 +220,20 @@ describe('isoStepSideFaces', () => {
     expect(faces[0].side).toBe('south')
     const a = isoProject(0, 1, TILE_W, TILE_H)
     const b = isoProject(u1, 1, TILE_W, TILE_H)
-    expect(faces[0].points).toEqual([a.x, a.y, b.x, b.y, b.x, b.y + FACE, a.x, a.y + FACE])
-    // tread 2 face sits two riser drops lower
-    const a2 = isoProject(2 * u1, 1, TILE_W, TILE_H)
-    expect(faces[2].points[1]).toBeCloseTo(a2.y + 2 * drop, 10)
+    expect(faces[0].points).toEqual([a.x, a.y, b.x, b.y, b.x, b.y + Z_STEP_HEIGHT, a.x, a.y + Z_STEP_HEIGHT])
+    expect(faces[1].points[1]).toBeGreaterThan(faces[0].points[1])
   })
 
   it('direction W: faces are south-side', () => {
     expect(isoStepSideFaces(run({ direction: 'W' }), TILE_W, TILE_H, FACE)[0].side).toBe('south')
+  })
+
+  it('descending runs keep the tallest sidewall at the top of the flight', () => {
+    const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E' }), TILE_W, TILE_H, FACE)
+    const firstHeight = faces[0].points[5] - faces[0].points[1]
+    const lastHeight = faces[faces.length - 1].points[5] - faces[faces.length - 1].points[1]
+    expect(firstHeight).toBeGreaterThan(lastHeight)
+    expect(firstHeight).toBeGreaterThan(0)
   })
 
   it('no face extends below the Z-1 floor plane', () => {

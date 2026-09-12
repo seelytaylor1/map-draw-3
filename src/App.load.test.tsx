@@ -94,4 +94,11 @@ describe('App load lifecycle', () => {
       expect(input).toHaveAttribute('max', '36')
     }
   })
+
+  it('adds explicit step controls for canvas size adjustments', () => {
+    render(<App />)
+
+    const sizeButtons = screen.getAllByRole('button', { name: /increase|decrease/i })
+    expect(sizeButtons.length).toBeGreaterThanOrEqual(2)
+  })
 })
