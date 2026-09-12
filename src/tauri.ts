@@ -1,16 +1,23 @@
-import { open, save, confirm } from '@tauri-apps/plugin-dialog'
+import { open as openDialog, save, confirm } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile, writeFile } from '@tauri-apps/plugin-fs'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { relaunch as tauriRelaunch } from '@tauri-apps/plugin-process'
+import { openPath } from '@tauri-apps/plugin-opener'
 
 export function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window
 }
 
+export async function openAssetFolder(): Promise<void> {
+  if (!isTauri()) return
+  const folder = 'D:/Taylor Projects/code/map-draw-3/src'
+  await openPath(folder)
+}
+
 export async function openJsonFile(): Promise<{ path: string; content: string } | null> {
   if (!isTauri()) return null
-  const path = await open({
+  const path = await openDialog({
     multiple: false,
     filters: [{ name: 'Map', extensions: ['json'] }],
   })

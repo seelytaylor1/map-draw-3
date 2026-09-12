@@ -11,6 +11,7 @@ export type RampDirection = 'N' | 'E' | 'S' | 'W'
 
 export interface RampRun extends DirectionalRun {
   direction: RampDirection
+  ascending?: boolean
 }
 
 export const RAMP_RUN_LENGTH = RUN_LENGTH
@@ -19,9 +20,11 @@ export function rampRunTiles(run: RampRun): { col: number; row: number }[] {
   return runTiles(run)
 }
 
-// Linear elevation drop at distance u along the descent.
-function dropAt(u: number): number {
-  return (u / RAMP_RUN_LENGTH) * Z_STEP_HEIGHT
+// Linear elevation change along the run. `ascending` flips the sign so the run
+// climbs toward a higher Z instead of descending to a lower one.
+function dropAt(run: RampRun, u: number): number {
+  const sign = run.ascending ? -1 : 1
+  return (u / RAMP_RUN_LENGTH) * Z_STEP_HEIGHT * sign
 }
 
 export function isoRampSurface(run: RampRun, tileW: number, tileH: number): number[] {
@@ -35,7 +38,7 @@ export function isoRampSurface(run: RampRun, tileW: number, tileH: number): numb
   return corners.flatMap(({ u, v }) => {
     const g = uvToGrid(run, u, v)
     const p = isoProject(g.col, g.row, tileW, tileH)
-    return [p.x, p.y + dropAt(u)]
+    return [p.x, p.y + dropAt(run, u)]
   })
 }
 
@@ -80,13 +83,17 @@ export function isoRampSideFace(run: RampRun, tileW: number, tileH: number): Ram
   const gb = uvToGrid(run, RAMP_RUN_LENGTH, 1)
   const a = isoProject(ga.col, ga.row, tileW, tileH)
   const b = isoProject(gb.col, gb.row, tileW, tileH)
+  const topA = a.y + dropAt(run, 0)
+  const topB = b.y + dropAt(run, RAMP_RUN_LENGTH)
+  const bottomA = a.y + (run.ascending ? 0 : Z_STEP_HEIGHT)
+  const bottomB = b.y + (run.ascending ? 0 : Z_STEP_HEIGHT)
   return {
     side,
     points: [
-      a.x, a.y + dropAt(0),
-      b.x, b.y + dropAt(RAMP_RUN_LENGTH),
-      b.x, b.y + Z_STEP_HEIGHT,
-      a.x, a.y + Z_STEP_HEIGHT,
+      a.x, topA,
+      b.x, topB,
+      b.x, bottomB,
+      a.x, bottomA,
     ],
   }
 }
@@ -95,3 +102,6 @@ export function addRampRun(ramps: RampRun[], run: RampRun): RampRun[] { return a
 export function removeRampRun(ramps: RampRun[], id: string): RampRun[] { return removeRun(ramps, id) }
 export function moveRampRun(ramps: RampRun[], id: string, col: number, row: number): RampRun[] { return moveRun(ramps, id, col, row) }
 export function rotateRampRun(ramps: RampRun[], id: string): RampRun[] { return rotateRun(ramps, id) }
+export function toggleRampRunAscending(ramps: RampRun[], id: string): RampRun[] {
+  return ramps.map(r => r.id === id ? { ...r, ascending: !r.ascending } : r)
+}
