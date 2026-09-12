@@ -3,7 +3,6 @@ import { readTextFile, writeTextFile, writeFile } from '@tauri-apps/plugin-fs'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { relaunch as tauriRelaunch } from '@tauri-apps/plugin-process'
-import { openPath } from '@tauri-apps/plugin-opener'
 
 export function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window
@@ -11,6 +10,7 @@ export function isTauri(): boolean {
 
 export async function openAssetFolder(): Promise<void> {
   if (!isTauri()) return
+  const { openPath } = await import(/* @vite-ignore */ '@tauri-apps/plugin-opener')
   const folder = 'D:/Taylor Projects/code/map-draw-3/src'
   await openPath(folder)
 }
