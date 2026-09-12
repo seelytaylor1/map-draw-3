@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { onMenuEventMock, onCloseRequestedMock } = vi.hoisted(() => ({
@@ -18,6 +18,7 @@ vi.mock('./tauri', () => ({
   saveJsonFile: vi.fn(),
   saveJsonFileAs: vi.fn(),
   savePngFile: vi.fn(),
+  openAssetFolder: vi.fn(),
   setWindowTitle: vi.fn(),
   onMenuEvent: onMenuEventMock,
   onCloseRequested: onCloseRequestedMock,
@@ -47,6 +48,7 @@ import App from './App'
 
 describe('App load lifecycle', () => {
   beforeEach(() => {
+    cleanup()
     vi.clearAllMocks()
     ;(globalThis as typeof globalThis & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver = class {
       observe() {}
@@ -68,5 +70,28 @@ describe('App load lifecycle', () => {
     expect(onMenuEventMock.mock.calls.length).toBe(initialCount)
     fireEvent.click(screen.getByText('Grid'))
     expect(onMenuEventMock.mock.calls.length).toBe(initialCount)
+  })
+
+  it('opens the asset folder from the file toolbar', async () => {
+    const { openAssetFolder } = await import('./tauri')
+    render(<App />)
+
+    const buttons = screen.getAllByRole('button', { name: /asset folder/i })
+    expect(buttons.length).toBeGreaterThan(0)
+    fireEvent.click(buttons[0])
+
+    expect(openAssetFolder).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses tenth-inch steps for canvas dimensions', () => {
+    render(<App />)
+
+    const sizeInputs = screen.getAllByRole('spinbutton')
+    expect(sizeInputs).toHaveLength(2)
+    for (const input of sizeInputs) {
+      expect(input).toHaveAttribute('step', '0.1')
+      expect(input).toHaveAttribute('min', '1')
+      expect(input).toHaveAttribute('max', '36')
+    }
   })
 })

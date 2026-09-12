@@ -12,8 +12,8 @@ import {
   addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
-import { addStepRun, removeStepRun, rotateStepRun, type StepRun } from './steps'
-import { addRampRun, removeRampRun, rotateRampRun, type RampRun } from './ramps'
+import { addStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
+import { addRampRun, removeRampRun, rotateRampRun, toggleRampRunAscending, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
 import { drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
@@ -33,7 +33,7 @@ import {
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
 } from './ui/icons'
-import { isTauri, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
+import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
 
@@ -208,6 +208,11 @@ export default function App() {
         setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, id) }))
         return
       }
+      if ((e.key === 'a' || e.key === 'A') && ds.tool === 'steps' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, steps: toggleStepRunAscending(h.present.steps, id) }))
+        return
+      }
       if (e.key === 'Delete' && ds.tool === 'ramps' && ds.selectedId) {
         const id = ds.selectedId
         setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, id) }))
@@ -217,6 +222,11 @@ export default function App() {
       if ((e.key === 'r' || e.key === 'R') && ds.tool === 'ramps' && ds.selectedId) {
         const id = ds.selectedId
         setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, id) }))
+        return
+      }
+      if ((e.key === 'a' || e.key === 'A') && ds.tool === 'ramps' && ds.selectedId) {
+        const id = ds.selectedId
+        setHistory(h => push(h, { ...h.present, ramps: toggleRampRunAscending(h.present.ramps, id) }))
         return
       }
       if (e.key === 'Escape') {
@@ -321,6 +331,7 @@ export default function App() {
           row: tile.row,
           z: activeZRef.current,
           direction: 'E',
+          ascending: false,
         }
         setHistory(h => push(h, { ...h.present, steps: addStepRun(h.present.steps, newRun) }))
         dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: newRun.id } })
@@ -334,6 +345,7 @@ export default function App() {
           row: tile.row,
           z: activeZRef.current,
           direction: 'E',
+          ascending: false,
         }
         setHistory(h => push(h, { ...h.present, ramps: addRampRun(h.present.ramps, newRun) }))
         dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: newRun.id } })
@@ -986,8 +998,10 @@ export default function App() {
   useEffect(() => { setShow3D(showIso) }, [showIso])
 
   const handleWidthChange = (inches: number) => {
-    if (!Number.isFinite(inches) || inches < 1 || inches > 36) return
-    const newCols = Math.round(inches * TILES_PER_INCH)
+    if (!Number.isFinite(inches)) return
+    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / 0.1) * 0.1).toFixed(1))))
+    if (snappedInches < 1 || snappedInches > 36) return
+    const newCols = Math.round(snappedInches * TILES_PER_INCH)
     if (newCols === cols) return
     setHistory(h => {
       const newGrids = new Map<number, Uint8Array>()
@@ -1000,8 +1014,10 @@ export default function App() {
   }
 
   const handleHeightChange = (inches: number) => {
-    if (!Number.isFinite(inches) || inches < 1 || inches > 36) return
-    const newRows = Math.round(inches * TILES_PER_INCH)
+    if (!Number.isFinite(inches)) return
+    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / 0.1) * 0.1).toFixed(1))))
+    if (snappedInches < 1 || snappedInches > 36) return
+    const newRows = Math.round(snappedInches * TILES_PER_INCH)
     if (newRows === rows) return
     setHistory(h => {
       const newGrids = new Map<number, Uint8Array>()
@@ -1163,6 +1179,11 @@ export default function App() {
     applyLoad(result.content)
     setCurrentFilePath(result.path)
     setSavedHistoryLength(0)
+  }, [])
+
+  const handleOpenAssetFolder = useCallback(async () => {
+    if (!isTauri()) return
+    await openAssetFolder()
   }, [])
 
   const handleNew = useCallback(async () => {
@@ -1418,14 +1439,22 @@ export default function App() {
           {drawingState.tool === 'steps' && (
             <div className="hint">Click: place steps descending Z{activeZ} → Z{activeZ - 1}</div>
           )}
-          {selectedStepId && (
-            <>
-              <Btn onClick={() => setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))}>
-                <IconRotate size={13} /> Rotate Steps
-              </Btn>
-              <div className="hint">R: rotate · Del: delete · Esc: deselect</div>
-            </>
-          )}
+          {selectedStepId && (() => {
+            const selected = steps.find(s => s.id === selectedStepId)
+            return (
+              <>
+                <div className="row">
+                  <Btn onClick={() => setHistory(h => push(h, { ...h.present, steps: rotateStepRun(h.present.steps, selectedStepId) }))}>
+                    <IconRotate size={13} /> Rotate
+                  </Btn>
+                  <Btn onClick={() => setHistory(h => push(h, { ...h.present, steps: toggleStepRunAscending(h.present.steps, selectedStepId) }))}>
+                    {selected?.ascending ? 'Descend' : 'Ascend'}
+                  </Btn>
+                </div>
+                <div className="hint">R: rotate · A: {selected?.ascending ? 'descend' : 'ascend'} · Del: delete · Esc: deselect</div>
+              </>
+            )
+          })()}
           <ToolButton
             icon={<IconRamp size={14} />}
             label="Ramp"
@@ -1438,14 +1467,22 @@ export default function App() {
           {drawingState.tool === 'ramps' && (
             <div className="hint">Click: place ramp descending Z{activeZ} → Z{activeZ - 1}</div>
           )}
-          {selectedRampId && (
-            <>
-              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))}>
-                <IconRotate size={13} /> Rotate Ramp
-              </Btn>
-              <div className="hint">R: rotate · Del: delete · Esc: deselect</div>
-            </>
-          )}
+          {selectedRampId && (() => {
+            const selected = ramps.find(r => r.id === selectedRampId)
+            return (
+              <>
+                <div className="row">
+                  <Btn onClick={() => setHistory(h => push(h, { ...h.present, ramps: rotateRampRun(h.present.ramps, selectedRampId) }))}>
+                    <IconRotate size={13} /> Rotate
+                  </Btn>
+                  <Btn onClick={() => setHistory(h => push(h, { ...h.present, ramps: toggleRampRunAscending(h.present.ramps, selectedRampId) }))}>
+                    {selected?.ascending ? 'Descend' : 'Ascend'}
+                  </Btn>
+                </div>
+                <div className="hint">R: rotate · A: {selected?.ascending ? 'descend' : 'ascend'} · Del: delete · Esc: deselect</div>
+              </>
+            )
+          })()}
         </Section>
 
         <Section title="Stamps" icon={<IconStampFloor size={14} />} defaultOpen>
@@ -1592,14 +1629,14 @@ export default function App() {
             <label className="label-dim" style={{ width: 44 }}>Size</label>
             <input
               className="num-field"
-              type="number" min={1} max={36} step={0.5}
+              type="number" min={1} max={36} step={0.1}
               value={+(cols / TILES_PER_INCH).toFixed(1)}
               onChange={e => handleWidthChange(Number(e.target.value))}
             />
             <span className="label-dim">×</span>
             <input
               className="num-field"
-              type="number" min={1} max={36} step={0.5}
+              type="number" min={1} max={36} step={0.1}
               value={+(rows / TILES_PER_INCH).toFixed(1)}
               onChange={e => handleHeightChange(Number(e.target.value))}
             />
@@ -1609,6 +1646,9 @@ export default function App() {
           <div className="row">
             <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
             <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
+          </div>
+          <div className="row">
+            <Btn onClick={handleOpenAssetFolder} title="Open the folder with floor and object assets"><IconFolder size={13} /> Open Asset Folder</Btn>
           </div>
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export PNG

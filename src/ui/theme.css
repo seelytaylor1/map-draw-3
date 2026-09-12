@@ -308,14 +308,16 @@
 
 /* number field */
 .num-field {
-  width: 48px;
+  width: 58px;
   background: rgba(0, 0, 0, 0.25);
   color: var(--text);
   font-family: var(--font-mono);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-sm);
-  padding: 4px 5px;
+  padding: 4px 6px;
   font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* text + range inputs */
