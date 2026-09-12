@@ -133,9 +133,12 @@
   border-radius: var(--radius);
   overflow: hidden;
   flex: 1;
+  width: 100%;
+  min-width: 0;
 }
 .segmented button {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -150,6 +153,9 @@
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .segmented button:last-child { border-right: none; }
 .segmented button:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
