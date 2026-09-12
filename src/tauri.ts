@@ -2,6 +2,7 @@ import { open as openDialog, save, confirm } from '@tauri-apps/plugin-dialog'
 import { readTextFile, writeTextFile, writeFile } from '@tauri-apps/plugin-fs'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { openPath as openTauriPath } from '@tauri-apps/plugin-opener'
 import { exit as tauriExit, relaunch as tauriRelaunch } from '@tauri-apps/plugin-process'
 
 export function isTauri(): boolean {
@@ -10,8 +11,6 @@ export function isTauri(): boolean {
 
 export async function openAssetFolder(): Promise<void> {
   if (!isTauri()) return
-
-  const { openPath: openTauriPath } = await import(/* @vite-ignore */ '@tauri-apps/plugin-opener')
 
   const candidates = [
     'D:/Taylor Projects/code/map-draw-3/src',
