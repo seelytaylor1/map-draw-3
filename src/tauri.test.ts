@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { closeWindow } from './tauri'
 
@@ -41,5 +43,22 @@ describe('closeWindow', () => {
 
     expect(mockExit).toHaveBeenCalledWith(0)
     expect(mockClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('tauri save permissions', () => {
+  it('includes the filesystem permissions needed to open and save map files', () => {
+    const capabilityPath = resolve(__dirname, '../src-tauri/capabilities/default.json')
+    const capability = JSON.parse(readFileSync(capabilityPath, 'utf8'))
+
+    expect(capability.permissions).toEqual(expect.arrayContaining([
+      'dialog:default',
+      'dialog:allow-open',
+      'dialog:allow-save',
+      'fs:default',
+      'fs:allow-read-text-file',
+      'fs:allow-write-text-file',
+      'fs:allow-write-file',
+    ]))
   })
 })
