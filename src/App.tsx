@@ -997,9 +997,11 @@ export default function App() {
 
   useEffect(() => { setShow3D(showIso) }, [showIso])
 
+  const CANVAS_DIMENSION_STEP = 0.1
+
   const handleWidthChange = (inches: number) => {
     if (!Number.isFinite(inches)) return
-    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / 0.1) * 0.1).toFixed(1))))
+    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / CANVAS_DIMENSION_STEP) * CANVAS_DIMENSION_STEP).toFixed(1))))
     if (snappedInches < 1 || snappedInches > 36) return
     const newCols = Math.round(snappedInches * TILES_PER_INCH)
     if (newCols === cols) return
@@ -1015,7 +1017,7 @@ export default function App() {
 
   const handleHeightChange = (inches: number) => {
     if (!Number.isFinite(inches)) return
-    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / 0.1) * 0.1).toFixed(1))))
+    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / CANVAS_DIMENSION_STEP) * CANVAS_DIMENSION_STEP).toFixed(1))))
     if (snappedInches < 1 || snappedInches > 36) return
     const newRows = Math.round(snappedInches * TILES_PER_INCH)
     if (newRows === rows) return
@@ -1027,6 +1029,24 @@ export default function App() {
       return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
     })
     setRows(newRows)
+  }
+
+  const stepCanvasDimension = (dimension: 'width' | 'height', delta: number) => {
+    const currentInches = dimension === 'width' ? cols / TILES_PER_INCH : rows / TILES_PER_INCH
+    const nextInches = Number((currentInches + delta).toFixed(1))
+    if (dimension === 'width') handleWidthChange(nextInches)
+    else handleHeightChange(nextInches)
+  }
+
+  const handleCanvasFieldKeyDown = (dimension: 'width' | 'height', event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      stepCanvasDimension(dimension, CANVAS_DIMENSION_STEP)
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
+      event.preventDefault()
+      stepCanvasDimension(dimension, -CANVAS_DIMENSION_STEP)
+    }
   }
 
   const handleExport = useCallback(() => {
@@ -1625,32 +1645,46 @@ export default function App() {
         </Section>
 
         <Section title="Canvas & File" icon={<IconImage size={14} />} defaultOpen>
-          <div className="row">
-            <label className="label-dim" style={{ width: 44 }}>Size</label>
-            <div className="stepper compact" style={{ flex: 1 }}>
-              <button type="button" aria-label="Decrease width" onClick={() => handleWidthChange((cols / TILES_PER_INCH) - 0.1)}><IconMinus size={13} /></button>
-              <input
-                className="num-field"
-                type="number" min={1} max={36} step={0.1}
-                value={+(cols / TILES_PER_INCH).toFixed(1)}
-                onChange={e => handleWidthChange(Number(e.target.value))}
-                style={{ width: 52 }}
-              />
-              <button type="button" aria-label="Increase width" onClick={() => handleWidthChange((cols / TILES_PER_INCH) + 0.1)}><IconPlus size={13} /></button>
+          <div className="canvas-size-stack">
+            <div className="canvas-size-row">
+              <label className="label-dim" style={{ width: 46, flexShrink: 0 }}>Width</label>
+              <div className="canvas-size-control">
+                <button type="button" aria-label="Decrease width" onClick={() => stepCanvasDimension('width', -CANVAS_DIMENSION_STEP)}><IconMinus size={13} /></button>
+                <input
+                  className="num-field canvas-size-input"
+                  type="number"
+                  min={1}
+                  max={36}
+                  step={CANVAS_DIMENSION_STEP}
+                  value={+(cols / TILES_PER_INCH).toFixed(1)}
+                  onKeyDown={e => handleCanvasFieldKeyDown('width', e)}
+                  onChange={e => handleWidthChange(Number(e.target.value))}
+                  aria-label="Canvas width in inches"
+                />
+                <button type="button" aria-label="Increase width" onClick={() => stepCanvasDimension('width', CANVAS_DIMENSION_STEP)}><IconPlus size={13} /></button>
+              </div>
+              <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
-            <span className="label-dim">×</span>
-            <div className="stepper compact">
-              <button type="button" aria-label="Decrease height" onClick={() => handleHeightChange((rows / TILES_PER_INCH) - 0.1)}><IconMinus size={13} /></button>
-              <input
-                className="num-field"
-                type="number" min={1} max={36} step={0.1}
-                value={+(rows / TILES_PER_INCH).toFixed(1)}
-                onChange={e => handleHeightChange(Number(e.target.value))}
-                style={{ width: 52 }}
-              />
-              <button type="button" aria-label="Increase height" onClick={() => handleHeightChange((rows / TILES_PER_INCH) + 0.1)}><IconPlus size={13} /></button>
+
+            <div className="canvas-size-row">
+              <label className="label-dim" style={{ width: 46, flexShrink: 0 }}>Height</label>
+              <div className="canvas-size-control">
+                <button type="button" aria-label="Decrease height" onClick={() => stepCanvasDimension('height', -CANVAS_DIMENSION_STEP)}><IconMinus size={13} /></button>
+                <input
+                  className="num-field canvas-size-input"
+                  type="number"
+                  min={1}
+                  max={36}
+                  step={CANVAS_DIMENSION_STEP}
+                  value={+(rows / TILES_PER_INCH).toFixed(1)}
+                  onKeyDown={e => handleCanvasFieldKeyDown('height', e)}
+                  onChange={e => handleHeightChange(Number(e.target.value))}
+                  aria-label="Canvas height in inches"
+                />
+                <button type="button" aria-label="Increase height" onClick={() => stepCanvasDimension('height', CANVAS_DIMENSION_STEP)}><IconPlus size={13} /></button>
+              </div>
+              <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
-            <span className="label-dim" style={{ fontSize: 10 }}>in</span>
           </div>
 
           <div className="row">

@@ -101,4 +101,32 @@ describe('App load lifecycle', () => {
     const sizeButtons = screen.getAllByRole('button', { name: /increase|decrease/i })
     expect(sizeButtons.length).toBeGreaterThanOrEqual(2)
   })
+
+  it('supports keyboard step adjustments for canvas size fields', () => {
+    render(<App />)
+
+    const widthInput = screen.getAllByRole('spinbutton')[0] as HTMLInputElement
+    const before = Number(widthInput.value)
+
+    fireEvent.keyDown(widthInput, { key: 'ArrowUp' })
+
+    expect(Number(widthInput.value)).toBeGreaterThan(before)
+  })
+
+  it('changes width by tenths and supports decrement buttons', () => {
+    render(<App />)
+
+    const [widthInput] = screen.getAllByRole('spinbutton') as HTMLInputElement[]
+    const increaseButton = screen.getByRole('button', { name: /increase width/i })
+    const decreaseButton = screen.getByRole('button', { name: /decrease width/i })
+
+    fireEvent.click(increaseButton)
+    expect(widthInput.value).toBe('11.1')
+
+    fireEvent.click(increaseButton)
+    expect(widthInput.value).toBe('11.2')
+
+    fireEvent.click(decreaseButton)
+    expect(widthInput.value).toBe('11.1')
+  })
 })
