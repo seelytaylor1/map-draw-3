@@ -86,13 +86,19 @@ describe('App load lifecycle', () => {
   it('uses tenth-inch steps for canvas dimensions', () => {
     render(<App />)
 
-    const sizeInputs = screen.getAllByRole('spinbutton')
-    expect(sizeInputs).toHaveLength(2)
-    for (const input of sizeInputs) {
-      expect(input).toHaveAttribute('step', '0.1')
-      expect(input).toHaveAttribute('min', '1')
-      expect(input).toHaveAttribute('max', '36')
-    }
+    const widthInput = screen.getByLabelText(/canvas width in inches/i)
+    const heightInput = screen.getByLabelText(/canvas height in inches/i)
+    const squareScaleInput = screen.getByLabelText(/square scale/i)
+
+    expect(widthInput).toHaveAttribute('step', '0.1')
+    expect(widthInput).toHaveAttribute('min', '1')
+    expect(widthInput).toHaveAttribute('max', '36')
+    expect(heightInput).toHaveAttribute('step', '0.1')
+    expect(heightInput).toHaveAttribute('min', '1')
+    expect(heightInput).toHaveAttribute('max', '36')
+    expect(squareScaleInput).toHaveAttribute('step', '1')
+    expect(squareScaleInput).toHaveAttribute('min', '1')
+    expect(squareScaleInput).toHaveAttribute('max', '40')
   })
 
   it('adds explicit step controls for canvas size adjustments', () => {
@@ -128,5 +134,25 @@ describe('App load lifecycle', () => {
 
     fireEvent.click(decreaseButton)
     expect(widthInput.value).toBe('11.1')
+  })
+
+  it('exposes a square scale setting and supports swapping width and length', () => {
+    render(<App />)
+
+    const widthInput = screen.getByLabelText(/canvas width in inches/i) as HTMLInputElement
+    const heightInput = screen.getByLabelText(/canvas height in inches/i) as HTMLInputElement
+    const squareScaleInput = screen.getByLabelText(/square scale/i) as HTMLInputElement
+    const swapButton = screen.getByRole('button', { name: /swap width\/length/i })
+
+    expect(squareScaleInput.value).toBe('10')
+    fireEvent.change(squareScaleInput, { target: { value: '5' } })
+    expect(squareScaleInput.value).toBe('5')
+
+    const widthBefore = Number(widthInput.value)
+    const heightBefore = Number(heightInput.value)
+    fireEvent.click(swapButton)
+
+    expect(Number(widthInput.value)).toBe(heightBefore)
+    expect(Number(heightInput.value)).toBe(widthBefore)
   })
 })

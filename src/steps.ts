@@ -56,9 +56,15 @@ export function isoStepSideFaces(run: StepRun, tileW: number, tileH: number, fac
     const gb = uvToGrid(run, u1, 1)
     const a = isoProject(ga.col, ga.row, tileW, tileH)
     const b = isoProject(gb.col, gb.row, tileW, tileH)
+    const aTop = a.y + start
+    const bTop = b.y + start
+    const aBottom = a.y + end
+    const bBottom = b.y + end
     faces.push({
       side,
-      points: [a.x, a.y + start, b.x, b.y + start, b.x, b.y + end, a.x, a.y + end],
+      points: start <= end
+        ? [a.x, aTop, b.x, bTop, b.x, bBottom, a.x, aBottom]
+        : [a.x, aBottom, b.x, bBottom, b.x, bTop, a.x, aTop],
     })
   }
   return faces

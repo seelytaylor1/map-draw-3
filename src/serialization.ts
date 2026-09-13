@@ -2,7 +2,7 @@ import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type Objec
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
 import { type Label } from './labels'
-import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR } from './constants'
+import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, TILES_PER_INCH } from './constants'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
 const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
@@ -11,6 +11,7 @@ export interface MapSave {
   version: 1
   cols: number
   rows: number
+  tilesPerInch?: number
   grids: Record<string, number[]>
   wallColor: string
   wallOpacity: number
@@ -37,6 +38,7 @@ export interface DeserializedMap {
   version: 1
   cols: number
   rows: number
+  tilesPerInch: number
   grids: Map<number, Uint8Array>
   wallColor: string
   wallOpacity: number
@@ -63,6 +65,7 @@ export function serialize(params: {
   grids: Map<number, Uint8Array>
   cols: number
   rows: number
+  tilesPerInch?: number
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
@@ -91,6 +94,7 @@ export function serialize(params: {
     version: 1,
     cols: params.cols,
     rows: params.rows,
+    tilesPerInch: params.tilesPerInch ?? TILES_PER_INCH,
     grids,
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
@@ -116,12 +120,12 @@ export function serialize(params: {
     }),
     steps: params.steps.map(s => {
       const out = { ...s }
-      if (!out.ascending) delete out.ascending
+      if (out.ascending === false) delete out.ascending
       return out
     }),
     ramps: params.ramps.map(r => {
       const out = { ...r }
-      if (!out.ascending) delete out.ascending
+      if (out.ascending === false) delete out.ascending
       return out
     }),
     labels: params.labels,
@@ -135,6 +139,9 @@ export function deserialize(raw: unknown): DeserializedMap {
   if (s['version'] !== 1) throw new Error(`Unsupported version: ${s['version']}`)
   if (typeof s['cols'] !== 'number' || s['cols'] < 1) throw new Error('Invalid cols')
   if (typeof s['rows'] !== 'number' || s['rows'] < 1) throw new Error('Invalid rows')
+  const tilesPerInch = typeof s['tilesPerInch'] === 'number' && Number.isFinite(s['tilesPerInch']) && s['tilesPerInch'] > 0
+    ? s['tilesPerInch']
+    : TILES_PER_INCH
   if (typeof s['wallColor'] !== 'string') throw new Error('Invalid wallColor')
   if (typeof s['wallOpacity'] !== 'number') throw new Error('Invalid wallOpacity')
   if (s['brushShape'] !== 'square' && s['brushShape'] !== 'circle') throw new Error('Invalid brushShape')
@@ -196,15 +203,16 @@ export function deserialize(raw: unknown): DeserializedMap {
     if (typeof o['row'] !== 'number') throw new Error('Invalid step row')
     if (!STEP_DIRECTIONS.includes(o['direction'] as StepDirection)) throw new Error('Invalid step direction')
     const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
-    const ascending = o['ascending'] === true
-    return {
+    const ascending = o['ascending'] === true ? true : undefined
+    const step: StepRun = {
       id: o['id'] as string,
       col: o['col'] as number,
       row: o['row'] as number,
       z,
       direction: o['direction'] as StepDirection,
-      ascending,
     }
+    if (ascending !== undefined) step.ascending = ascending
+    return step
   })
 
   const rawRamps = Array.isArray(s['ramps']) ? s['ramps'] : []
@@ -216,15 +224,16 @@ export function deserialize(raw: unknown): DeserializedMap {
     if (typeof o['row'] !== 'number') throw new Error('Invalid ramp row')
     if (!RAMP_DIRECTIONS.includes(o['direction'] as RampDirection)) throw new Error('Invalid ramp direction')
     const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
-    const ascending = o['ascending'] === true
-    return {
+    const ascending = o['ascending'] === true ? true : undefined
+    const ramp: RampRun = {
       id: o['id'] as string,
       col: o['col'] as number,
       row: o['row'] as number,
       z,
       direction: o['direction'] as RampDirection,
-      ascending,
     }
+    if (ascending !== undefined) ramp.ascending = ascending
+    return ramp
   })
 
   const rawLabels = Array.isArray(s['labels']) ? s['labels'] : []
@@ -271,6 +280,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     version: 1,
     cols: s['cols'] as number,
     rows: s['rows'] as number,
+    tilesPerInch,
     grids,
     wallColor: s['wallColor'] as string,
     wallOpacity: s['wallOpacity'] as number,

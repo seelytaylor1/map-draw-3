@@ -17,6 +17,7 @@ const BASE = {
   brushShape: 'circle' as const,
   showGrid: true,
   show3D: false,
+  tilesPerInch: 10,
   isoFaceColor: '#6a5040',
   showHatching: false,
   hatchColor: '#000000',
@@ -85,6 +86,11 @@ describe('serialize', () => {
     expect(save.lavaColor).toBe('#c1440e')
     expect(save.darknessColor).toBe('#1a0a2e')
   })
+
+  it('serializes the square scale setting', () => {
+    const save = serialize({ ...BASE, tilesPerInch: 5 })
+    expect(save.tilesPerInch).toBe(5)
+  })
 })
 
 describe('deserialize', () => {
@@ -98,6 +104,7 @@ describe('deserialize', () => {
     expect(restored.showGrid).toBe(true)
     expect(restored.cols).toBe(2)
     expect(restored.rows).toBe(2)
+    expect(restored.tilesPerInch).toBe(10)
     expect(restored.stamps).toEqual([])
   })
 

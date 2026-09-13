@@ -1,6 +1,7 @@
 export const TILE_PX = 20          // screen pixels per tile (display resolution)
 export const FACE_PX = 8           // 3D side-face thickness in pixels
-export const TILES_PER_INCH = 10
+export const DEFAULT_TILES_PER_INCH = 10
+export const TILES_PER_INCH = DEFAULT_TILES_PER_INCH
 export const DEFAULT_COLS = 110    // 11" × 10
 export const DEFAULT_ROWS = 85     // 8.5" × 10 (landscape)
 export const WALL = 0 as const

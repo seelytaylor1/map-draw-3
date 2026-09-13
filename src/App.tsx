@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -87,6 +87,7 @@ export default function App() {
   const { grids, stamps, steps, ramps, labels, environmentalColors } = history.present
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
+  const [tilesPerInch, setTilesPerInch] = useState(DEFAULT_TILES_PER_INCH)
 
   const [drawingState, dispatch] = useReducer(drawingReducer, INITIAL_DRAWING_STATE)
   const drawingStateRef = useRef<DrawingState>(INITIAL_DRAWING_STATE)
@@ -1003,7 +1004,7 @@ export default function App() {
     if (!Number.isFinite(inches)) return
     const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / CANVAS_DIMENSION_STEP) * CANVAS_DIMENSION_STEP).toFixed(1))))
     if (snappedInches < 1 || snappedInches > 36) return
-    const newCols = Math.round(snappedInches * TILES_PER_INCH)
+    const newCols = Math.round(snappedInches * tilesPerInch)
     if (newCols === cols) return
     setHistory(h => {
       const newGrids = new Map<number, Uint8Array>()
@@ -1019,7 +1020,7 @@ export default function App() {
     if (!Number.isFinite(inches)) return
     const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / CANVAS_DIMENSION_STEP) * CANVAS_DIMENSION_STEP).toFixed(1))))
     if (snappedInches < 1 || snappedInches > 36) return
-    const newRows = Math.round(snappedInches * TILES_PER_INCH)
+    const newRows = Math.round(snappedInches * tilesPerInch)
     if (newRows === rows) return
     setHistory(h => {
       const newGrids = new Map<number, Uint8Array>()
@@ -1032,10 +1033,24 @@ export default function App() {
   }
 
   const stepCanvasDimension = (dimension: 'width' | 'height', delta: number) => {
-    const currentInches = dimension === 'width' ? cols / TILES_PER_INCH : rows / TILES_PER_INCH
+    const currentInches = dimension === 'width' ? cols / tilesPerInch : rows / tilesPerInch
     const nextInches = Number((currentInches + delta).toFixed(1))
     if (dimension === 'width') handleWidthChange(nextInches)
     else handleHeightChange(nextInches)
+  }
+
+  const handleSwapDimensions = () => {
+    setHistory(h => {
+      const newCols = rows
+      const newRows = cols
+      const resized = new Map<number, Uint8Array>()
+      for (const [z, g] of h.present.grids) {
+        resized.set(z, resizeGrid(g, cols, rows, newCols, newRows))
+      }
+      return createHistory({ grids: resized, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
+    })
+    setCols(rows)
+    setRows(cols)
   }
 
   const handleCanvasFieldKeyDown = (dimension: 'width' | 'height', event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1151,7 +1166,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, waterColor, lavaColor, darknessColor])
 
   const getSerializedMap = () => {
-    const mapSave = serialize({ grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
+    const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
     return JSON.stringify(mapSave, null, 2)
   }
 
@@ -1173,7 +1188,7 @@ export default function App() {
       a.click()
       URL.revokeObjectURL(url)
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
 
   const handleSaveAs = useCallback(async () => {
     if (!isTauri()) return
@@ -1186,7 +1201,7 @@ export default function App() {
       setCurrentFilePath(path)
       setSavedHistoryLength(history.past.length)
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
@@ -1214,6 +1229,7 @@ export default function App() {
     setHistory(createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], environmentalColors: new Map() }))
     setCols(DEFAULT_COLS)
     setRows(DEFAULT_ROWS)
+    setTilesPerInch(DEFAULT_TILES_PER_INCH)
     setCurrentFilePath(null)
     setSavedHistoryLength(0)
     pendingFitRef.current = true
@@ -1282,6 +1298,7 @@ export default function App() {
       setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, environmentalColors: save.environmentalColors }))
       setCols(save.cols)
       setRows(save.rows)
+      setTilesPerInch(save.tilesPerInch)
       setWallColor(save.wallColor)
       setWallOpacity(save.wallOpacity)
       dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape: save.brushShape } })
@@ -1506,6 +1523,9 @@ export default function App() {
         </Section>
 
         <Section title="Stamps" icon={<IconStampFloor size={14} />} defaultOpen>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <Btn onClick={handleOpenAssetFolder} title="Open the folder with floor and object assets"><IconFolder size={13} /> Open Asset Folder</Btn>
+          </div>
           <StampPicker
             mode={mode}
             onModeChange={newMode => {
@@ -1646,6 +1666,10 @@ export default function App() {
 
         <Section title="Canvas & File" icon={<IconImage size={14} />} defaultOpen>
           <div className="canvas-size-stack">
+            <div className="row" style={{ marginTop: 4 }}>
+              <Btn onClick={handleSwapDimensions}>Swap Width/Length</Btn>
+            </div>
+
             <div className="canvas-size-row">
               <label className="label-dim" style={{ width: 46, flexShrink: 0 }}>Width</label>
               <div className="canvas-size-control">
@@ -1656,7 +1680,7 @@ export default function App() {
                   min={1}
                   max={36}
                   step={CANVAS_DIMENSION_STEP}
-                  value={+(cols / TILES_PER_INCH).toFixed(1)}
+                  value={+(cols / tilesPerInch).toFixed(1)}
                   onKeyDown={e => handleCanvasFieldKeyDown('width', e)}
                   onChange={e => handleWidthChange(Number(e.target.value))}
                   aria-label="Canvas width in inches"
@@ -1676,7 +1700,7 @@ export default function App() {
                   min={1}
                   max={36}
                   step={CANVAS_DIMENSION_STEP}
-                  value={+(rows / TILES_PER_INCH).toFixed(1)}
+                  value={+(rows / tilesPerInch).toFixed(1)}
                   onKeyDown={e => handleCanvasFieldKeyDown('height', e)}
                   onChange={e => handleHeightChange(Number(e.target.value))}
                   aria-label="Canvas height in inches"
@@ -1685,14 +1709,28 @@ export default function App() {
               </div>
               <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
+
+            <div className="canvas-size-row" style={{ marginTop: 4 }}>
+              <label className="label-dim" style={{ width: 80, flexShrink: 0 }}>Square scale</label>
+              <div className="canvas-size-control">
+                <input
+                  className="num-field canvas-size-input"
+                  type="number"
+                  min={1}
+                  max={40}
+                  step={1}
+                  value={tilesPerInch}
+                  onChange={e => setTilesPerInch(Math.min(40, Math.max(1, Number(e.target.value) || 1)))}
+                  aria-label="Square scale"
+                />
+              </div>
+              <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>tiles/in</span>
+            </div>
           </div>
 
           <div className="row">
             <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
             <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
-          </div>
-          <div className="row">
-            <Btn onClick={handleOpenAssetFolder} title="Open the folder with floor and object assets"><IconFolder size={13} /> Open Asset Folder</Btn>
           </div>
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export PNG

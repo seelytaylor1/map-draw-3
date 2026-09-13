@@ -236,6 +236,14 @@ describe('isoStepSideFaces', () => {
     expect(firstHeight).toBeGreaterThan(0)
   })
 
+  it('ascending runs keep the sidewall heights shrinking toward the upper end', () => {
+    const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E', ascending: true }), TILE_W, TILE_H, FACE)
+    const firstHeight = Math.abs(faces[0].points[5] - faces[0].points[1])
+    const lastHeight = Math.abs(faces[faces.length - 1].points[5] - faces[faces.length - 1].points[1])
+    expect(firstHeight).toBeGreaterThan(lastHeight)
+    expect(firstHeight).toBeGreaterThan(0)
+  })
+
   it('no face extends below the Z-1 floor plane', () => {
     const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E' }), TILE_W, TILE_H, FACE)
     const u1 = 2 / STEP_TREAD_COUNT
