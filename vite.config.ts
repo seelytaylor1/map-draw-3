@@ -15,11 +15,6 @@ export default defineConfig({
     strictPort: true,
   },
   plugins: [react(), viteSingleFile()],
-  build: {
-    rollupOptions: {
-      external: ['@tauri-apps/plugin-opener'],
-    },
-  },
   test: {
     environment: 'node',
   },

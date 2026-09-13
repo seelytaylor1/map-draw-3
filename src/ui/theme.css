@@ -114,7 +114,12 @@
 }
 
 .row { display: flex; gap: 6px; align-items: center; }
-.label-dim { color: var(--text-faint); font-size: 11px; }
+.label-dim { color: var(--text-dim); font-size: 11px; font-weight: 500; }
+.canvas-size-row .label-dim {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 .hint {
   font-size: 11px;
   color: var(--text-dim);
@@ -260,6 +265,81 @@
   color: var(--accent-strong);
 }
 
+.canvas-size-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.canvas-size-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.canvas-size-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+  background: rgba(12, 9, 7, 0.7);
+  min-width: 0;
+  flex: 1 1 auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color-scheme: dark;
+}
+
+.canvas-size-control button {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.canvas-size-control button:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(207, 155, 70, 0.5);
+  color: var(--accent-strong);
+}
+
+.canvas-size-input {
+  width: 62px;
+  min-width: 62px;
+  flex: 0 0 auto;
+  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid rgba(207, 155, 70, 0.26);
+  border-radius: var(--radius-sm);
+  color: #f6ead1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0.02em;
+  padding: 4px 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.canvas-size-input:focus {
+  outline: 2px solid rgba(207, 155, 70, 0.46);
+  outline-offset: 1px;
+  border-color: rgba(207, 155, 70, 0.7);
+}
+
 /* generic action buttons */
 .btn {
   display: flex;
@@ -318,6 +398,17 @@
   font-size: 12px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.num-field::-webkit-outer-spin-button,
+.num-field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.num-field[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* text + range inputs */
