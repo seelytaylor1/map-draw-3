@@ -423,6 +423,18 @@
 }
 .text-field::placeholder { color: var(--text-faint); }
 
+.label-editor {
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border: 1px solid rgba(207, 155, 70, 0.8);
+  border-radius: 2px;
+  outline: 2px solid rgba(207, 155, 70, 0.3);
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+  font-family: Arial, sans-serif;
+  text-align: center;
+}
+
 input[type='range'] {
   flex: 1;
   accent-color: var(--accent);

@@ -92,6 +92,7 @@ export default function App() {
   const [drawingState, dispatch] = useReducer(drawingReducer, INITIAL_DRAWING_STATE)
   const drawingStateRef = useRef<DrawingState>(INITIAL_DRAWING_STATE)
   useEffect(() => { drawingStateRef.current = drawingState }, [drawingState])
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
 
   const gridsRef = useRef(grids)
   useEffect(() => { gridsRef.current = grids }, [grids])
@@ -163,6 +164,8 @@ export default function App() {
   const stampLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
   const labelsLayerRef = useRef<Konva.Layer>(null)
+  const labelEditorRef = useRef<HTMLInputElement>(null)
+  const draggedLabelRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const stampImages = useStampImages()
@@ -175,6 +178,19 @@ export default function App() {
     obs.observe(document.body)
     return () => obs.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (!editingLabelId) return
+    // Select the existing placeholder/text so typing immediately replaces it.
+    requestAnimationFrame(() => {
+      labelEditorRef.current?.focus()
+      labelEditorRef.current?.select()
+    })
+  }, [editingLabelId])
+
+  useEffect(() => {
+    if (drawingState.tool !== 'label') setEditingLabelId(null)
+  }, [drawingState.tool])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -276,6 +292,7 @@ export default function App() {
       }
       const ds = drawingStateRef.current
       const stage = e.target.getStage()!
+      if (e.target === stage && editingLabelId) setEditingLabelId(null)
       let tile: Tile | null
       if (showIso) {
         tile = stageToIsoTile(stage, e.evt.clientX, e.evt.clientY)
@@ -322,6 +339,7 @@ export default function App() {
         }
         setHistory(h => push(h, { ...h.present, labels: addLabel(h.present.labels, newLabel) }))
         dispatch({ type: 'LABEL_PLACED', id: newLabel.id })
+        setEditingLabelId(newLabel.id)
         return
       }
 
@@ -370,7 +388,7 @@ export default function App() {
       // Paint mode: area select start
       dispatch({ type: 'PAINT_START', tile, button: e.evt.button === 2 ? 2 : 0 })
     },
-    [cols, rows, showIso],
+    [cols, rows, editingLabelId, showIso],
   )
 
   const handleMouseMove = useCallback(
@@ -963,6 +981,7 @@ export default function App() {
         fontFamily: 'Arial',
         fill: '#000',
         align: 'center',
+        draggable: true,
       })
       textNode.on('mousedown', (e) => {
         e.cancelBubble = true
@@ -970,8 +989,39 @@ export default function App() {
         if (e.evt.button === 2 && ds.tool === 'label' && ds.phase === 'idle' && ds.selectedId === item.id) {
           setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, item.id) }))
           dispatch({ type: 'SELECT', id: null })
+          setEditingLabelId(null)
+        } else if (e.evt.button === 0) {
+          draggedLabelRef.current = null
+          dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: item.id } })
+        }
+      })
+      textNode.on('dragstart', (e) => {
+        e.cancelBubble = true
+        draggedLabelRef.current = item.id
+        setEditingLabelId(null)
+      })
+      textNode.on('dragend', (e) => {
+        e.cancelBubble = true
+        const node = e.target as Konva.Text
+        const centerX = node.x() + item.width / 2
+        const centerY = node.y() + item.fontSize / 2
+        const col = Math.max(0, Math.min(cols - 1, Math.floor(centerX / TILE_PX)))
+        const row = Math.max(0, Math.min(rows - 1, Math.floor(centerY / TILE_PX)))
+        const current = labels.find(label => label.id === item.id)
+        if (!current || (current.col === col && current.row === row)) return
+        setHistory(h => push(h, {
+          ...h.present,
+          labels: updateLabel(h.present.labels, item.id, { col, row }),
+        }))
+      })
+      textNode.on('click', (e) => {
+        e.cancelBubble = true
+        if (e.evt.button !== 0) return
+        if (draggedLabelRef.current === item.id) {
+          draggedLabelRef.current = null
         } else {
           dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: item.id } })
+          setEditingLabelId(item.id)
         }
       })
       layer.add(textNode)
@@ -992,7 +1042,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [labels, showIso, selectedLabelId])
+  }, [cols, labels, rows, showIso, selectedLabelId])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
@@ -1356,6 +1406,28 @@ export default function App() {
     setWallOpacity(preset.opacity)
   }
 
+  const editingLabel = editingLabelId ? labels.find(label => label.id === editingLabelId) ?? null : null
+  const editingItem = editingLabel && !showIso
+    ? buildLabelScene([editingLabel], editingLabelId, TILE_PX)[0]
+    : null
+  const labelEditorStyle = editingItem && stageRef.current && containerRef.current
+    ? (() => {
+        const stage = stageRef.current!
+        const stageRect = stage.container().getBoundingClientRect()
+        const rootRect = containerRef.current!.getBoundingClientRect()
+        const scale = stage.scaleX()
+        return {
+          position: 'absolute' as const,
+          left: stageRect.left - rootRect.left + stage.x() + editingItem.x * scale,
+          top: stageRect.top - rootRect.top + stage.y() + editingItem.y * scale,
+          width: Math.max(80, editingItem.width * scale),
+          height: Math.max(24, (editingItem.fontSize + 8) * scale),
+          fontSize: Math.max(10, editingItem.fontSize * scale),
+          zIndex: 5,
+        }
+      })()
+    : undefined
+
   return (
     <div
       ref={containerRef}
@@ -1598,7 +1670,9 @@ export default function App() {
             onClick={() => {
               if (labelMode === 'place') {
                 dispatch({ type: 'SET_TOOL', to: { tool: 'label', phase: 'idle', selectedId: null } })
+                setEditingLabelId(null)
               } else {
+                setEditingLabelId(null)
                 dispatch({ type: 'LABEL_START_PLACING' })
               }
             }}
@@ -1611,6 +1685,7 @@ export default function App() {
                   className="text-field"
                   type="text"
                   value={label.text}
+                  style={editingLabelId === label.id ? { display: 'none' } : undefined}
                   onChange={e => setHistory(h => push(h, { ...h.present, labels: updateLabel(h.present.labels, selectedLabelId, { text: e.target.value }) }))}
                   placeholder="Label text"
                 />
@@ -1630,6 +1705,7 @@ export default function App() {
                   <Btn variant="danger" onClick={() => {
                     setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, selectedLabelId) }))
                     dispatch({ type: 'SELECT', id: null })
+                    setEditingLabelId(null)
                   }}>Delete</Btn>
                 </div>
               </>
@@ -1799,6 +1875,26 @@ export default function App() {
         <Layer ref={dotLayerRef} listening={false} />
         <Layer ref={labelsLayerRef} />
       </Stage>
+      {editingLabel && labelEditorStyle && (
+        <input
+          ref={labelEditorRef}
+          className="label-editor"
+          aria-label="Edit label"
+          type="text"
+          value={editingLabel.text}
+          style={labelEditorStyle}
+          onChange={e => setHistory(h => push(h, {
+            ...h.present,
+            labels: updateLabel(h.present.labels, editingLabel.id, { text: e.target.value }),
+          }))}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === 'Escape') {
+              e.currentTarget.blur()
+            }
+          }}
+          onBlur={() => setEditingLabelId(null)}
+        />
+      )}
     </div>
   )
 }

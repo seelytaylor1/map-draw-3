@@ -7,6 +7,11 @@ export interface Label {
   number?: number // Optional number for keyed entries (1, 2, 3...)
 }
 
+export function getLabelDisplayText(label: Label): string {
+  if (label.number === undefined) return label.text
+  return label.text ? `${label.number} ${label.text}` : `${label.number}`
+}
+
 export function addLabel(labels: Label[], label: Label): Label[] {
   return [...labels, label]
 }

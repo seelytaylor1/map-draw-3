@@ -1,6 +1,6 @@
 // src/labels.test.ts
 import { describe, it, expect } from 'vitest'
-import { addLabel, removeLabel, updateLabel, type Label } from './labels'
+import { addLabel, getLabelDisplayText, removeLabel, updateLabel, type Label } from './labels'
 
 describe('labels', () => {
   const label: Label = {
@@ -41,5 +41,13 @@ describe('labels', () => {
     const labels: Label[] = [label]
     const result = updateLabel(labels, 'label-1', { number: 1 })
     expect(result[0].number).toBe(1)
+  })
+
+  it('puts a number before the label text when rendering', () => {
+    expect(getLabelDisplayText({ ...label, number: 12 })).toBe('12 Throne Room')
+  })
+
+  it('renders a number by itself when the label text is empty', () => {
+    expect(getLabelDisplayText({ ...label, text: '', number: 12 })).toBe('12')
   })
 })

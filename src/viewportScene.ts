@@ -20,7 +20,7 @@ import {
 import { isObjectStamp, stampSize, type Stamp, type StampType, type ObjectStampType } from './stamps'
 import { stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
-import type { Label } from './labels'
+import { getLabelDisplayText, type Label } from './labels'
 
 // ---------------------------------------------------------------------------
 // Tile scene (top-down)
@@ -367,7 +367,7 @@ export interface LabelSceneItem {
 
 export function buildLabelScene(labels: Label[], selectedLabelId: string | null, tilePx: number): LabelSceneItem[] {
   return labels.map(label => {
-    const displayText = label.number !== undefined ? `${label.number}` : label.text
+    const displayText = getLabelDisplayText(label)
     const textWidth = tilePx * 4
     const fontSize = label.number !== undefined ? 14 : 10
     const x = label.col * tilePx + tilePx / 2 - textWidth / 2

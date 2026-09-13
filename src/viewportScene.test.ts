@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTileScene, buildStampScene } from './viewportScene'
+import { buildLabelScene, buildTileScene, buildStampScene } from './viewportScene'
 import { createGrid, paintTiles } from './grid'
 import { FLOOR, WATER, LAVA, DARKNESS, WATER_COLOR } from './constants'
 import type { Stamp } from './stamps'
@@ -64,6 +64,16 @@ describe('buildStampScene — top-down view of object stamps', () => {
 
     expect(items[0].selected).toBe(true)
     expect(items[0].selectionRect).not.toBeNull()
+  })
+})
+
+describe('buildLabelScene', () => {
+  it('keeps label text visible after adding a number prefix', () => {
+    const items = buildLabelScene([
+      { id: 'label-1', col: 1, row: 2, text: 'Throne Room', number: 3 },
+    ], null, TILE_PX)
+
+    expect(items[0].text).toBe('3 Throne Room')
   })
 })
 
