@@ -108,7 +108,7 @@ describe('ISO object stamp – base anchor', () => {
 
   for (const [col, row] of [[0, 0], [2, 1], [3, 3]]) {
     it(`stamp at (${col},${row}): export image bottom-y equals tile bottom-corner y`, () => {
-      const stamp = { id: 'a', type: 'archway' as const, col, row, rotation: 0 as const, z: 0 }
+      const stamp = { id: 'a', type: 'g1002' as const, col, row, rotation: 0 as const, z: 0 }
       const { shapes } = buildExportShapes({ ...baseParams(), stamps: [stamp] })
       const img = shapes.find(s => s.kind === 'image') as ImageSpec | undefined
       expect(img).toBeDefined()

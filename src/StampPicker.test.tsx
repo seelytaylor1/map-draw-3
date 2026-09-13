@@ -9,7 +9,7 @@ vi.mock('./stamps/door.svg?url', () => ({ default: 'door.svg' }))
 vi.mock('./stamps/trap.svg?url', () => ({ default: 'trap.svg' }))
 vi.mock('./stamps/star.svg?url', () => ({ default: 'star.svg' }))
 vi.mock('./stamps/bars.svg?url', () => ({ default: 'bars.svg' }))
-vi.mock('./stamps/archway.svg?url', () => ({ default: 'archway.svg' }))
+vi.mock('./iso-objects/g1002.svg?url', () => ({ default: 'g1002.svg' }))
 
 afterEach(cleanup)
 
@@ -20,21 +20,21 @@ describe('StampPicker', () => {
     expect(screen.getByText('Iso Objects')).toBeInTheDocument()
   })
 
-  it('renders archway button', () => {
+  it('renders a split iso object button', () => {
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
-    expect(screen.getByTitle('Archway')).toBeInTheDocument()
+    expect(screen.getByTitle('G 1002')).toBeInTheDocument()
   })
 
-  it('archway button is enabled', () => {
+  it('split iso object button is enabled', () => {
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
-    expect(screen.getByTitle('Archway')).not.toBeDisabled()
+    expect(screen.getByTitle('G 1002')).not.toBeDisabled()
   })
 
-  it('clicking archway calls onModeChange with archway', async () => {
+  it('clicking a split iso object selects its asset type', async () => {
     const user = userEvent.setup()
     const onModeChange = vi.fn()
     render(<StampPicker mode="paint" onModeChange={onModeChange} />)
-    await user.click(screen.getByTitle('Archway'))
-    expect(onModeChange).toHaveBeenCalledWith('archway')
+    await user.click(screen.getByTitle('G 1002'))
+    expect(onModeChange).toHaveBeenCalledWith('g1002')
   })
 })

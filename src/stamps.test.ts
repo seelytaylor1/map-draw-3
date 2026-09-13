@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addStamp, DEFAULT_ICON_TYPES, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
+import { addStamp, DEFAULT_ICON_TYPES, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, OBJECT_STAMP_TYPES, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
 
 const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   id: 'a',
@@ -18,18 +18,20 @@ describe('stampSize', () => {
     }
   })
 
-  it('returns 2×1 for wood-doubledoor', () => {
-    expect(stampSize('wood-doubledoor')).toEqual({ cols: 2, rows: 1 })
-  })
-
   it('derives multi-tile footprints from dungeon symbol asset names', () => {
     expect(stampSize('TableSetTwo3x1')).toEqual({ cols: 3, rows: 1 })
     expect(stampSize('StairSpiralCircleBig2x2')).toEqual({ cols: 2, rows: 2 })
     expect(stampSize('Stairs1x1_01')).toEqual({ cols: 1, rows: 1 })
   })
 
-  it('returns 1×1 for archway', () => {
-    expect(stampSize('archway')).toEqual({ cols: 1, rows: 1 })
+  it('returns 1×1 for a split iso object', () => {
+    expect(stampSize('g1002')).toEqual({ cols: 1, rows: 1 })
+  })
+
+  it('derives footprints from dungeon object names', () => {
+    expect(stampSize('dungeon_room_1x5')).toEqual({ cols: 1, rows: 5 })
+    expect(stampSize('dungeon_spiral_stairs_3x3_half-height')).toEqual({ cols: 3, rows: 3 })
+    expect(stampSize('table_2x3')).toEqual({ cols: 2, rows: 3 })
   })
 })
 
@@ -38,6 +40,17 @@ describe('default dungeon icon palette', () => {
     expect(DEFAULT_ICON_TYPES).toContain('Door1x1')
     expect(DEFAULT_ICON_TYPES).toContain('TableSetTwo3x1')
     expect(DEFAULT_ICON_TYPES).not.toContain('door')
+  })
+})
+
+describe('iso object palette', () => {
+  it('uses the split map-icon SVG set instead of the legacy object list', () => {
+    expect(OBJECT_STAMP_TYPES).toHaveLength(137)
+    expect(OBJECT_STAMP_TYPES).toContain('g1002')
+    expect(OBJECT_STAMP_TYPES).toContain('g1174')
+    expect(OBJECT_STAMP_TYPES).toContain('dungeon_room_1x5')
+    expect(OBJECT_STAMP_TYPES).toContain('torch')
+    expect(OBJECT_STAMP_TYPES).not.toContain('archway')
   })
 })
 
@@ -183,8 +196,8 @@ describe('mirrorStamp', () => {
 })
 
 describe('isObjectStamp', () => {
-  it('returns true for archway', () => {
-    expect(isObjectStamp(stamp({ type: 'archway' } as any))).toBe(true)
+  it('returns true for a split iso object', () => {
+    expect(isObjectStamp(stamp({ type: 'g1002' } as any))).toBe(true)
   })
 
   it('returns false for floor stamp types', () => {
@@ -197,8 +210,8 @@ describe('isFloorStamp', () => {
     expect(isFloorStamp(stamp({ type: 'door' }))).toBe(true)
   })
 
-  it('returns false for archway', () => {
-    expect(isFloorStamp(stamp({ type: 'archway' } as any))).toBe(false)
+  it('returns false for a split iso object', () => {
+    expect(isFloorStamp(stamp({ type: 'g1002' } as any))).toBe(false)
   })
 })
 

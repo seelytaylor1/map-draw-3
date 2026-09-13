@@ -25,11 +25,11 @@ describe('useStampImages', () => {
   })
 
   it('detects object assets from the folder instead of a hardcoded allowlist', async () => {
-    expect(OBJECT_STAMP_TYPES).toContain('stairs')
+    expect(OBJECT_STAMP_TYPES).toContain('g1002')
 
     const { useStampImages } = await import('./useStampImages')
     const { result } = renderHook(() => useStampImages())
     await waitFor(() => expect(result.current).not.toBeNull())
-    expect(result.current!.has('stairs')).toBe(true)
+    expect(result.current!.has('g1002')).toBe(true)
   })
 })

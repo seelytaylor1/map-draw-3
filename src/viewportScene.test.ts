@@ -11,13 +11,13 @@ function fakeImage(): HTMLImageElement {
 }
 
 describe('buildStampScene — top-down view of object stamps', () => {
-  const objectStamp: Stamp = { id: 'a', type: 'archway', col: 1, row: 1, rotation: 0, z: 0 }
+  const objectStamp: Stamp = { id: 'a', type: 'g1002', col: 1, row: 1, rotation: 0, z: 0 }
 
   it('is interactive (selectable/draggable) at the active Z level, same as a floor stamp', () => {
     const items = buildStampScene({
       stamps: [objectStamp],
       selectedStampId: null,
-      stampImages: new Map([['archway', fakeImage()]]),
+      stampImages: new Map([['g1002', fakeImage()]]),
       activeZ: 0,
       tilePx: TILE_PX,
       showIso: false,
@@ -37,7 +37,7 @@ describe('buildStampScene — top-down view of object stamps', () => {
     const items = buildStampScene({
       stamps: [objectStamp, floorStamp],
       selectedStampId: null,
-      stampImages: new Map([['archway', fakeImage()], ['door', fakeImage()]]),
+      stampImages: new Map([['g1002', fakeImage()], ['door', fakeImage()]]),
       activeZ: 0,
       tilePx: TILE_PX,
       showIso: false,
@@ -56,7 +56,7 @@ describe('buildStampScene — top-down view of object stamps', () => {
     const items = buildStampScene({
       stamps: [objectStamp],
       selectedStampId: 'a',
-      stampImages: new Map([['archway', fakeImage()]]),
+      stampImages: new Map([['g1002', fakeImage()]]),
       activeZ: 0,
       tilePx: TILE_PX,
       showIso: false,

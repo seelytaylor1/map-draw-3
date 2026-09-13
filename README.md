@@ -24,6 +24,11 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 - **Save/Load**: Export and import maps as JSON files
 - **High-Res Export**: Generate 300dpi PNG output
 
+## Asset Attribution
+
+- Iso objects are from [isometric-map-icons](https://gitlab.com/bindrpg/isometric-map-icons) and are licensed under the [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/).
+- Icon assets are released under [CC0](https://creativecommons.org/publicdomain/zero/1.0/). Feel free to attribute them as created by Mark Gosbell.
+
 ## Development
 
 **Requirements**: Node.js 16+ and npm 7+

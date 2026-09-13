@@ -4,17 +4,6 @@ export type StampType =
   | 'trap'
   | 'star'
   | 'bars'
-  | 'archway'
-  | 'bigpillar'
-  | 'iron-door'
-  | 'passageway-arch'
-  | 'pillar'
-  | 'portculis'
-  | 'ramp'
-  | 'well'
-  | 'wood-door'
-  | 'wood-doubledoor'
-  | 'stairs'
   | 'Altar1x1'
   | 'Arrow1x1'
   | 'Bed1x1'
@@ -102,18 +91,7 @@ export type StampType =
   | 'WellSquare1x1'
   | 'Window1x1'
 
-export type ObjectStampType =
-  | 'archway'
-  | 'bigpillar'
-  | 'iron-door'
-  | 'passageway-arch'
-  | 'pillar'
-  | 'portculis'
-  | 'ramp'
-  | 'well'
-  | 'wood-door'
-  | 'wood-doubledoor'
-  | 'stairs'
+export type ObjectStampType = string
 
 export type Rotation = 0 | 90 | 180 | 270
 
@@ -151,12 +129,11 @@ const OBJECT_ASSET_URLS = Object.fromEntries(
 ) as Record<string, string>
 
 const BASE_ICON_TYPES = ['door', 'secret-door', 'trap', 'star', 'bars'] as const
-const BASE_OBJECT_TYPES = ['archway', 'bigpillar', 'iron-door', 'passageway-arch', 'pillar', 'portculis', 'ramp', 'well', 'wood-door', 'wood-doubledoor', 'stairs'] as const
 
 export const STAMP_TYPES = [...new Set([...BASE_ICON_TYPES, ...Object.keys(STAMP_ASSET_URLS)])] as StampType[]
-export const OBJECT_STAMP_TYPES = [...new Set([...BASE_OBJECT_TYPES, ...Object.keys(OBJECT_ASSET_URLS)])] as ObjectStampType[]
-// The supplied PNG set is the default picker palette. Legacy SVG icons remain
-// registered above so existing save files continue to load and render.
+export const OBJECT_STAMP_TYPES = Object.keys(OBJECT_ASSET_URLS) as ObjectStampType[]
+// The supplied PNG set is the default floor-stamp palette. Iso objects are
+// discovered directly from the replacement SVG asset folder above.
 export const DEFAULT_ICON_TYPES = Object.entries(iconModules)
   .filter(([path]) => path.toLowerCase().endsWith('.png'))
   .map(([path]) => toAssetName(path))
@@ -165,7 +142,7 @@ export const DEFAULT_ICON_TYPES = Object.entries(iconModules)
 export const STAMP_ASSET_MAP = STAMP_ASSET_URLS as Record<StampType, string>
 export const OBJECT_ASSET_MAP = OBJECT_ASSET_URLS as Record<ObjectStampType, string>
 
-export function isObjectStamp(s: Stamp): s is Stamp & { type: ObjectStampType } {
+export function isObjectStamp(s: Stamp): boolean {
   return (OBJECT_STAMP_TYPES as string[]).includes(s.type)
 }
 
@@ -174,8 +151,7 @@ export function isFloorStamp(s: Stamp): s is Stamp & { type: StampType } {
 }
 
 export function stampSize(type: StampType | ObjectStampType): { cols: number; rows: number } {
-  if (type === 'wood-doubledoor') return { cols: 2, rows: 1 }
-  const size = type.match(/(\d+)x(\d+)(?:_\d+)?$/)
+  const size = type.match(/(\d+)x(\d+)(?:_\d+)?(?:$|[_-])/)
   if (size) return { cols: Number(size[1]), rows: Number(size[2]) }
   return { cols: 1, rows: 1 }
 }

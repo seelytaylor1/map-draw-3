@@ -36,7 +36,7 @@ const BASE = {
 
 const STAMP: Stamp = { id: 'abc', type: 'door', col: 1, row: 2, rotation: 90, z: 0 }
 const STAMP_Z1: Stamp = { id: 'xyz', type: 'door', col: 0, row: 0, rotation: 0, z: 1 }
-const OBJECT_STAMP: Stamp = { id: 'def', type: 'archway', col: 3, row: 4, rotation: 0, z: 0 }
+const OBJECT_STAMP: Stamp = { id: 'def', type: 'g1002', col: 3, row: 4, rotation: 0, z: 0 }
 
 describe('serialize', () => {
   it('produces a JSON-safe object with version 1', () => {
@@ -228,10 +228,10 @@ describe('deserialize', () => {
     expect(() => deserialize(bad)).toThrow('Invalid stamp type')
   })
 
-  it('round-trips object stamp (archway)', () => {
+  it('round-trips a split iso object stamp', () => {
     const json = JSON.stringify(serialize({ ...BASE, stamps: [OBJECT_STAMP] }))
     const restored = deserialize(JSON.parse(json))
-    expect(restored.stamps[0]).toMatchObject({ type: 'archway', z: 0 })
+    expect(restored.stamps[0]).toMatchObject({ type: 'g1002', z: 0 })
   })
 
   it('throws on invalid stamp rotation', () => {

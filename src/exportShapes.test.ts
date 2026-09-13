@@ -283,8 +283,8 @@ describe('buildExportShapes – object stamps', () => {
   const ITW = ET * 2
   const ITH = ET
 
-  it('flat export: object stamp (archway) produces no image shapes', () => {
-    const stamp = { id: 'a', type: 'archway' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
+  it('flat export: object stamp produces no image shapes', () => {
+    const stamp = { id: 'a', type: 'g1002' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), stamps: [stamp] })
     const imgs = shapes.filter(s => s.kind === 'image')
     expect(imgs).toHaveLength(0)
@@ -292,7 +292,7 @@ describe('buildExportShapes – object stamps', () => {
 
   it('flat export: floor stamp (star) still appears when mixed with object stamp', () => {
     const stamps = [
-      { id: 'a', type: 'archway' as const, col: 0, row: 0, rotation: 0 as const, z: 0 },
+      { id: 'a', type: 'g1002' as const, col: 0, row: 0, rotation: 0 as const, z: 0 },
       { id: 's', type: 'star' as const, col: 1, row: 1, rotation: 0 as const, z: 0 },
     ]
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), stamps })
@@ -302,15 +302,15 @@ describe('buildExportShapes – object stamps', () => {
   })
 
   it('ISO export: object stamp appears as an image shape', () => {
-    const stamp = { id: 'a', type: 'archway' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
+    const stamp = { id: 'a', type: 'g1002' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
     const imgs = shapes.filter(s => s.kind === 'image')
     expect(imgs).toHaveLength(1)
-    expect((imgs[0] as any).stampType).toBe('archway')
+    expect((imgs[0] as any).stampType).toBe('g1002')
   })
 
   it('ISO export: object stamp is billboard — no scaleX, no skewX, rotation=0', () => {
-    const stamp = { id: 'a', type: 'archway' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
+    const stamp = { id: 'a', type: 'g1002' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
     const img = shapes.find(s => s.kind === 'image') as any
     expect(img.rotation).toBe(0)
@@ -319,7 +319,7 @@ describe('buildExportShapes – object stamps', () => {
   })
 
   it('ISO export: object stamp base anchored at tile bottom corner (x=center.x, y=bottom.y)', () => {
-    const stamp = { id: 'a', type: 'archway' as const, col: 2, row: 1, rotation: 0 as const, z: 0 }
+    const stamp = { id: 'a', type: 'g1002' as const, col: 2, row: 1, rotation: 0 as const, z: 0 }
     const { shapes } = buildExportShapes({ ...baseParams(4, 4), showIso: true, stamps: [stamp] })
     const img = shapes.find(s => s.kind === 'image') as any
     const center = isoProject(stamp.col + 0.5, stamp.row + 0.5, ITW, ITH)
@@ -392,7 +392,7 @@ describe('buildExportShapes – stamp mirrored', () => {
   })
 
   it('iso billboard mirrored stamp has mirrored: true in image spec', () => {
-    const stamp: Stamp = { id: 'a', type: 'archway', col: 0, row: 0, rotation: 0, z: 0, mirrored: true }
+    const stamp: Stamp = { id: 'a', type: 'g1002', col: 0, row: 0, rotation: 0, z: 0, mirrored: true }
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
     const img = shapes.find(s => s.kind === 'image') as import('./exportShapes').ImageSpec | undefined
     expect(img?.mirrored).toBe(true)
