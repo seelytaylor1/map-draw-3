@@ -1,6 +1,7 @@
 /** @vitest-environment node */
 
-import { readFileSync } from 'node:fs'
+declare const require: (id: string) => any
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { closeWindow } from './tauri'
 
@@ -49,6 +50,7 @@ describe('closeWindow', () => {
 
 describe('tauri save permissions', () => {
   it('includes the filesystem permissions needed to open and save map files', () => {
+    const { readFileSync } = require('node:fs') as { readFileSync: (path: string | URL, encoding?: string) => string }
     const capability = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'))
 
     expect(capability.permissions).toEqual(expect.arrayContaining([
