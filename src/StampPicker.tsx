@@ -1,9 +1,15 @@
-import { STAMP_TYPES, OBJECT_STAMP_TYPES, STAMP_ASSET_MAP, OBJECT_ASSET_MAP, type StampType, type ObjectStampType } from './stamps'
+import { DEFAULT_ICON_TYPES, STAMP_TYPES, OBJECT_STAMP_TYPES, STAMP_ASSET_MAP, OBJECT_ASSET_MAP, type StampType, type ObjectStampType } from './stamps'
 
 export type Mode = 'paint' | 'rough' | 'steps' | 'ramps' | StampType | ObjectStampType
 
 const toLabel = (type: string): string => type
+  .replace(/(\d+)x(\d+)(?:_\d+)?$/, '')
+  .replace(/([a-z])([A-Z])/g, '$1 $2')
+  .replace(/([A-Za-z])(\d)/g, '$1 $2')
+  .replace(/(\d)([A-Za-z])/g, '$1 $2')
   .split('-')
+  .join(' ')
+  .split(' ')
   .map(part => part === 'door' ? 'Door' : part === 'arch' ? 'Arch' : part.charAt(0).toUpperCase() + part.slice(1))
   .join(' ')
 
@@ -29,7 +35,7 @@ export function StampPicker({ mode, onModeChange }: Props) {
     <>
       <div className="label-dim" style={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.08em' }}>Icons</div>
       <div className="row" style={{ flexWrap: 'wrap' }}>
-        {STAMP_TYPES.map(type => (
+        {DEFAULT_ICON_TYPES.map(type => (
           <button
             key={type}
             title={ICON_LABELS[type]}
@@ -57,7 +63,7 @@ export function StampPicker({ mode, onModeChange }: Props) {
 
       {isStampMode && (
         <div className="hint">
-          Placing: {isFloorMode ? ICON_LABELS[mode as StampType] : isObjectMode ? ISO_OBJECT_LABELS[mode as ObjectStampType] : ''} — click map to place
+          Placing: {isFloorMode ? ICON_LABELS[mode as StampType] ?? toLabel(mode) : isObjectMode ? ISO_OBJECT_LABELS[mode as ObjectStampType] : ''} — click map to place
         </div>
       )}
     </>

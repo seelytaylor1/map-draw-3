@@ -51,7 +51,12 @@ export function isoStepSideFaces(run: StepRun, tileW: number, tileH: number, fac
     const u0 = (i * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
     const u1 = ((i + 1) * STEP_RUN_LENGTH) / STEP_TREAD_COUNT
     const start = i * drop * sign
-    const end = Z_STEP_HEIGHT * sign
+    // A descending flight drops from this level to the one below, so its
+    // exposed side reaches the lower floor plane. An ascending flight rises
+    // from this level, so its exposed side must instead reach this level's
+    // floor plane. Using the upper landing for both cases inverted the wall
+    // beneath ascending stairs.
+    const end = run.ascending ? 0 : Z_STEP_HEIGHT
     const ga = uvToGrid(run, u0, 1)
     const gb = uvToGrid(run, u1, 1)
     const a = isoProject(ga.col, ga.row, tileW, tileH)

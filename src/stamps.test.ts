@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addStamp, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
+import { addStamp, DEFAULT_ICON_TYPES, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
 
 const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   id: 'a',
@@ -22,8 +22,22 @@ describe('stampSize', () => {
     expect(stampSize('wood-doubledoor')).toEqual({ cols: 2, rows: 1 })
   })
 
+  it('derives multi-tile footprints from dungeon symbol asset names', () => {
+    expect(stampSize('TableSetTwo3x1')).toEqual({ cols: 3, rows: 1 })
+    expect(stampSize('StairSpiralCircleBig2x2')).toEqual({ cols: 2, rows: 2 })
+    expect(stampSize('Stairs1x1_01')).toEqual({ cols: 1, rows: 1 })
+  })
+
   it('returns 1×1 for archway', () => {
     expect(stampSize('archway')).toEqual({ cols: 1, rows: 1 })
+  })
+})
+
+describe('default dungeon icon palette', () => {
+  it('uses the supplied PNG symbol set as the default icon list', () => {
+    expect(DEFAULT_ICON_TYPES).toContain('Door1x1')
+    expect(DEFAULT_ICON_TYPES).toContain('TableSetTwo3x1')
+    expect(DEFAULT_ICON_TYPES).not.toContain('door')
   })
 })
 

@@ -842,8 +842,17 @@ export function buildHatchPolylines(
 }
 
 // ---------------------------------------------------------------------------
-// Shadow cells (simplified stub for now)
+// Directional wall shadow
 // ---------------------------------------------------------------------------
+
+// Keep the shadow proportional to the tile size so the live viewport and the
+// high-resolution export have the same visual weight. The reference style is
+// a compact, ink-like cast shadow rather than a full-tile gradient.
+const SHADOW_OFFSET_RATIO = 0.14
+const SHADOW_WIDTH_RATIO = 0.18
+const SHADOW_MIN_OFFSET = 2
+const SHADOW_MIN_WIDTH = 4
+const SHADOW_COLOR = 'rgba(45, 42, 36, 0.42)'
 
 export function drawShadow(
   ctx: CanvasRenderingContext2D,
@@ -852,90 +861,41 @@ export function drawShadow(
   rows: number,
   tileSize: number,
 ): void {
-  const rows_ = grid.length / cols
-  function tile(c: number, r: number): number {
-    if (c < 0 || r < 0 || c >= cols || r >= rows_) return WALL
-    return grid[r * cols + c]
-  }
-  const depth = Math.round(tileSize * 0.65)
-  const DARK = 'rgba(0,0,0,0.28)'
-  const CLEAR = 'rgba(0,0,0,0)'
+  const rawSegments = buildWallOutlineSegments(grid, cols, rows, tileSize)
+  if (rawSegments.length === 0) return
 
+  // Merge only collinear edges. The single canvas stroke prevents adjacent
+  // tile edges from accumulating opacity and keeps corners visually unified.
+  const segments = mergeOutlineSegments(rawSegments)
+  const offset = Math.max(SHADOW_MIN_OFFSET, tileSize * SHADOW_OFFSET_RATIO)
+  const width = Math.max(SHADOW_MIN_WIDTH, tileSize * SHADOW_WIDTH_RATIO)
+
+  ctx.save()
+
+  // The offset stroke crosses both sides of a wall boundary. Restrict the
+  // destination to walkable/environmental tiles so no part of the shadow can
+  // darken a WALL tile, regardless of the boundary orientation or line cap.
+  ctx.beginPath()
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      // Apply shadows to all walkable tiles (everything except WALL) for visual consistency.
-      if (tile(c, r) === WALL) continue
-      const northWall = tile(c, r - 1) === WALL
-      const westWall  = tile(c - 1, r) === WALL
-      // Inside-corner: NW diagonal is wall but direct N/W neighbours are floor
-      const nwCorner  = !northWall && !westWall && tile(c - 1, r - 1) === WALL
-
-      const x = c * tileSize
-      const y = r * tileSize
-
-      if (northWall && westWall) {
-        // MAX(north, west) shadow with no seams using triangle-clip:
-        //
-        // Step 1 — north gradient across the full tile width.
-        //   This is correct everywhere EXCEPT the lower-left triangle of the
-        //   corner square, where westFactor > northFactor.
-        const ng = ctx.createLinearGradient(x, y, x, y + depth)
-        ng.addColorStop(0, DARK)
-        ng.addColorStop(1, CLEAR)
-        ctx.fillStyle = ng
-        ctx.fillRect(x, y, tileSize, depth)
-
-        // Step 2 — west gradient, clipped to lower-left triangle of corner
-        //   square (vertices (x,y)→(x,y+depth)→(x+depth,y+depth)).
-        //   Inside this triangle dy > dx so westFactor > northFactor, and
-        //   overwriting with west gives the correct MAX value.
-        //   Along the diagonal (dy=dx) both factors are equal → no seam.
-        ctx.save()
-        ctx.beginPath()
-        ctx.moveTo(x,         y)
-        ctx.lineTo(x,         y + depth)
-        ctx.lineTo(x + depth, y + depth)
-        ctx.closePath()
-        ctx.clip()
-        const wg1 = ctx.createLinearGradient(x, y, x + depth, y)
-        wg1.addColorStop(0, DARK)
-        wg1.addColorStop(1, CLEAR)
-        ctx.fillStyle = wg1
-        ctx.fillRect(x, y, depth, depth)
-        ctx.restore()
-
-        // Step 3 — west gradient for the strip below the corner square.
-        const wg2 = ctx.createLinearGradient(x, y, x + depth, y)
-        wg2.addColorStop(0, DARK)
-        wg2.addColorStop(1, CLEAR)
-        ctx.fillStyle = wg2
-        ctx.fillRect(x, y + depth, depth, tileSize - depth)
-
-      } else if (northWall) {
-        const ng = ctx.createLinearGradient(x, y, x, y + depth)
-        ng.addColorStop(0, DARK)
-        ng.addColorStop(1, CLEAR)
-        ctx.fillStyle = ng
-        ctx.fillRect(x, y, tileSize, depth)
-
-      } else if (westWall) {
-        const wg = ctx.createLinearGradient(x, y, x + depth, y)
-        wg.addColorStop(0, DARK)
-        wg.addColorStop(1, CLEAR)
-        ctx.fillStyle = wg
-        ctx.fillRect(x, y, depth, tileSize)
-
-      } else if (nwCorner) {
-        // Soft radial blob at the concave inside corner where two corridors meet.
-        const r2 = depth * 0.55
-        const rg = ctx.createRadialGradient(x, y, 0, x, y, r2)
-        rg.addColorStop(0, 'rgba(0,0,0,0.20)')
-        rg.addColorStop(1, CLEAR)
-        ctx.fillStyle = rg
-        ctx.fillRect(x, y, r2, r2)
+      if (getLocalTile(grid, cols, c, r) !== WALL) {
+        ctx.rect(c * tileSize, r * tileSize, tileSize, tileSize)
       }
     }
   }
+  ctx.clip()
+
+  ctx.strokeStyle = SHADOW_COLOR
+  ctx.lineWidth = width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  for (const [[ax, ay], [bx, by]] of segments) {
+    ctx.moveTo(ax + offset, ay + offset)
+    ctx.lineTo(bx + offset, by + offset)
+  }
+  ctx.stroke()
+  ctx.restore()
 }
 
 // ---------------------------------------------------------------------------

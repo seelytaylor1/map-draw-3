@@ -635,7 +635,8 @@ export default function App() {
         group.add(new Konva.Rect({ x: face.x, y: face.y, width: face.w, height: face.h, fill: FACE_COLOR }))
       }
 
-      // Directional shadows — cast only from north/west walls onto floor tiles
+      // Directional cast shadow — one continuous down-right offset of the
+      // wall boundary, including interior cutouts.
       if (level.drawShadow) {
         const shadowCanvas = document.createElement('canvas')
         shadowCanvas.width = cols * TILE_PX

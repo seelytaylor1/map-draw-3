@@ -1,7 +1,7 @@
 // src/patterns.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { drawHatching, buildHatchLines, buildHatchPolylines, roughenSegments, buildWallOutlineSegments, assignWidths, varyWidthsAlongStroke, HatchOptions, RoughLineOptions } from './patterns'
-import { FLOOR, WALL } from './constants'
+import { drawHatching, drawShadow, buildHatchLines, buildHatchPolylines, roughenSegments, buildWallOutlineSegments, assignWidths, varyWidthsAlongStroke, HatchOptions, RoughLineOptions } from './patterns'
+import { FLOOR, WALL, WATER } from './constants'
 
 // ---------------------------------------------------------------------------
 // Existing canvas-mock tests for drawHatching (updated for new implementation)
@@ -50,6 +50,58 @@ describe('drawHatching (canvas mock)', () => {
     drawHatching(ctx, grid, 2, 2, 20, '#000')
     expect(ctx.save).toHaveBeenCalled()
     expect(ctx.restore).toHaveBeenCalled()
+  })
+})
+
+describe('drawShadow (canvas mock)', () => {
+  let ctx: CanvasRenderingContext2D
+
+  beforeEach(() => {
+    ctx = {
+      strokeStyle: '',
+      lineWidth: 1,
+      lineCap: 'round',
+      lineJoin: 'round',
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      rect: vi.fn(),
+      clip: vi.fn(),
+    } as unknown as CanvasRenderingContext2D
+  })
+
+  it('draws no shadow when there is no wall boundary', () => {
+    drawShadow(ctx, new Uint8Array([WALL, WALL, WALL, WALL]), 2, 2, 20)
+    expect(ctx.stroke).not.toHaveBeenCalled()
+  })
+
+  it('renders all boundary edges as one offset stroke', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[4] = FLOOR
+
+    drawShadow(ctx, grid, 3, 3, 20)
+
+    expect(ctx.stroke).toHaveBeenCalledTimes(1)
+    expect(ctx.strokeStyle).toBe('rgba(45, 42, 36, 0.42)')
+    expect(ctx.lineWidth).toBeGreaterThan(2)
+    expect(ctx.moveTo).toHaveBeenCalledWith(22.8, 22.8)
+    expect(ctx.lineTo).toHaveBeenCalledWith(22.8, 42.8)
+  })
+
+  it('clips the shadow to non-wall tiles, including water', () => {
+    const grid = new Uint8Array(9).fill(WALL)
+    grid[1] = WATER
+    grid[4] = FLOOR
+
+    drawShadow(ctx, grid, 3, 3, 20)
+
+    expect(ctx.clip).toHaveBeenCalledTimes(1)
+    expect(ctx.rect).toHaveBeenCalledTimes(2)
+    expect(ctx.rect).toHaveBeenNthCalledWith(1, 20, 0, 20, 20)
+    expect(ctx.rect).toHaveBeenNthCalledWith(2, 20, 20, 20, 20)
   })
 })
 

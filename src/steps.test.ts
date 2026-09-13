@@ -236,12 +236,20 @@ describe('isoStepSideFaces', () => {
     expect(firstHeight).toBeGreaterThan(0)
   })
 
-  it('ascending runs keep the sidewall heights shrinking toward the upper end', () => {
+  it('ascending runs keep their sidewalls grounded on the local floor plane', () => {
     const faces = isoStepSideFaces(run({ col: 0, row: 0, direction: 'E', ascending: true }), TILE_W, TILE_H, FACE)
-    const firstHeight = Math.abs(faces[0].points[5] - faces[0].points[1])
-    const lastHeight = Math.abs(faces[faces.length - 1].points[5] - faces[faces.length - 1].points[1])
-    expect(firstHeight).toBeGreaterThan(lastHeight)
-    expect(firstHeight).toBeGreaterThan(0)
+    const firstHeight = Math.abs(faces[0].points[7] - faces[0].points[1])
+    const lastHeight = Math.abs(faces[faces.length - 1].points[7] - faces[faces.length - 1].points[1])
+    expect(firstHeight).toBeCloseTo(0, 10)
+    expect(lastHeight).toBeGreaterThan(firstHeight)
+
+    const last = faces[faces.length - 1]
+    const u1 = 2 / STEP_TREAD_COUNT
+    const a = isoProject(5 * u1, 1, TILE_W, TILE_H)
+    const b = isoProject(6 * u1, 1, TILE_W, TILE_H)
+    // Both lower corners meet the z=0 floor rather than the z=1 landing.
+    expect(last.points[5]).toBeCloseTo(b.y, 10)
+    expect(last.points[7]).toBeCloseTo(a.y, 10)
   })
 
   it('no face extends below the Z-1 floor plane', () => {
