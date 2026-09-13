@@ -5,12 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:allow-open",
-    "dialog:allow-save",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file",
-    "fs:allow-write-file",
+    "dialog:default",
+    "fs:default",
+    "opener:default",
     "updater:default",
-    "process:allow-relaunch"
+    "process:default"
   ]
 }
