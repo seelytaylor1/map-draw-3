@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -998,11 +998,33 @@ export default function App() {
 
   useEffect(() => { setShow3D(showIso) }, [showIso])
 
-  const CANVAS_DIMENSION_STEP = 0.1
+  const canvasDimensionStep = 1 / tilesPerInch
+
+  const handleSquareScaleChange = (nextTilesPerInch: number) => {
+    const snappedTiles = normalizeTilesPerInch(nextTilesPerInch)
+    if (snappedTiles === tilesPerInch) return
+
+    const widthInches = cols / tilesPerInch
+    const heightInches = rows / tilesPerInch
+    const newCols = Math.max(1, Math.round(widthInches * snappedTiles))
+    const newRows = Math.max(1, Math.round(heightInches * snappedTiles))
+
+    setHistory(h => {
+      const newGrids = new Map<number, Uint8Array>()
+      for (const [z, g] of h.present.grids) {
+        newGrids.set(z, resizeGrid(g, cols, rows, newCols, newRows))
+      }
+      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
+    })
+    setCols(newCols)
+    setRows(newRows)
+    setTilesPerInch(snappedTiles)
+    pendingFitRef.current = true
+  }
 
   const handleWidthChange = (inches: number) => {
     if (!Number.isFinite(inches)) return
-    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / CANVAS_DIMENSION_STEP) * CANVAS_DIMENSION_STEP).toFixed(1))))
+    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / canvasDimensionStep) * canvasDimensionStep).toFixed(2))))
     if (snappedInches < 1 || snappedInches > 36) return
     const newCols = Math.round(snappedInches * tilesPerInch)
     if (newCols === cols) return
@@ -1014,11 +1036,12 @@ export default function App() {
       return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
+    pendingFitRef.current = true
   }
 
   const handleHeightChange = (inches: number) => {
     if (!Number.isFinite(inches)) return
-    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / CANVAS_DIMENSION_STEP) * CANVAS_DIMENSION_STEP).toFixed(1))))
+    const snappedInches = Math.min(36, Math.max(1, Number((Math.round(inches / canvasDimensionStep) * canvasDimensionStep).toFixed(2))))
     if (snappedInches < 1 || snappedInches > 36) return
     const newRows = Math.round(snappedInches * tilesPerInch)
     if (newRows === rows) return
@@ -1030,11 +1053,12 @@ export default function App() {
       return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
     })
     setRows(newRows)
+    pendingFitRef.current = true
   }
 
   const stepCanvasDimension = (dimension: 'width' | 'height', delta: number) => {
     const currentInches = dimension === 'width' ? cols / tilesPerInch : rows / tilesPerInch
-    const nextInches = Number((currentInches + delta).toFixed(1))
+    const nextInches = Number((currentInches + delta).toFixed(2))
     if (dimension === 'width') handleWidthChange(nextInches)
     else handleHeightChange(nextInches)
   }
@@ -1056,11 +1080,11 @@ export default function App() {
   const handleCanvasFieldKeyDown = (dimension: 'width' | 'height', event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
       event.preventDefault()
-      stepCanvasDimension(dimension, CANVAS_DIMENSION_STEP)
+      stepCanvasDimension(dimension, canvasDimensionStep)
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
       event.preventDefault()
-      stepCanvasDimension(dimension, -CANVAS_DIMENSION_STEP)
+      stepCanvasDimension(dimension, -canvasDimensionStep)
     }
   }
 
@@ -1077,7 +1101,7 @@ export default function App() {
       showWallOutline,
       wallOutlineColor,
       wallOutlineStyle,
-      exportTile: 60,
+      exportTile: getExportTilePixels(tilesPerInch),
       waterColor,
       lavaColor,
       darknessColor,
@@ -1298,7 +1322,7 @@ export default function App() {
       setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, environmentalColors: save.environmentalColors }))
       setCols(save.cols)
       setRows(save.rows)
-      setTilesPerInch(save.tilesPerInch)
+      setTilesPerInch(normalizeTilesPerInch(save.tilesPerInch))
       setWallColor(save.wallColor)
       setWallOpacity(save.wallOpacity)
       dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape: save.brushShape } })
@@ -1673,19 +1697,19 @@ export default function App() {
             <div className="canvas-size-row">
               <label className="label-dim" style={{ width: 46, flexShrink: 0 }}>Width</label>
               <div className="canvas-size-control">
-                <button type="button" aria-label="Decrease width" onClick={() => stepCanvasDimension('width', -CANVAS_DIMENSION_STEP)}><IconMinus size={13} /></button>
+                <button type="button" aria-label="Decrease width" onClick={() => stepCanvasDimension('width', -canvasDimensionStep)}><IconMinus size={13} /></button>
                 <input
                   className="num-field canvas-size-input"
                   type="number"
                   min={1}
                   max={36}
-                  step={CANVAS_DIMENSION_STEP}
-                  value={+(cols / tilesPerInch).toFixed(1)}
+                  step={canvasDimensionStep}
+                  value={+(cols / tilesPerInch).toFixed(2)}
                   onKeyDown={e => handleCanvasFieldKeyDown('width', e)}
                   onChange={e => handleWidthChange(Number(e.target.value))}
                   aria-label="Canvas width in inches"
                 />
-                <button type="button" aria-label="Increase width" onClick={() => stepCanvasDimension('width', CANVAS_DIMENSION_STEP)}><IconPlus size={13} /></button>
+                <button type="button" aria-label="Increase width" onClick={() => stepCanvasDimension('width', canvasDimensionStep)}><IconPlus size={13} /></button>
               </div>
               <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
@@ -1693,38 +1717,38 @@ export default function App() {
             <div className="canvas-size-row">
               <label className="label-dim" style={{ width: 46, flexShrink: 0 }}>Height</label>
               <div className="canvas-size-control">
-                <button type="button" aria-label="Decrease height" onClick={() => stepCanvasDimension('height', -CANVAS_DIMENSION_STEP)}><IconMinus size={13} /></button>
+                <button type="button" aria-label="Decrease height" onClick={() => stepCanvasDimension('height', -canvasDimensionStep)}><IconMinus size={13} /></button>
                 <input
                   className="num-field canvas-size-input"
                   type="number"
                   min={1}
                   max={36}
-                  step={CANVAS_DIMENSION_STEP}
-                  value={+(rows / tilesPerInch).toFixed(1)}
+                  step={canvasDimensionStep}
+                  value={+(rows / tilesPerInch).toFixed(2)}
                   onKeyDown={e => handleCanvasFieldKeyDown('height', e)}
                   onChange={e => handleHeightChange(Number(e.target.value))}
                   aria-label="Canvas height in inches"
                 />
-                <button type="button" aria-label="Increase height" onClick={() => stepCanvasDimension('height', CANVAS_DIMENSION_STEP)}><IconPlus size={13} /></button>
+                <button type="button" aria-label="Increase height" onClick={() => stepCanvasDimension('height', canvasDimensionStep)}><IconPlus size={13} /></button>
               </div>
               <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
 
             <div className="canvas-size-row" style={{ marginTop: 4 }}>
-              <label className="label-dim" style={{ width: 80, flexShrink: 0 }}>Square scale</label>
+              <label className="label-dim" style={{ width: 80, flexShrink: 0 }}>Square size</label>
               <div className="canvas-size-control">
-                <input
+                <select
                   className="num-field canvas-size-input"
-                  type="number"
-                  min={1}
-                  max={40}
-                  step={1}
                   value={tilesPerInch}
-                  onChange={e => setTilesPerInch(Math.min(40, Math.max(1, Number(e.target.value) || 1)))}
+                  onChange={e => handleSquareScaleChange(Number(e.target.value))}
                   aria-label="Square scale"
-                />
+                >
+                  {TILES_PER_INCH_OPTIONS.map(value => (
+                    <option key={value} value={value}>{value === 2 ? '½ in' : '¼ in'}</option>
+                  ))}
+                </select>
               </div>
-              <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>tiles/in</span>
+              <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
           </div>
 

@@ -4,7 +4,7 @@
 The full drawing canvas, defined in physical inches. Default dimensions are 8.5×11" landscape. Everywhere on a Map begins as Wall. The user paints Floor to create dungeon rooms and corridors.
 
 ## Tile
-The atomic unit of the Map grid. One square cell. Fixed at 60px per tile at 300dpi output (5 tiles per inch). Tile size is a single constant; changing it resets the Map.
+The atomic unit of the Map grid. One square cell. The default physical size is 1/2 inch (2 tiles per inch); the user may choose 1/4 inch (4 tiles per inch). At 300dpi export, the tile is rendered at 150px or 75px respectively. Changing the square size preserves the Map's physical dimensions and resizes each level's Tile Grid.
 
 ## Tile Grid
 A 2D array of cell states for a single Z Level — the authoritative data model for one floor of the Map. Each cell is either Wall, Floor, or Water. The grid dimensions (cols × rows) are derived from canvas dimensions in inches times tiles-per-inch and are identical at every Z Level.
@@ -70,7 +70,7 @@ The geometry produced by the 3D Effect. Derived from the Floor boundary at rende
 The physical output dimensions of the Map, configured in inches. Resizing crops Tiles that fall outside the new bounds or adds Wall Tiles around the edges. Existing Tiles within the remaining area are preserved.
 
 ## Export
-A render pass that produces a PNG at 300dpi by re-rendering the Map at full resolution (60px per tile) into an off-screen canvas. The working viewport renders at screen resolution.
+A render pass that produces a PNG at 300dpi by re-rendering the Map at full resolution. Export tile pixels are derived from the selected square size (150px for 1/2-inch squares, 75px for 1/4-inch squares); the working viewport renders at screen resolution.
 
 ## Water
 A third TileState (value 2) that can be painted directly onto any tile, including Wall. Painted and erased with the Brush in the same way as Floor — the toolbar paint-mode selector is a three-state control: Floor | Water | Erase. Left-click paints the selected state; right-click always erases to Wall regardless of selected mode. Water tiles render with a fixed default color (muted blue). In Top-Down View, Water looks different from Floor by color alone — no inset or shadow. In Iso View, the Water diamond is shifted 4px downward relative to Floor, giving the appearance of a lower elevation. When the 3D Effect is enabled, Floor tiles adjacent to Water render their side face (acting as a stone bank); in the Iso Scene the Water surface draws after the bank, covering its submerged portion.

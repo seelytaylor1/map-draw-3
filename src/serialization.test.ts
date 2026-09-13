@@ -17,7 +17,7 @@ const BASE = {
   brushShape: 'circle' as const,
   showGrid: true,
   show3D: false,
-  tilesPerInch: 10,
+  tilesPerInch: 2,
   isoFaceColor: '#6a5040',
   showHatching: false,
   hatchColor: '#000000',
@@ -87,9 +87,14 @@ describe('serialize', () => {
     expect(save.darknessColor).toBe('#1a0a2e')
   })
 
-  it('serializes the square scale setting', () => {
-    const save = serialize({ ...BASE, tilesPerInch: 5 })
-    expect(save.tilesPerInch).toBe(5)
+  it('serializes the quarter-inch square scale setting', () => {
+    const save = serialize({ ...BASE, tilesPerInch: 4 })
+    expect(save.tilesPerInch).toBe(4)
+  })
+
+  it('normalizes unsupported square scales to the default', () => {
+    const save = serialize({ ...BASE, tilesPerInch: 10 })
+    expect(save.tilesPerInch).toBe(2)
   })
 })
 
@@ -104,8 +109,13 @@ describe('deserialize', () => {
     expect(restored.showGrid).toBe(true)
     expect(restored.cols).toBe(2)
     expect(restored.rows).toBe(2)
-    expect(restored.tilesPerInch).toBe(10)
+    expect(restored.tilesPerInch).toBe(2)
     expect(restored.stamps).toEqual([])
+  })
+
+  it('normalizes unsupported square scales when loading a save', () => {
+    const restored = deserialize({ ...serialize(BASE), tilesPerInch: 10 })
+    expect(restored.tilesPerInch).toBe(2)
   })
 
   it('round-trips multiple Z levels', () => {

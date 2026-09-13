@@ -2,7 +2,7 @@ import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type Objec
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
 import { type Label } from './labels'
-import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, TILES_PER_INCH } from './constants'
+import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, normalizeTilesPerInch, TILES_PER_INCH } from './constants'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
 const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
@@ -94,7 +94,7 @@ export function serialize(params: {
     version: 1,
     cols: params.cols,
     rows: params.rows,
-    tilesPerInch: params.tilesPerInch ?? TILES_PER_INCH,
+    tilesPerInch: normalizeTilesPerInch(params.tilesPerInch ?? TILES_PER_INCH),
     grids,
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
@@ -139,9 +139,11 @@ export function deserialize(raw: unknown): DeserializedMap {
   if (s['version'] !== 1) throw new Error(`Unsupported version: ${s['version']}`)
   if (typeof s['cols'] !== 'number' || s['cols'] < 1) throw new Error('Invalid cols')
   if (typeof s['rows'] !== 'number' || s['rows'] < 1) throw new Error('Invalid rows')
-  const tilesPerInch = typeof s['tilesPerInch'] === 'number' && Number.isFinite(s['tilesPerInch']) && s['tilesPerInch'] > 0
-    ? s['tilesPerInch']
-    : TILES_PER_INCH
+  const tilesPerInch = normalizeTilesPerInch(
+    typeof s['tilesPerInch'] === 'number' && Number.isFinite(s['tilesPerInch'])
+      ? s['tilesPerInch']
+      : TILES_PER_INCH,
+  )
   if (typeof s['wallColor'] !== 'string') throw new Error('Invalid wallColor')
   if (typeof s['wallOpacity'] !== 'number') throw new Error('Invalid wallOpacity')
   if (s['brushShape'] !== 'square' && s['brushShape'] !== 'circle') throw new Error('Invalid brushShape')
