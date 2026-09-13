@@ -1,5 +1,6 @@
+/** @vitest-environment node */
+
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { closeWindow } from './tauri'
 
@@ -48,8 +49,7 @@ describe('closeWindow', () => {
 
 describe('tauri save permissions', () => {
   it('includes the filesystem permissions needed to open and save map files', () => {
-    const capabilityPath = resolve(__dirname, '../src-tauri/capabilities/default.json')
-    const capability = JSON.parse(readFileSync(capabilityPath, 'utf8'))
+    const capability = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'))
 
     expect(capability.permissions).toEqual(expect.arrayContaining([
       'dialog:default',
