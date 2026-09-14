@@ -19,6 +19,9 @@ export class PlacementLedger {
   restore(grid: Uint8Array): void { this._grid = grid.slice(); this.occupied = new Set<string>(); for (let row = 0; row < this.rows; row++) for (let col = 0; col < this.cols; col++) if (this._grid[row * this.cols + col] !== WALL) this.occupied.add(`${col},${row}`) }
   isInside(p: Point): boolean { return p.col >= 0 && p.row >= 0 && p.col < this.cols && p.row < this.rows }
   isTraversable(p: Point): boolean { if (!this.isInside(p)) return false; const state = this._grid[p.row * this.cols + p.col]; return state === FLOOR || state === WATER }
+  connectionEntrances(origin: Point): Point[] {
+    return [origin, ...neighbors(origin).filter(point => this.occupied.has(key(point)))]
+  }
 
   validate(points: Point[], entrances: Point[] = []): PlacementFailure | null {
     const candidate = [...new Map(points.map(p => [key(p), p])).values()]

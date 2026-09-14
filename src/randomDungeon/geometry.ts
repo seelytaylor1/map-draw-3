@@ -39,7 +39,11 @@ export function rectangleFootprint(width: number, height: number, topLeft: Point
 export function roomFootprint(shape: RoomShape, width: number, height: number, topLeft: Point, radius?: number): Point[] {
   if (shape === 'circular') return rasterizeCircle(radius ?? Math.floor(Math.min(width, height) / 2)).map(p => ({ col: topLeft.col + p.col + Math.floor(width / 2), row: topLeft.row + p.row + Math.floor(height / 2) }))
   if (shape === 'cavern' || shape === 'cave-opening' || shape === 'natural-cavern') return rasterizeNatural(width, height).map(p => ({ col: topLeft.col + p.col, row: topLeft.row + p.row }))
-  if (shape === 'irregular-chamber') return rasterizeNatural(width, height).filter(p => (p.col + p.row) % 5 !== 0).map(p => ({ col: topLeft.col + p.col, row: topLeft.row + p.row }))
+  if (shape === 'irregular-chamber') {
+    const points = rasterizeNatural(width, height).filter(p => (p.col + p.row) % 5 !== 0)
+    if (points.length === 0) points.push({ col: Math.floor(width / 2), row: Math.floor(height / 2) })
+    return points.map(p => ({ col: topLeft.col + p.col, row: topLeft.row + p.row }))
+  }
   return rectangleFootprint(width, height, topLeft)
 }
 
@@ -72,9 +76,12 @@ export function intersectionFootprint(origin: Point, kind: IntersectionKind): { 
 }
 
 export function roomFromEntrance(entrance: Point, direction: Direction, width: number, height: number, shape: RoomShape, radius?: number): Point[] {
-  const depth = directionVector[direction]
-  const lateral = directionVector[turnLeft[direction]]
-  const center = add(step(entrance, direction, 2), { col: lateral.col * Math.floor((width - 1) / 2), row: lateral.row * Math.floor((width - 1) / 2) })
-  const topLeft = { col: center.col - Math.floor(width / 2), row: center.row - Math.floor(height / 2) }
+  const topLeft = direction === 'E'
+    ? { col: entrance.col + 2, row: entrance.row - Math.floor(height / 2) }
+    : direction === 'W'
+      ? { col: entrance.col - width - 1, row: entrance.row - Math.floor(height / 2) }
+      : direction === 'S'
+        ? { col: entrance.col - Math.floor(width / 2), row: entrance.row + 2 }
+        : { col: entrance.col - Math.floor(width / 2), row: entrance.row - height - 1 }
   return roomFootprint(shape, width, height, topLeft, radius)
 }

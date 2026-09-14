@@ -98,7 +98,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     const topLeft = starting ? startingTopLeft(location!, input.cols, input.rows, dimensions.width, dimensions.height, random) : undefined
     const tiles = starting ? roomFootprint(shape, dimensions.width, dimensions.height, topLeft!, dimensions.radius) : roomFromEntrance(branch.origin, branch.direction, dimensions.width, dimensions.height, shape, dimensions.radius)
     const candidate = starting ? tiles : uniquePoints([step(branch.origin, branch.direction), ...tiles])
-    const placement = ledger.commit(candidate, FLOOR, starting ? [] : [branch.origin])
+    const placement = ledger.commit(candidate, FLOOR, starting ? [] : ledger.connectionEntrances(branch.origin))
     if ('reason' in placement) { fail(branch.id, starting ? 'starting-room' : 'room', placement.reason, candidate, placement.message); return false }
     if (!starting) connectors.push(step(branch.origin, branch.direction))
     const room = recordRoom(nextId(starting ? 'starting-room' : 'room'), starting ? topLeft! : branch.origin, branch.direction, shape, dimensions.width, dimensions.height, dimensions.radius, feature, tiles, starting, starting ? (rollRoomExits(random)) : rollRoomExits(random))
@@ -121,7 +121,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   const generateHallway = (branch: Branch, forcedForm?: HallwayForm): boolean => {
     const roll = forcedForm ? 1 : rollHallway(random); const form: HallwayForm = forcedForm ?? (roll === 1 ? 'straight' : roll === 2 ? 'intersection' : roll === 3 ? 'turn' : roll === 4 ? 'side-passage' : roll === 5 ? 'doorway-ending' : 'room-ending')
     const length = roll === 2 ? 3 : roll === 3 ? 3 : d6(random); const condition = maybeCondition(); const geometry = hallwayFootprint(branch.origin, branch.direction, length, condition.width, form)
-    const state = condition.condition === 'flooded' ? WATER : FLOOR; const placement = ledger.commit(geometry.footprint, state, [branch.origin])
+    const state = condition.condition === 'flooded' ? WATER : FLOOR; const placement = ledger.commit(geometry.footprint, state, ledger.connectionEntrances(branch.origin))
     if ('reason' in placement) { fail(branch.id, 'hallway', placement.reason, geometry.footprint, placement.message); return false }
     const hallway: HallwayRecord = { id: nextId('hallway'), branchId: branch.id, origin: branch.origin, direction: branch.direction, form, path: geometry.path, width: condition.width, condition: condition.condition, terminal: false, ...(condition.width >= 4 ? { pillarRequirement: { requested: true } } : {}) }
     hallways.push(hallway)
@@ -149,9 +149,10 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   const generateIntersection = (branch: Branch): boolean => {
     const kind = rollIntersection(random); const shape = intersectionFootprint(branch.origin, kind); const id = nextId('intersection'); const validDirections: Direction[] = []
     for (const direction of shape.branches) {
-      const point = step(branch.origin, direction); const failure = ledger.validate([point], [branch.origin, ...shape.footprint])
+      const point = step(branch.origin, direction); const entrances = direction === branch.direction ? ledger.connectionEntrances(branch.origin) : [branch.origin]
+      const failure = ledger.validate([point], [...entrances, ...shape.footprint])
       if (failure) { fail(branch.id, 'intersection', failure.reason, [point], failure.message); continue }
-      const committed = ledger.commit([point], FLOOR, [branch.origin, ...shape.footprint]); if ('reason' in committed) { fail(branch.id, 'intersection', committed.reason, [point], committed.message); continue }
+      const committed = ledger.commit([point], FLOOR, [...entrances, ...shape.footprint]); if ('reason' in committed) { fail(branch.id, 'intersection', committed.reason, [point], committed.message); continue }
       validDirections.push(direction)
     }
     intersections.push({ id, branchId: branch.id, kind, origin: branch.origin, branches: validDirections })
@@ -165,16 +166,33 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     const sourceExit = exits.find(e => e.id === branch.sourceExitId)
     const isSecret = condition === 'secret' || sourceExit?.secret === true
     const semantic: StampSemantic = isSecret ? 'secret-door' : 'door'
-    if (!addStamp(semantic, branch.origin, branch.direction, branch.id, true, category)) return false
-    if (condition === 'locked' || condition === 'locked + trapped') addLabelIfPossible(conditionLabelText(condition), branch.origin, branch.direction, 'stamp', branch.id)
-    else if (isSecret) addLabelIfPossible(conditionLabelText('secret'), branch.origin, branch.direction, 'stamp', branch.id)
-    else if (condition === 'trapped') addLabelIfPossible(conditionLabelText('trapped'), branch.origin, branch.direction, 'stamp', branch.id)
-    let contentOk = true; const destination = step(branch.origin, branch.direction)
+    const destination = step(branch.origin, branch.direction)
+    const beyondDestination = step(branch.origin, branch.direction, 2)
+    const connector = ledger.commit([destination], FLOOR, ledger.connectionEntrances(branch.origin))
+    if ('reason' in connector) {
+      fail(branch.id, 'doorway', connector.reason, [branch.origin, destination], connector.message)
+      return false
+    }
+    if (!addStamp(semantic, destination, branch.direction, branch.id, true, category)) {
+      ledger.restore(gridBefore)
+      return false
+    }
+    if (condition === 'locked' || condition === 'locked + trapped') addLabelIfPossible(conditionLabelText(condition), destination, branch.direction, 'stamp', branch.id)
+    else if (isSecret) addLabelIfPossible(conditionLabelText('secret'), destination, branch.direction, 'stamp', branch.id)
+    else if (condition === 'trapped') addLabelIfPossible(conditionLabelText('trapped'), destination, branch.direction, 'stamp', branch.id)
+    let contentOk = true
     if (beyond === 'hallway') contentOk = generateHallway({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'hallway', sourceExitId: branch.sourceExitId })
     else if (beyond === 'room') contentOk = makeRoom({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'room', sourceExitId: branch.sourceExitId }, false, rollRoom(random) as RoomShape)
     else if (beyond === 'intersection') contentOk = generateIntersection({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'intersection', sourceExitId: branch.sourceExitId })
-    else { const vertical = verticalContent!; const placed = ledger.commit([destination], FLOOR, [branch.origin]); contentOk = !('reason' in placed) && addStamp(vertical === 'staircase' ? 'stairs' : vertical === 'shaft' ? 'shaft' : 'valve', destination, branch.direction, branch.id, true, vertical) }
-    if (condition === 'trapped' || condition === 'locked + trapped') { if (!contentOk || !addStamp('trap', destination, branch.direction, branch.id, true, 'trapped')) contentOk = false }
+    else {
+      const vertical = verticalContent!
+      const placed = ledger.commitTransaction([
+        { points: [destination], state: FLOOR, entrances: ledger.connectionEntrances(branch.origin) },
+        { points: [beyondDestination], state: FLOOR, entrances: [destination] },
+      ])
+      contentOk = !('reason' in placed) && addStamp(vertical === 'staircase' ? 'stairs' : vertical === 'shaft' ? 'shaft' : 'valve', beyondDestination, branch.direction, branch.id, true, vertical)
+    }
+    if (condition === 'trapped' || condition === 'locked + trapped') { if (!contentOk || !addStamp('trap', beyondDestination, branch.direction, branch.id, true, 'trapped')) contentOk = false }
     if (!contentOk) { ledger.restore(gridBefore); stamps.splice(stampLength); labels.splice(labelLength); failedAttempts.splice(failureLength); fail(branch.id, 'doorway', 'invalid-path', [branch.origin, destination], 'Required beyond-doorway content could not be committed; doorway transaction rolled back.'); return false }
     // Exact source category and condition are retained on the accepted exit.
     const exit = exits.find(e => e.id === branch.sourceExitId); if (exit) { exit.secret = condition === 'secret' || exit.secret; exit.doorwayCategory = category; exit.condition = condition; exit.beyond = beyond; exit.verticalContent = verticalContent }
