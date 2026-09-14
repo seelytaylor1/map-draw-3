@@ -38,5 +38,11 @@ describe('random dungeon application boundary', () => {
     expect(resolveStamp({ semantic: 'pillar', col: 2, row: 2, direction: 'N', required: false }, [])?.unmet).toBe(true)
     expect(resolveStamp({ semantic: 'door', col: 2, row: 2, direction: 'N', required: true }, ['DoorRevolve1way1x1'])).toMatchObject({ stamp: { type: 'DoorRevolve1way1x1' } })
     expect(resolveStamp({ semantic: 'valve', col: 2, row: 2, direction: 'N', required: true }, ['DoorRevolve1way1x1'])).toMatchObject({ stamp: { type: 'DoorRevolve1way1x1' } })
+    expect(resolveStamp({ semantic: 'door', category: 'portcullis', col: 2, row: 2, direction: 'N', required: true })).toMatchObject({ stamp: { type: 'DoorPortcullis1x1' } })
+  })
+
+  it('uses the dedicated portcullis asset for generated portcullis doorways', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 152072343 })
+    expect(result.stamps.find(stamp => stamp.sourceCategory === 'portcullis')).toMatchObject({ type: 'DoorPortcullis1x1' })
   })
 })

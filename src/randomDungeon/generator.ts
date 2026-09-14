@@ -16,12 +16,16 @@ type PendingLabel = { text: string; anchor: Point; facing: Direction; anchorKind
 
 function directionAt(random: D6Random): Direction { return DIRECTIONS[(random.nextD6() - 1) % 4]! }
 function d6(random: D6Random): number { return random.nextD6() }
+function naturalCavernDimensions(random: D6Random): { width: number; height: number } {
+  return { width: d6(random) + 2, height: d6(random) + 2 }
+}
 function dimensionsFor(shape: RoomShape, random: D6Random): { width: number; height: number; radius?: number } {
   if (shape === 'square') { const n = d6(random); return { width: n, height: n } }
   if (shape === 'large-square') { const n = d6(random) + 3; return { width: n, height: n } }
   if (shape === 'rectangle') return { width: d6(random), height: d6(random) + 3 }
   if (shape === 'circular') { const radius = Math.max(2, d6(random)); return { width: radius * 2 + 1, height: radius * 2 + 1, radius } }
   if (shape === 'cave-opening') return { width: d6(random) + 3, height: d6(random) }
+  if (shape === 'cavern' || shape === 'natural-cavern') return naturalCavernDimensions(random)
   return { width: d6(random), height: d6(random) }
 }
 
@@ -73,8 +77,8 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
 
   const enqueueRoomExits = (room: RoomRecord) => {
     const rolled = exitsFor(room, random, () => nextId('exit'))
-    const exitsAwayFromCircleEntrance = room.shape === 'circular' && !room.starting ? rolled.filter(exit => exit.direction !== oppositeDirection[room.direction]) : rolled
-    for (const exit of exitsAwayFromCircleEntrance) { exits.push(exit); queue.push({ id: nextId('branch'), origin: exit.origin, direction: exit.direction, kind: exit.exitType, sourceExitId: exit.id }) }
+    const exitsAwayFromEntrance = !room.starting ? rolled.filter(exit => exit.direction !== oppositeDirection[room.direction]) : rolled
+    for (const exit of exitsAwayFromEntrance) { exits.push(exit); queue.push({ id: nextId('branch'), origin: exit.origin, direction: exit.direction, kind: exit.exitType, sourceExitId: exit.id }) }
   }
 
   const recordRoom = (id: string, origin: Point, direction: Direction, shape: RoomShape, width: number, height: number, radius: number | undefined, feature: FeatureType | undefined, tiles: Point[], starting: boolean, exitKind: RoomRecord['exits']) => {
@@ -97,7 +101,10 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
         shape = nested === 'underground-feature' ? 'square' : nested
         dimensions = dimensionsFor(shape, random)
         feature = rollFeature(random)
-      } else if (irregularSubtype === 'natural-cavern') shape = 'natural-cavern'
+      } else if (irregularSubtype === 'natural-cavern') {
+        shape = 'natural-cavern'
+        dimensions = naturalCavernDimensions(random)
+      }
     }
     const topLeft = starting ? startingTopLeft(location!, input.cols, input.rows, dimensions.width, dimensions.height, random) : undefined
     const tiles = starting ? roomFootprint(shape, dimensions.width, dimensions.height, topLeft!, dimensions.radius, irregularSubtype) : roomFromEntrance(branch.origin, branch.direction, dimensions.width, dimensions.height, shape, dimensions.radius, irregularSubtype)

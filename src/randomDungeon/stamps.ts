@@ -17,10 +17,15 @@ export const STAMP_PRIORITY: Record<StampSemantic, readonly StampType[]> = {
   pillar: ['Unknown1x1', 'Square1x1'],
 }
 
+const categoryPriority: Partial<Record<string, readonly StampType[]>> = {
+  portcullis: ['DoorPortcullis1x1'],
+}
+
 const rotationFor = (direction: Direction): Rotation => direction === 'N' ? 0 : direction === 'E' ? 90 : direction === 'S' ? 180 : 270
 
 export function resolveStamp(request: StampRequest, available: readonly StampType[] = STAMP_TYPES): ResolvedStamp | null {
-  const type = STAMP_PRIORITY[request.semantic].find(candidate => available.includes(candidate))
+  const priority = [...(categoryPriority[request.category ?? ''] ?? []), ...STAMP_PRIORITY[request.semantic]]
+  const type = priority.find(candidate => available.includes(candidate))
   if (!type) return request.required ? null : { stamp: { id: '', type: 'Unknown1x1', col: request.col, row: request.row, rotation: rotationFor(request.direction), z: 0 }, requested: request.semantic, sourceCategory: request.category, unmet: true }
   return { stamp: { id: '', type, col: request.col, row: request.row, rotation: rotationFor(request.direction), z: 0 }, requested: request.semantic, sourceCategory: request.category }
 }

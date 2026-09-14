@@ -131,11 +131,22 @@ describe('random dungeon generation', () => {
   it('does not create a room exit back through its entrance', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const result = generateRandomDungeon({ cols: 44, rows: 34, seed })
-      for (const circularRoom of result.rooms.filter(room => room.shape === 'circular' && !room.starting)) {
-        const incoming = oppositeDirection[circularRoom.direction]
-        expect(result.exits.filter(exit => exit.roomId === circularRoom.id).some(exit => exit.direction === incoming)).toBe(false)
+      for (const room of result.rooms.filter(room => !room.starting)) {
+        const incoming = oppositeDirection[room.direction]
+        expect(result.exits.filter(exit => exit.roomId === room.id).some(exit => exit.direction === incoming)).toBe(false)
       }
     }
+  })
+
+  it('gives natural caverns readable and varied thickness', () => {
+    const caverns = Array.from({ length: 200 }, (_, index) => generateRandomDungeon({ cols: 44, rows: 34, seed: index + 1 }))
+      .flatMap(result => result.rooms.filter(room => room.shape === 'natural-cavern'))
+
+    expect(caverns.length).toBeGreaterThan(0)
+    expect(Math.min(...caverns.map(room => room.width))).toBeGreaterThanOrEqual(3)
+    expect(Math.min(...caverns.map(room => room.height))).toBeGreaterThanOrEqual(3)
+    expect(new Set(caverns.map(room => room.width)).size).toBeGreaterThan(1)
+    expect(new Set(caverns.map(room => room.height)).size).toBeGreaterThan(1)
   })
 
   it('keeps hazard stamps off doorway tiles when a doorway continues into a hallway', () => {
