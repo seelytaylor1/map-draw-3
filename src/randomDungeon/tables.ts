@@ -22,8 +22,8 @@ export function rollStartingLocation(random: D6Random): StartingLocation {
 
 export function rollStartingRoom(random: D6Random): RoomShape { return bySix(random, STARTING_ROOM_SHAPES) }
 
-export function rollRoomExits(random: D6Random): RoomExitKind { return bySix(random, ['none', 'doorway', 'opposite-doorways', 'three-doorways', 'secret-doorway', 'three-and-secret']) }
-export function rollExitType(random: D6Random): ExitType { return bySix(random, ['hallway', 'hallway', 'doorway', 'doorway', 'doorway', 'room']) }
+export function rollRoomExits(random: D6Random): RoomExitKind { return bySix(random, ['doorway', 'opposite-doorways', 'three-doorways', 'three-doorways', 'three-and-secret', 'three-and-secret']) }
+export function rollExitType(random: D6Random): ExitType { return bySix(random, ['doorway', 'doorway', 'room', 'room', 'room', 'hallway']) }
 export function rollDoorway(random: D6Random): DoorwayCategory { return bySix(random, ['wooden', 'stone', 'exotic', 'archway', 'portcullis', 'collapsed']) }
 
 export function rollDoorCondition(random: D6Random, doorway: DoorwayCategory): DoorCondition {
@@ -37,7 +37,7 @@ export function rollDoorCondition(random: D6Random, doorway: DoorwayCategory): D
   return random.nextD6() <= 3 ? 'locked + trapped' : 'trapped'
 }
 
-export function rollBeyondDoorway(random: D6Random): BeyondDoorway { return bySix(random, ['hallway', 'room', 'room', 'room', 'intersection', 'vertical']) }
+export function rollBeyondDoorway(random: D6Random): BeyondDoorway { return bySix(random, ['hallway', 'room', 'room', 'room', 'room', 'vertical']) }
 export function rollVerticalContent(random: D6Random): VerticalContent { return bySix(random, ['staircase', 'staircase', 'shaft', 'shaft', 'ramp', 'ramp']) }
 export function rollIntersection(random: D6Random): IntersectionKind { const roll = random.nextD6(); return roll <= 2 ? 'T-intersection' : roll <= 4 ? 'four-way crossroad' : 'Y-intersection' }
 export function rollIntersectionBranch(random: D6Random): 'hallway' | 'doorway' { return random.nextD6() <= 3 ? 'hallway' : 'doorway' }

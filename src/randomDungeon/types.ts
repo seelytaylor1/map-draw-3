@@ -37,6 +37,7 @@ export interface RoomRecord {
   tiles: Point[]
   starting?: boolean
   exits: RoomExitKind
+  placement?: 'compact-fallback'
 }
 
 export interface ExitRecord {
@@ -67,6 +68,7 @@ export interface HallwayRecord {
   condition: HallwayCondition
   terminal: boolean
   pillarRequirement?: { requested: boolean; unmet?: boolean }
+  placement?: 'compact-fallback'
 }
 
 export interface GeneratedStampRecord {
@@ -133,6 +135,7 @@ export interface GenerationResult {
   seed: number
   dungeonType: DungeonType
   startingLocation: StartingLocation
+  roomTarget: number
   snapshot: AppSnapshotShape
   map: AppSnapshotShape
   replacement: AppSnapshotShape

@@ -19,6 +19,41 @@ function d6(random: D6Random): number { return random.nextD6() }
 function naturalCavernDimensions(random: D6Random): { width: number; height: number } {
   return { width: d6(random) + 2, height: d6(random) + 2 }
 }
+function roomConnectedToEntrance(tiles: Point[], connector: Point): boolean {
+  const key = (point: Point) => `${point.col},${point.row}`
+  const tileKeys = new Set(tiles.map(key))
+  const starts = [
+    { col: connector.col + 1, row: connector.row },
+    { col: connector.col - 1, row: connector.row },
+    { col: connector.col, row: connector.row + 1 },
+    { col: connector.col, row: connector.row - 1 },
+  ].filter(point => tileKeys.has(key(point)))
+  if (tileKeys.has(key(connector))) starts.push(connector)
+  if (starts.length === 0) return false
+  const queue = [starts[0]!]
+  const visited = new Set<string>([key(starts[0]!)])
+  while (queue.length) {
+    const point = queue.shift()!
+    for (const next of [
+      { col: point.col + 1, row: point.row },
+      { col: point.col - 1, row: point.row },
+      { col: point.col, row: point.row + 1 },
+      { col: point.col, row: point.row - 1 },
+    ]) {
+      const nextKey = key(next)
+      if (tileKeys.has(nextKey) && !visited.has(nextKey)) { visited.add(nextKey); queue.push(next) }
+    }
+  }
+  return visited.size === tileKeys.size
+}
+function scaledRoomDimensions(shape: RoomShape, width: number, height: number, radius: number | undefined, factor: number): { width: number; height: number; radius?: number } {
+  if (shape === 'circular') {
+    const nextRadius = Math.max(2, Math.floor((radius ?? Math.floor(Math.min(width, height) / 2)) * factor))
+    return { width: nextRadius * 2 + 1, height: nextRadius * 2 + 1, radius: nextRadius }
+  }
+  const minimum = shape === 'natural-cavern' || shape === 'cavern' || shape === 'cave-opening' ? 3 : 2
+  return { width: Math.max(minimum, Math.floor(width * factor)), height: Math.max(minimum, Math.floor(height * factor)) }
+}
 function roomDimension(random: D6Random): number {
   return Math.max(2, d6(random))
 }
@@ -35,6 +70,10 @@ function dimensionsFor(shape: RoomShape, random: D6Random): { width: number; hei
 // Leave room for the largest D6-sized branch room beside a corner start when
 // the canvas is large enough, while scaling the margin down on small canvases.
 const STARTING_GROWTH_MARGIN = 6
+const MIN_ROOMS = 10
+const MAX_ROOMS = 15
+const ROOM_SCALE = 0.6
+const MAX_COMPACT_FALLBACKS = 2
 
 function startingTopLeft(location: StartingLocation, cols: number, rows: number, width: number, height: number, random: D6Random): Point {
   if (location === 'center') return { col: Math.floor((cols - width) / 2), row: Math.floor((rows - height) / 2) }
@@ -69,8 +108,12 @@ function exitsFor(room: RoomRecord, random: D6Random, nextId: () => string, boun
       return next.col > 0 && next.row > 0 && next.col < bounds.cols - 1 && next.row < bounds.rows - 1
     })
     : []
-  const first = room.starting && count === 1 && startSafeDirections.length > 0 && !startSafeDirections.includes(rolledFirst)
-    ? startSafeDirections[DIRECTIONS.indexOf(rolledFirst) % startSafeDirections.length]!
+  const growthSafeDirections = !room.starting
+    ? DIRECTIONS.filter(direction => direction !== oppositeDirection[room.direction])
+    : []
+  const safeDirections = room.starting ? startSafeDirections : growthSafeDirections
+  const first = safeDirections.length > 0 && !safeDirections.includes(rolledFirst)
+    ? safeDirections[DIRECTIONS.indexOf(rolledFirst) % safeDirections.length]!
     : rolledFirst
   const directions = room.exits === 'opposite-doorways' ? [first, oppositeDirection[first]] : room.exits === 'three-doorways' || room.exits === 'three-and-secret' ? [first, turnLeft[first], turnRight[first], oppositeDirection[first]].slice(0, count) : [first]
   return directions.map((direction, index) => {
@@ -82,6 +125,8 @@ function exitsFor(room: RoomRecord, random: D6Random, nextId: () => string, boun
 export function generateRandomDungeon(input: GenerationInput): GenerationResult {
   if (!Number.isInteger(input.cols) || !Number.isInteger(input.rows) || input.cols < 3 || input.rows < 3) throw new Error('Canvas must be at least 3×3 tiles.')
   const seed = normalizeSeed(input.seed); const random = createD6Random(seed); let idCounter = 0
+  const roomTarget = MIN_ROOMS + d6(random) - 1
+  let roomFallbackCount = 0
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`
   const ledger = new PlacementLedger(input.cols, input.rows, createGrid(input.cols, input.rows))
   const rooms: RoomRecord[] = []; const exits: ExitRecord[] = []; const hallways: GenerationResult['hallways'] = []; const stamps: GeneratedStampRecord[] = []; const labels: GeneratedLabelRecord[] = []; const pendingLabels: PendingLabel[] = []; const ramps: RampRun[] = []; const failedAttempts: GenerationAttempt[] = []; const intersections: IntersectionRecord[] = []; const connectors: Point[] = []; const doorways: DoorwayRecord[] = []; const unmetRequirements: GenerationResult['unmetRequirements'] = []
@@ -104,6 +149,9 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   const enqueueRoomExits = (room: RoomRecord) => {
     const rolled = exitsFor(room, random, () => nextId('exit'), { cols: input.cols, rows: input.rows })
     const exitsAwayFromEntrance = !room.starting ? rolled.filter(exit => exit.direction !== oppositeDirection[room.direction]) : rolled
+    if (rooms.length < roomTarget && exitsAwayFromEntrance.length > 0 && !exitsAwayFromEntrance.some(exit => exit.exitType === 'room')) {
+      exitsAwayFromEntrance[0]!.exitType = 'room'
+    }
     for (const exit of exitsAwayFromEntrance) { exits.push(exit); queue.push({ id: nextId('branch'), origin: exit.origin, direction: exit.direction, kind: exit.exitType, sourceExitId: exit.id }) }
   }
 
@@ -112,6 +160,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   }
 
   const makeRoom = (branch: Branch, starting: boolean, shape: RoomShape, location?: StartingLocation): boolean => {
+    if (!starting && rooms.length >= roomTarget) return false
     let irregularSubtype: RoomRecord['irregularSubtype']; let feature: FeatureType | undefined
     let dimensions = dimensionsFor(shape, random)
     if (shape === 'underground-feature') {
@@ -132,13 +181,55 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
         dimensions = naturalCavernDimensions(random)
       }
     }
+    if (!starting) dimensions = scaledRoomDimensions(shape, dimensions.width, dimensions.height, dimensions.radius, ROOM_SCALE)
     const topLeft = starting ? startingTopLeft(location!, input.cols, input.rows, dimensions.width, dimensions.height, random) : undefined
     const tiles = starting ? roomFootprint(shape, dimensions.width, dimensions.height, topLeft!, dimensions.radius, irregularSubtype) : roomFromEntrance(branch.origin, branch.direction, dimensions.width, dimensions.height, shape, dimensions.radius, irregularSubtype)
     const candidate = starting ? tiles : uniquePoints([step(branch.origin, branch.direction), ...tiles])
-    const placement = ledger.commit(candidate, FLOOR, starting ? [] : ledger.connectionEntrances(branch.origin))
-    if ('reason' in placement) { fail(branch.id, starting ? 'starting-room' : 'room', placement.reason, candidate, placement.message); return false }
-    if (!starting) connectors.push(step(branch.origin, branch.direction))
-    const room = recordRoom(nextId(starting ? 'starting-room' : 'room'), starting ? topLeft! : branch.origin, branch.direction, shape, dimensions.width, dimensions.height, dimensions.radius, feature, tiles, starting, starting ? (rollRoomExits(random)) : rollRoomExits(random))
+    const connector = starting ? undefined : step(branch.origin, branch.direction)
+    const connectionFailure = !starting && !roomConnectedToEntrance(tiles, connector!)
+      ? { reason: 'invalid-path' as const, candidate, message: 'Rolled room footprint is not four-way connected to its entrance connector.' }
+      : null
+    const placement = connectionFailure ?? ledger.commit(candidate, FLOOR, starting ? [] : ledger.connectionEntrances(branch.origin))
+    if ('reason' in placement) {
+      fail(branch.id, starting ? 'starting-room' : 'room', placement.reason, candidate, placement.message)
+      const fallbackAllowed = !starting && rooms.length < Math.min(roomTarget, MAX_ROOMS) && roomFallbackCount < MAX_COMPACT_FALLBACKS
+      if (fallbackAllowed) {
+        type RoomFallbackSpec = { shape: RoomShape; width: number; height: number; radius?: number; irregularSubtype?: RoomRecord['irregularSubtype']; feature?: FeatureType; name: string }
+        const fallbackSpecs: RoomFallbackSpec[] = []
+        for (const factor of [0.75, 0.5]) {
+          const scaled = scaledRoomDimensions(shape, dimensions.width, dimensions.height, dimensions.radius, factor)
+          const key = `${shape}:${scaled.width}x${scaled.height}:${scaled.radius ?? ''}`
+          if (!fallbackSpecs.some(spec => `${spec.shape}:${spec.width}x${spec.height}:${spec.radius ?? ''}` === key)) fallbackSpecs.push({ shape, ...scaled, irregularSubtype, feature, name: `scaled ${factor}` })
+        }
+        fallbackSpecs.push({
+          shape: 'rectangle',
+          width: Math.min(4, dimensions.width),
+          height: Math.min(4, dimensions.height),
+          name: 'footprint-preserving rectangle',
+        })
+        fallbackSpecs.push({ shape: 'square', width: 2, height: 2, name: 'compact square' })
+        for (const fallback of fallbackSpecs) {
+          const fallbackTiles = roomFromEntrance(branch.origin, branch.direction, fallback.width, fallback.height, fallback.shape, fallback.radius, fallback.irregularSubtype)
+          const fallbackCandidate = uniquePoints([connector!, ...fallbackTiles])
+          const fallbackConnectionFailure = !roomConnectedToEntrance(fallbackTiles, connector!)
+            ? { reason: 'invalid-path' as const, candidate: fallbackCandidate, message: 'Fallback room footprint is not four-way connected to its entrance connector.' }
+            : null
+          const fallbackPlacement = fallbackConnectionFailure ?? ledger.commit(fallbackCandidate, FLOOR, ledger.connectionEntrances(branch.origin))
+          if (!('reason' in fallbackPlacement)) {
+            connectors.push(connector!)
+            const fallbackRoom = recordRoom(nextId('room'), branch.origin, branch.direction, fallback.shape, fallback.width, fallback.height, fallback.radius, fallback.feature, fallbackTiles, false, rollRoomExits(random))
+            if (fallback.irregularSubtype) fallbackRoom.irregularSubtype = fallback.irregularSubtype
+            fallbackRoom.placement = 'compact-fallback'
+            roomFallbackCount++
+            return true
+          }
+          fail(branch.id, 'room', fallbackPlacement.reason, fallbackCandidate, `${fallback.name} room fallback failed: ${fallbackPlacement.message}`)
+        }
+      }
+      return false
+    }
+    if (!starting) connectors.push(connector!)
+    const room = recordRoom(nextId(starting ? 'starting-room' : 'room'), starting ? topLeft! : branch.origin, branch.direction, shape, dimensions.width, dimensions.height, dimensions.radius, feature, tiles, starting, rollRoomExits(random))
     if (irregularSubtype) room.irregularSubtype = irregularSubtype
     return true
   }
@@ -159,7 +250,10 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     const roll = forcedForm ? 1 : rollHallway(random); const form: HallwayForm = forcedForm ?? (roll === 1 ? 'straight' : roll === 2 ? 'intersection' : roll === 3 ? 'turn' : roll === 4 ? 'side-passage' : roll === 5 ? 'doorway-ending' : 'room-ending')
     const length = roll === 2 ? 3 : roll === 3 ? 3 : d6(random); const condition = maybeCondition(); const geometry = hallwayFootprint(branch.origin, branch.direction, length, condition.width, form)
     const state = condition.condition === 'flooded' ? WATER : FLOOR; const placement = ledger.commit(geometry.footprint, state, ledger.connectionEntrances(branch.origin))
-    if ('reason' in placement) { fail(branch.id, 'hallway', placement.reason, geometry.footprint, placement.message); return false }
+    if ('reason' in placement) {
+      fail(branch.id, 'hallway', placement.reason, geometry.footprint, placement.message)
+      return false
+    }
     const hallway: HallwayRecord = { id: nextId('hallway'), branchId: branch.id, origin: branch.origin, direction: branch.direction, form, path: geometry.path, width: condition.width, condition: condition.condition, terminal: false, ...(condition.width >= 4 ? { pillarRequirement: { requested: true } } : {}) }
     hallways.push(hallway)
     const end = geometry.end
@@ -262,7 +356,14 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
 
   const dungeonType = input.dungeonType ?? rollDungeonType(random); const startingLocation = input.startingLocation ?? rollStartingLocation(random); const startingShape = rollStartingRoom(random); const startingBranch: Branch = { id: 'starting', origin: { col: 0, row: 0 }, direction: 'S', kind: 'room' }
   makeRoom(startingBranch, true, startingShape, startingLocation)
-  while (queue.length) { const branch = queue.shift()!; if (branch.kind === 'hallway') generateHallway(branch); else if (branch.kind === 'doorway') generateDoorway(branch); else if (branch.kind === 'room') makeRoom(branch, false, rollRoom(random) as RoomShape); else generateIntersection(branch) }
+  while (queue.length) {
+    const roomBranchIndex = rooms.length < roomTarget ? queue.findIndex(branch => branch.kind === 'room') : -1
+    const branch = queue.splice(roomBranchIndex >= 0 ? roomBranchIndex : 0, 1)[0]!
+    if (branch.kind === 'hallway') generateHallway(branch)
+    else if (branch.kind === 'doorway') generateDoorway(branch)
+    else if (branch.kind === 'room') makeRoom(branch, false, rollRoom(random) as RoomShape)
+    else generateIntersection(branch)
+  }
 
   for (const pending of pendingLabels) {
     const result = placeGeneratedLabel(nextId('label'), pending.text, pending.anchor, pending.facing, input.cols, input.rows, ledger.grid, [...stamps.map(s => ({ col: s.col, row: s.row })), ...labels.map(l => ({ col: l.col, row: l.row }))])
@@ -271,7 +372,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   }
 
   const snapshot: AppSnapshotShape = { grids: new Map([[0, ledger.grid]]), stamps: stamps.map(s => ({ id: s.id, type: s.type, col: s.col, row: s.row, rotation: s.rotation, z: 0 } as Stamp)), steps: [], ramps, labels: labels.map(l => ({ id: l.id, col: l.col, row: l.row, text: l.text })), environmentalColors: new Map() }
-  const result = { seed, dungeonType, startingLocation, snapshot, map: snapshot, replacement: snapshot, appSnapshot: snapshot, rooms, exits, hallways, intersections, connectors, doorways, unmetRequirements, stamps, labels, failedAttempts } as GenerationResult
+  const result = { seed, dungeonType, startingLocation, roomTarget, snapshot, map: snapshot, replacement: snapshot, appSnapshot: snapshot, rooms, exits, hallways, intersections, connectors, doorways, unmetRequirements, stamps, labels, failedAttempts } as GenerationResult
   result.summary = summarizeGeneration(result)
   return result
 }

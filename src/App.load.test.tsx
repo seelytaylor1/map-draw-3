@@ -184,6 +184,7 @@ describe('App load lifecycle', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<App />)
 
+    fireEvent.change(screen.getByLabelText(/canvas width in inches/i), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText(/canvas height in inches/i), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
     await Promise.resolve()
@@ -200,7 +201,7 @@ describe('App load lifecycle', () => {
     await Promise.resolve()
 
     expect(screen.getByText(/rejected attempts/i)).toBeInTheDocument()
-    expect(screen.getByText(/outside the one-tile wall border/i)).toBeInTheDocument()
+    expect(screen.getByText(/breaking the one-tile wall buffer/i)).toBeInTheDocument()
   })
 
   it('stores random seeds and keeps user-edited seeds frozen', async () => {

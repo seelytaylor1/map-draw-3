@@ -71,7 +71,8 @@ describe('random dungeon generation', () => {
   })
 
   it('keeps widened exit hallways clear of their source room', () => {
-    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const result = Array.from({ length: 200 }, (_, index) => generateRandomDungeon({ cols: 44, rows: 34, seed: index + 1 }))
+      .find(candidate => candidate.hallways.some(hallway => hallway.width === 2))!
     const sourceRoom = result.rooms.find(room => room.starting)!
 
     expect(result.hallways.some(hallway => hallway.width === 2)).toBe(true)
@@ -82,7 +83,8 @@ describe('random dungeon generation', () => {
   })
 
   it('starts intersections after the approach and gives each branch a three-tile stem', () => {
-    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const result = Array.from({ length: 200 }, (_, index) => generateRandomDungeon({ cols: 44, rows: 34, seed: index + 1 }))
+      .find(candidate => candidate.hallways.some(hallway => hallway.form === 'intersection') && candidate.intersections.length > 0)!
     const approach = result.hallways.find(hallway => hallway.form === 'intersection')!
     const intersection = result.intersections[0]!
     const grid = result.snapshot.grids.get(0)!
@@ -179,14 +181,21 @@ describe('random dungeon generation', () => {
   })
 
   it('places a doorway-ending door at the forward end of its hallway', () => {
-    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
-    const hallway = result.hallways.find(hallway => hallway.form === 'doorway-ending' && hallway.path.some(point => point.col === 31 && point.row === 7))!
+    const match = Array.from({ length: 200 }, (_, index) => generateRandomDungeon({ cols: 44, rows: 34, seed: index + 1 }))
+      .flatMap(result => result.hallways
+        .filter(hallway => hallway.form === 'doorway-ending')
+        .map(hallway => ({ result, hallway })))
+      .find(({ result, hallway }) => {
+        const end = hallway.path[hallway.path.length - 1]!
+        return result.doorways.some(doorway => doorway.origin.col === end.col && doorway.origin.row === end.row)
+      })!
+    const { result, hallway } = match
     const end = hallway.path[hallway.path.length - 1]!
     const doorway = result.doorways.find(candidate => candidate.origin.col === end.col && candidate.origin.row === end.row)!
     const doorTile = step(end, hallway.direction)
 
     expect(doorway.direction).toBe(hallway.direction)
-    expect(result.stamps.some(stamp => stamp.semantic === 'door' && stamp.col === doorTile.col && stamp.row === doorTile.row)).toBe(true)
+    expect(result.stamps.some(stamp => ['door', 'secret-door'].includes(stamp.semantic) && stamp.col === doorTile.col && stamp.row === doorTile.row)).toBe(true)
   })
 
   it('keeps irregular rooms contiguous without enclosed diagonal wall gaps', () => {
@@ -227,7 +236,8 @@ describe('random dungeon generation', () => {
   })
 
   it('limits vertical doorway content to stairs, shafts, and ramps', () => {
-    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3667888183 })
+    const result = Array.from({ length: 200 }, (_, index) => generateRandomDungeon({ cols: 44, rows: 34, seed: index + 1 }))
+      .find(candidate => candidate.doorways.some(doorway => doorway.beyond === 'vertical' && doorway.verticalContent === 'ramp'))!
     const vertical = result.doorways.filter(doorway => doorway.beyond === 'vertical')
 
     expect(vertical.length).toBeGreaterThan(0)
@@ -236,7 +246,8 @@ describe('random dungeon generation', () => {
     expect(result.stamps.some(stamp => stamp.semantic === 'valve')).toBe(false)
     expect(result.snapshot.ramps).toHaveLength(1)
     const rampDoorway = vertical.find(doorway => doorway.verticalContent === 'ramp')!
-    expect(result.snapshot.ramps[0]).toMatchObject({ ...step(rampDoorway.origin, rampDoorway.direction), direction: 'N', z: 0 })
+    const rampPosition = step(rampDoorway.origin, rampDoorway.direction)
+    expect(result.snapshot.ramps.some(ramp => ramp.col === rampPosition.col && ramp.row === rampPosition.row && ramp.direction === rampDoorway.direction && ramp.z === 0)).toBe(true)
   })
 
   it('does not retain a door when its connector is on the border', () => {
