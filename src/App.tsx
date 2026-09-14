@@ -38,7 +38,7 @@ import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
 import { generateRandomDungeon } from './randomDungeon/generator'
 import { createRandomSeed } from './randomDungeon/random'
-import type { GenerationResult } from './randomDungeon/types'
+import type { GenerationAttempt, GenerationResult } from './randomDungeon/types'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -48,6 +48,22 @@ const WALL_PRESETS = [
   { label: 'Repro Blue', color: '#A8C8E8', opacity: 1 },
   { label: 'Transparent', color: '#000000', opacity: 0 },
 ]
+
+const GENERATION_FAILURE_LABELS: Record<GenerationAttempt['reason'], string> = {
+  'out-of-bounds': 'outside the one-tile Wall border',
+  overlap: 'overlapping existing geometry',
+  'lost-buffer': 'breaking the one-tile Wall buffer',
+  'invalid-path': 'having no valid continuation',
+  'unavailable-required-stamp': 'missing a required marker asset',
+  'unavailable-label-position': 'having no valid label position',
+  'invalid-input': 'using invalid generation input',
+}
+
+function summarizeGenerationFailures(attempts: GenerationAttempt[]): Array<{ reason: GenerationAttempt['reason']; count: number }> {
+  const counts = new Map<GenerationAttempt['reason'], number>()
+  for (const attempt of attempts) counts.set(attempt.reason, (counts.get(attempt.reason) ?? 0) + 1)
+  return [...counts.entries()].map(([reason, count]) => ({ reason, count }))
+}
 
 function hexToRgba(hex: string, alpha: number): string {
   if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return `rgba(0,0,0,${alpha})`
@@ -1322,6 +1338,12 @@ export default function App() {
     }
     try {
       const result = generateRandomDungeon({ cols, rows, seed: createRandomSeed() })
+      if (result.summary.startingRoom === 'failed') {
+        const failure = result.failedAttempts.find(attempt => attempt.kind === 'starting-room')
+        setGenerationResult(null)
+        setLoadError(`Generation stopped: the starting room could not fit on this canvas. ${failure?.message ?? 'Choose a larger canvas and try again.'}`)
+        return
+      }
       setHistory(h => push(h, result.snapshot))
       setActiveZ(0)
       activeZRef.current = 0
@@ -1455,6 +1477,7 @@ export default function App() {
         }
       })()
     : undefined
+  const generationFailureSummary = generationResult ? summarizeGenerationFailures(generationResult.failedAttempts) : []
 
   return (
     <div
@@ -1868,7 +1891,15 @@ export default function App() {
               <div style={{ color: 'var(--text)', marginBottom: 3 }}>Generated {generationResult.summary.dungeonType} dungeon</div>
               <div>Seed {generationResult.summary.seed}</div>
               <div>{generationResult.summary.rooms} rooms · {generationResult.summary.hallways} hallways · {generationResult.summary.terminalHallways} terminal</div>
-              <div>{generationResult.summary.visibleStamps} stamps · {generationResult.summary.visibleLabels} labels · {generationResult.summary.failedAttempts} failed</div>
+              <div>{generationResult.summary.visibleStamps} stamps · {generationResult.summary.visibleLabels} labels · {generationResult.summary.failedAttempts} rejected attempts</div>
+              {generationFailureSummary.length > 0 && (
+                <details style={{ marginTop: 4 }}>
+                  <summary>Why attempts were rejected</summary>
+                  {generationFailureSummary.map(({ reason, count }) => (
+                    <div key={reason}>{count}× {GENERATION_FAILURE_LABELS[reason]}</div>
+                  ))}
+                </details>
+              )}
             </div>
           )}
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>

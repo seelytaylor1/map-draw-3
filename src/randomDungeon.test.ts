@@ -25,7 +25,7 @@ describe('random dungeon generation', () => {
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 42, 99, 123456]) {
       const result = generateRandomDungeon({ cols: 22, rows: 17, seed })
       expect([...result.snapshot.grids.keys()]).toEqual([0])
-      expect(result.snapshot.steps).toEqual([]); expect(result.snapshot.ramps).toEqual([])
+      expect(result.snapshot.steps).toEqual([]); expect(result.snapshot.ramps.every(ramp => ramp.z === 0)).toBe(true)
       const grid = result.snapshot.grids.get(0)!
       expect(Array.from(grid).every(tile => tile === 0 || tile === FLOOR || tile === WATER)).toBe(true)
     }
@@ -105,6 +105,18 @@ describe('random dungeon generation', () => {
     const door = result.stamps.find(stamp => stamp.semantic === 'door' || stamp.semantic === 'secret-door')!
     expect(doorway).toBeDefined()
     expect(door).toMatchObject(step(doorway.origin, doorway.direction))
+  })
+
+  it('limits vertical doorway content to stairs, shafts, and ramps', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3667888183 })
+    const vertical = result.doorways.filter(doorway => doorway.beyond === 'vertical')
+
+    expect(vertical.length).toBeGreaterThan(0)
+    expect(vertical.every(doorway => ['staircase', 'shaft', 'ramp'].includes(doorway.verticalContent ?? ''))).toBe(true)
+    expect(vertical.some(doorway => doorway.verticalContent === 'ramp')).toBe(true)
+    expect(result.stamps.some(stamp => stamp.semantic === 'valve')).toBe(false)
+    expect(result.snapshot.ramps).toHaveLength(1)
+    expect(result.snapshot.ramps[0]).toMatchObject({ col: 24, row: 24, direction: 'N', z: 0 })
   })
 
   it('does not retain a door when its connector is on the border', () => {

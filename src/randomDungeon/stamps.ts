@@ -1,18 +1,18 @@
 import { STAMP_TYPES, type Rotation, type Stamp, type StampType } from '../stamps'
 import type { Direction } from './types'
 
-export type StampSemantic = 'door' | 'secret-door' | 'trap' | 'danger' | 'stairs' | 'shaft' | 'valve' | 'rubble' | 'pillar'
+export type StampSemantic = 'door' | 'secret-door' | 'valve' | 'trap' | 'danger' | 'stairs' | 'shaft' | 'rubble' | 'pillar'
 export interface StampRequest { semantic: StampSemantic; category?: string; col: number; row: number; direction: Direction; required: boolean }
 export interface ResolvedStamp { stamp: Stamp & { type: StampType }; requested: StampSemantic; sourceCategory?: string; unmet?: boolean }
 
 export const STAMP_PRIORITY: Record<StampSemantic, readonly StampType[]> = {
-  door: ['Door1x1', 'DoorArchway1x1', 'DoorGate1x1', 'door'],
+  door: ['Door1x1', 'DoorArchway1x1', 'DoorGate1x1', 'DoorRevolve1way1x1', 'DoorRevolving1x1', 'door'],
   'secret-door': ['DoorSecret1x1', 'DoorConcealed1x1', 'secret-door', 'Door1x1'],
+  valve: ['DoorRevolve1way1x1', 'DoorRevolving1x1', 'Door1x1', 'door'],
   trap: ['Trap1x1', 'TrapdoorFloor1x1', 'trap', 'Danger1x1'],
   danger: ['Danger1x1', 'Trap1x1', 'trap'],
   stairs: ['Stairs1x1_01', 'StairSpiralSquareDown1x1', 'StairSpiralCircleDown1x1'],
   shaft: ['PitSquare1x1', 'PitCircle1x1', 'TrapdoorFloor1x1'],
-  valve: ['DoorRevolve1way1x1', 'DoorRevolving1x1', 'Door1x1'],
   rubble: ['Unknown1x1', 'SquareFilled1x1', 'Danger1x1'],
   pillar: ['Unknown1x1', 'Square1x1'],
 }

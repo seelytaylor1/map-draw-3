@@ -36,5 +36,7 @@ describe('random dungeon application boundary', () => {
   it('fails required semantic markers and records optional unmet requirements through adapters', () => {
     expect(resolveStamp({ semantic: 'trap', col: 2, row: 2, direction: 'N', required: true }, [])).toBeNull()
     expect(resolveStamp({ semantic: 'pillar', col: 2, row: 2, direction: 'N', required: false }, [])?.unmet).toBe(true)
+    expect(resolveStamp({ semantic: 'door', col: 2, row: 2, direction: 'N', required: true }, ['DoorRevolve1way1x1'])).toMatchObject({ stamp: { type: 'DoorRevolve1way1x1' } })
+    expect(resolveStamp({ semantic: 'valve', col: 2, row: 2, direction: 'N', required: true }, ['DoorRevolve1way1x1'])).toMatchObject({ stamp: { type: 'DoorRevolve1way1x1' } })
   })
 })

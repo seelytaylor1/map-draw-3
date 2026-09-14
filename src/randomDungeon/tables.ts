@@ -38,7 +38,7 @@ export function rollDoorCondition(random: D6Random, doorway: DoorwayCategory): D
 }
 
 export function rollBeyondDoorway(random: D6Random): BeyondDoorway { return bySix(random, ['hallway', 'room', 'room', 'room', 'intersection', 'vertical']) }
-export function rollVerticalContent(random: D6Random): VerticalContent { return bySix(random, ['staircase', 'staircase', 'shaft', 'shaft', 'one-way valve', 'one-way valve']) }
+export function rollVerticalContent(random: D6Random): VerticalContent { return bySix(random, ['staircase', 'staircase', 'shaft', 'shaft', 'ramp', 'ramp']) }
 export function rollIntersection(random: D6Random): IntersectionKind { const roll = random.nextD6(); return roll <= 2 ? 'T-intersection' : roll <= 4 ? 'four-way crossroad' : 'Y-intersection' }
 export function rollIntersectionBranch(random: D6Random): 'hallway' | 'doorway' { return random.nextD6() <= 3 ? 'hallway' : 'doorway' }
 export function rollHallway(random: D6Random): 1 | 2 | 3 | 4 | 5 | 6 { return random.nextD6() as 1 | 2 | 3 | 4 | 5 | 6 }
