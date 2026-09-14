@@ -201,4 +201,30 @@ describe('App load lifecycle', () => {
     expect(screen.getByText(/rejected attempts/i)).toBeInTheDocument()
     expect(screen.getByText(/outside the one-tile wall border/i)).toBeInTheDocument()
   })
+
+  it('replays the displayed generation seed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    randomSeed.value = 3278230271
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
+    await Promise.resolve()
+    expect(screen.getByText('Seed 3278230271')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /repeat seed/i }))
+    await Promise.resolve()
+
+    expect(screen.getByText('Seed 3278230271')).toBeInTheDocument()
+  })
+
+  it('generates from an explicitly entered seed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/dungeon seed/i), { target: { value: '3278230271' } })
+    fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
+    await Promise.resolve()
+
+    expect(screen.getByText('Seed 3278230271')).toBeInTheDocument()
+  })
 })

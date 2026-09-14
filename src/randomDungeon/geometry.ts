@@ -81,8 +81,13 @@ export function hallwayFootprint(origin: Point, direction: Direction, length: nu
   for (let i = 1; i <= length; i++) {
     current = step(current, travel); path.push(current)
     const v = directionVector[travel]; const side = directionVector[left(travel)]
-    for (let w = 0; w < width; w++) footprint.push({ col: current.col + side.col * (w - Math.floor(width / 2)), row: current.row + side.row * (w - Math.floor(width / 2)) })
-    if (form === 'turn' && i === Math.max(1, Math.floor(length / 2))) travel = turnRight[travel]
+    // A doorway is one tile wide. Let the hallway widen after it clears the
+    // source room so the wider footprint does not clip the room's corner.
+    const segmentWidth = i === 1 ? 1 : width
+    for (let w = 0; w < segmentWidth; w++) footprint.push({ col: current.col + side.col * (w - Math.floor(segmentWidth / 2)), row: current.row + side.row * (w - Math.floor(segmentWidth / 2)) })
+    // A turn needs a straight launch before it can safely run alongside the
+    // source room's wall.
+    if (form === 'turn' && i === Math.max(2, Math.floor(length / 2))) travel = turnRight[travel]
   }
   return { path, footprint: uniquePoints(footprint), end: current, direction: travel }
 }

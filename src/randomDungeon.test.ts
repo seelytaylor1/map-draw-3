@@ -50,6 +50,13 @@ describe('random dungeon generation', () => {
     expect(result.hallways.length).toBeGreaterThan(0)
   })
 
+  it('keeps widened exit hallways clear of their source room', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+
+    expect(result.hallways.some(hallway => hallway.width === 2)).toBe(true)
+    expect(result.failedAttempts.some(attempt => attempt.kind === 'hallway' && attempt.reason === 'lost-buffer')).toBe(false)
+  })
+
   it('can grow a second room from a generated branch', () => {
     const result = generateRandomDungeon({ cols: 22, rows: 17, seed: 6 })
     expect(result.rooms.length).toBeGreaterThan(1)
