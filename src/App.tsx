@@ -36,6 +36,9 @@ import {
 import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
+import { generateRandomDungeon } from './randomDungeon/generator'
+import { createRandomSeed } from './randomDungeon/random'
+import type { GenerationResult } from './randomDungeon/types'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -142,6 +145,7 @@ export default function App() {
   const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null)
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
   const isDirty = history.past.length !== savedHistoryLength
@@ -1307,8 +1311,30 @@ export default function App() {
     setTilesPerInch(DEFAULT_TILES_PER_INCH)
     setCurrentFilePath(null)
     setSavedHistoryLength(0)
+    setGenerationResult(null)
     pendingFitRef.current = true
   }, [])
+
+  const handleGenerateRandomDungeon = useCallback(async () => {
+    if (isDirtyRef.current) {
+      const confirmed = window.confirm('You have unsaved changes. Generate a random dungeon anyway?')
+      if (!confirmed) return
+    }
+    try {
+      const result = generateRandomDungeon({ cols, rows, seed: createRandomSeed() })
+      setHistory(h => push(h, result.snapshot))
+      setActiveZ(0)
+      activeZRef.current = 0
+      setHoverTile(null)
+      setEditingLabelId(null)
+      dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape } })
+      setGenerationResult(result)
+      setLoadError(null)
+      pendingFitRef.current = true
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Random dungeon generation failed.')
+    }
+  }, [cols, rows, brushShape])
 
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
@@ -1371,6 +1397,7 @@ export default function App() {
     try {
       const save = deserialize(JSON.parse(text))
       setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, environmentalColors: save.environmentalColors }))
+      setGenerationResult(null)
       setCols(save.cols)
       setRows(save.rows)
       setTilesPerInch(normalizeTilesPerInch(save.tilesPerInch))
@@ -1833,6 +1860,17 @@ export default function App() {
             <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
             <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
           </div>
+          <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} onClick={handleGenerateRandomDungeon}>
+            <IconCave size={13} /> Generate Random Dungeon
+          </button>
+          {generationResult && (
+            <div className="hint" style={{ marginTop: 8 }}>
+              <div style={{ color: 'var(--text)', marginBottom: 3 }}>Generated {generationResult.summary.dungeonType} dungeon</div>
+              <div>Seed {generationResult.summary.seed}</div>
+              <div>{generationResult.summary.rooms} rooms · {generationResult.summary.hallways} hallways · {generationResult.summary.terminalHallways} terminal</div>
+              <div>{generationResult.summary.visibleStamps} stamps · {generationResult.summary.visibleLabels} labels · {generationResult.summary.failedAttempts} failed</div>
+            </div>
+          )}
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export PNG
           </button>
