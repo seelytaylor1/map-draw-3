@@ -165,6 +165,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null)
   const [generationSeedInput, setGenerationSeedInput] = useState('')
+  const generationSeedLockedRef = useRef(false)
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
   const isDirty = history.past.length !== savedHistoryLength
@@ -1342,6 +1343,7 @@ export default function App() {
     }
     try {
       const result = generateRandomDungeon({ cols, rows, seed })
+      setGenerationSeedInput(String(result.summary.seed))
       if (result.summary.startingRoom === 'failed') {
         const failure = result.failedAttempts.find(attempt => attempt.kind === 'starting-room')
         setGenerationResult(null)
@@ -1363,8 +1365,9 @@ export default function App() {
   }, [cols, rows, brushShape])
 
   const handleGenerateRandomDungeon = useCallback(() => {
+    if (!generationSeedLockedRef.current) return generateRandomDungeonWithSeed(createRandomSeed())
+
     const text = generationSeedInput.trim()
-    if (!text) return generateRandomDungeonWithSeed(createRandomSeed())
     const seed = Number(text)
     if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
       setLoadError('Dungeon seed must be an integer from 0 to 4,294,967,295.')
@@ -1372,11 +1375,6 @@ export default function App() {
     }
     return generateRandomDungeonWithSeed(seed)
   }, [generateRandomDungeonWithSeed, generationSeedInput])
-
-  const handleRepeatGeneration = useCallback(() => {
-    if (!generationResult) return
-    return generateRandomDungeonWithSeed(generationResult.summary.seed)
-  }, [generateRandomDungeonWithSeed, generationResult])
 
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
@@ -1912,7 +1910,10 @@ export default function App() {
               inputMode="numeric"
               placeholder="Random"
               value={generationSeedInput}
-              onChange={e => setGenerationSeedInput(e.target.value)}
+              onChange={e => {
+                generationSeedLockedRef.current = true
+                setGenerationSeedInput(e.target.value)
+              }}
               aria-label="Dungeon seed"
             />
           </div>
@@ -1923,7 +1924,6 @@ export default function App() {
             <div className="hint" style={{ marginTop: 8 }}>
               <div style={{ color: 'var(--text)', marginBottom: 3 }}>Generated {generationResult.summary.dungeonType} dungeon</div>
               <div>Seed {generationResult.summary.seed}</div>
-              <Btn onClick={handleRepeatGeneration}>Repeat Seed</Btn>
               <div>{generationResult.summary.rooms} rooms · {generationResult.summary.hallways} hallways · {generationResult.summary.terminalHallways} terminal</div>
               <div>{generationResult.summary.visibleStamps} stamps · {generationResult.summary.visibleLabels} labels · {generationResult.summary.failedAttempts} rejected attempts</div>
               {generationFailureSummary.length > 0 && (

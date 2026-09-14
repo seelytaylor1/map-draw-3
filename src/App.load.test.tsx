@@ -202,19 +202,34 @@ describe('App load lifecycle', () => {
     expect(screen.getByText(/outside the one-tile wall border/i)).toBeInTheDocument()
   })
 
-  it('replays the displayed generation seed', async () => {
+  it('stores random seeds and keeps user-edited seeds frozen', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    randomSeed.value = 3278230271
     render(<App />)
 
+    randomSeed.value = 111
     fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
     await Promise.resolve()
-    expect(screen.getByText('Seed 3278230271')).toBeInTheDocument()
+    expect(screen.getByLabelText(/dungeon seed/i)).toHaveValue('111')
+    expect(screen.getByText('Seed 111')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /repeat seed/i }))
+    randomSeed.value = 222
+    fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
     await Promise.resolve()
+    expect(screen.getByLabelText(/dungeon seed/i)).toHaveValue('222')
+    expect(screen.getByText('Seed 222')).toBeInTheDocument()
 
+    fireEvent.change(screen.getByLabelText(/dungeon seed/i), { target: { value: '3278230271' } })
+    fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
+    await Promise.resolve()
+    expect(screen.getByLabelText(/dungeon seed/i)).toHaveValue('3278230271')
     expect(screen.getByText('Seed 3278230271')).toBeInTheDocument()
+
+    randomSeed.value = 333
+    fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
+    await Promise.resolve()
+    expect(screen.getByLabelText(/dungeon seed/i)).toHaveValue('3278230271')
+    expect(screen.getByText('Seed 3278230271')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /repeat seed/i })).not.toBeInTheDocument()
   })
 
   it('generates from an explicitly entered seed', async () => {
