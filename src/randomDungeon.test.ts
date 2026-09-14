@@ -106,6 +106,20 @@ describe('random dungeon generation', () => {
     }
   })
 
+  it('keeps every generated room at least two tiles wide and tall', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const result = generateRandomDungeon({ cols: 44, rows: 34, seed })
+      expect(result.rooms.every(room => room.width >= 2 && room.height >= 2)).toBe(true)
+    }
+  })
+
+  it('does not stall most starting rooms that rolled exits', () => {
+    const stalled = Array.from({ length: 100 }, (_, index) => generateRandomDungeon({ cols: 88, rows: 68, seed: index + 1 }))
+      .filter(result => result.rooms.length === 1 && result.hallways.length === 0 && result.rooms[0]?.exits !== 'none')
+
+    expect(stalled.length).toBeLessThanOrEqual(10)
+  })
+
   it('keeps circular rooms large enough to read as circles', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const result = generateRandomDungeon({ cols: 44, rows: 34, seed })
@@ -221,7 +235,8 @@ describe('random dungeon generation', () => {
     expect(vertical.some(doorway => doorway.verticalContent === 'ramp')).toBe(true)
     expect(result.stamps.some(stamp => stamp.semantic === 'valve')).toBe(false)
     expect(result.snapshot.ramps).toHaveLength(1)
-    expect(result.snapshot.ramps[0]).toMatchObject({ col: 24, row: 24, direction: 'N', z: 0 })
+    const rampDoorway = vertical.find(doorway => doorway.verticalContent === 'ramp')!
+    expect(result.snapshot.ramps[0]).toMatchObject({ ...step(rampDoorway.origin, rampDoorway.direction), direction: 'N', z: 0 })
   })
 
   it('does not retain a door when its connector is on the border', () => {

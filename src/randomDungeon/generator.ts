@@ -19,22 +19,35 @@ function d6(random: D6Random): number { return random.nextD6() }
 function naturalCavernDimensions(random: D6Random): { width: number; height: number } {
   return { width: d6(random) + 2, height: d6(random) + 2 }
 }
-function dimensionsFor(shape: RoomShape, random: D6Random): { width: number; height: number; radius?: number } {
-  if (shape === 'square') { const n = d6(random); return { width: n, height: n } }
-  if (shape === 'large-square') { const n = d6(random) + 3; return { width: n, height: n } }
-  if (shape === 'rectangle') return { width: d6(random), height: d6(random) + 3 }
-  if (shape === 'circular') { const radius = Math.max(2, d6(random)); return { width: radius * 2 + 1, height: radius * 2 + 1, radius } }
-  if (shape === 'cave-opening') return { width: d6(random) + 3, height: d6(random) }
-  if (shape === 'cavern' || shape === 'natural-cavern') return naturalCavernDimensions(random)
-  return { width: d6(random), height: d6(random) }
+function roomDimension(random: D6Random): number {
+  return Math.max(2, d6(random))
 }
+function dimensionsFor(shape: RoomShape, random: D6Random): { width: number; height: number; radius?: number } {
+  if (shape === 'square') { const n = roomDimension(random); return { width: n, height: n } }
+  if (shape === 'large-square') { const n = d6(random) + 3; return { width: n, height: n } }
+  if (shape === 'rectangle') return { width: roomDimension(random), height: d6(random) + 3 }
+  if (shape === 'circular') { const radius = Math.max(2, d6(random)); return { width: radius * 2 + 1, height: radius * 2 + 1, radius } }
+  if (shape === 'cave-opening') return { width: d6(random) + 3, height: roomDimension(random) }
+  if (shape === 'cavern' || shape === 'natural-cavern') return naturalCavernDimensions(random)
+  return { width: roomDimension(random), height: roomDimension(random) }
+}
+
+// Leave room for the largest D6-sized branch room beside a corner start when
+// the canvas is large enough, while scaling the margin down on small canvases.
+const STARTING_GROWTH_MARGIN = 6
 
 function startingTopLeft(location: StartingLocation, cols: number, rows: number, width: number, height: number, random: D6Random): Point {
   if (location === 'center') return { col: Math.floor((cols - width) / 2), row: Math.floor((rows - height) / 2) }
-  if (location === 'bottom-left') return { col: 1, row: rows - height - 1 }
-  if (location === 'bottom-right') return { col: cols - width - 1, row: rows - height - 1 }
-  if (location === 'top-left') return { col: 1, row: 1 }
-  if (location === 'top-right') return { col: cols - width - 1, row: 1 }
+  const horizontalMargin = Math.min(STARTING_GROWTH_MARGIN, Math.floor(Math.max(0, cols - width - 2) / 2))
+  const verticalMargin = Math.min(STARTING_GROWTH_MARGIN, Math.floor(Math.max(0, rows - height - 2) / 2))
+  const left = 1 + horizontalMargin
+  const right = cols - width - 1 - horizontalMargin
+  const top = 1 + verticalMargin
+  const bottom = rows - height - 1 - verticalMargin
+  if (location === 'bottom-left') return { col: left, row: bottom }
+  if (location === 'bottom-right') return { col: right, row: bottom }
+  if (location === 'top-left') return { col: left, row: top }
+  if (location === 'top-right') return { col: right, row: top }
   // `random` has already consumed its selector D6 in tables.ts. The two
   // coordinate rolls below choose a deterministic point in the legal range;
   // this is a bounded coordinate rule, not a fit-search or reroll.
@@ -42,10 +55,23 @@ function startingTopLeft(location: StartingLocation, cols: number, rows: number,
   return { col: 1 + Math.floor((colRange - 1) * (d6(random) - 1) / 5), row: 1 + Math.floor((rowRange - 1) * (d6(random) - 1) / 5) }
 }
 
-function exitsFor(room: RoomRecord, random: D6Random, nextId: () => string): ExitRecord[] {
+function exitsFor(room: RoomRecord, random: D6Random, nextId: () => string, bounds?: { cols: number; rows: number }): ExitRecord[] {
   if (room.exits === 'none') return []
   const count = room.exits === 'opposite-doorways' ? 2 : room.exits === 'three-doorways' ? 3 : room.exits === 'three-and-secret' ? 4 : 1
-  const first = directionAt(random)
+  const rolledFirst = directionAt(random)
+  // A single corner-facing exit has no alternate branch to carry growth. Keep
+  // its first tile inside the playable interior without consuming another roll.
+  const startSafeDirections = room.starting && bounds
+    ? DIRECTIONS.filter(direction => {
+      const wall = perimeterExits(room.tiles, direction, 1)[0]
+      if (!wall) return false
+      const next = step(wall, direction)
+      return next.col > 0 && next.row > 0 && next.col < bounds.cols - 1 && next.row < bounds.rows - 1
+    })
+    : []
+  const first = room.starting && count === 1 && startSafeDirections.length > 0 && !startSafeDirections.includes(rolledFirst)
+    ? startSafeDirections[DIRECTIONS.indexOf(rolledFirst) % startSafeDirections.length]!
+    : rolledFirst
   const directions = room.exits === 'opposite-doorways' ? [first, oppositeDirection[first]] : room.exits === 'three-doorways' || room.exits === 'three-and-secret' ? [first, turnLeft[first], turnRight[first], oppositeDirection[first]].slice(0, count) : [first]
   return directions.map((direction, index) => {
     const wall = perimeterExits(room.tiles, direction, count)[index % Math.max(1, perimeterExits(room.tiles, direction, count).length)] ?? room.tiles[0]!
@@ -76,7 +102,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   }
 
   const enqueueRoomExits = (room: RoomRecord) => {
-    const rolled = exitsFor(room, random, () => nextId('exit'))
+    const rolled = exitsFor(room, random, () => nextId('exit'), { cols: input.cols, rows: input.rows })
     const exitsAwayFromEntrance = !room.starting ? rolled.filter(exit => exit.direction !== oppositeDirection[room.direction]) : rolled
     for (const exit of exitsAwayFromEntrance) { exits.push(exit); queue.push({ id: nextId('branch'), origin: exit.origin, direction: exit.direction, kind: exit.exitType, sourceExitId: exit.id }) }
   }

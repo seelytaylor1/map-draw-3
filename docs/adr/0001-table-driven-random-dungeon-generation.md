@@ -27,6 +27,7 @@ This ADR describes the desired generator behavior. It does not describe an exist
 - It begins with one Starting Room and grows by processing the exits and branches produced by the tables.
 - Rooms are processed in creation order. A room's exits are processed in the order they were rolled. Newly created branches are appended to the work queue.
 - A candidate placement is selected once from the seeded random stream. The generator does not silently reroll, shrink, relocate, or search until a candidate fits.
+- Starting rooms placed in a corner or edge location receive an interior growth margin when the canvas has room for it. A single starting exit whose first tile would touch the border is redirected to a safe wall direction without consuming another random roll; multi-exit layouts retain their rolled directions.
 - A failed candidate is discarded transactionally, but the attempt and its reason are retained in detailed generation records.
 - Generation stops when the work queue has no remaining branch that can produce another valid addition.
 - A valid hallway may be committed even when its attempt to create a room beyond the hallway fails. Such a hallway is a playable terminal hallway. It remains plain Floor unless a table result explicitly calls for another marker.
@@ -38,7 +39,7 @@ This ADR describes the desired generator behavior. It does not describe an exist
 - Unrelated rooms and hallways must retain a one-tile Wall buffer. They must not touch or merge, including corner-to-corner contact.
 - A hallway may enter a room through its explicit doorway or connector. That planned entrance is the exception to the buffer rule.
 - A hallway that turns and runs parallel to a room must preserve the one-tile buffer along the parallel section.
-- Room dimensions are honored literally. If a rolled room cannot fit, the attempt is rejected rather than clamped or resized.
+- Room dimensions are honored literally, subject to a minimum 2×2 room footprint. D6-based room dimensions use `max(2, D6)`; larger rolled dimensions are not clamped or resized. If a rolled room cannot fit, the attempt is rejected.
 - Hallway width is part of the candidate footprint before validation. Wide hallways are allowed when their complete footprint remains inside the border, avoids unrelated geometry, and preserves the required buffer.
 - Failed geometry never leaves a partial room, connector, doorway, or hallway behind.
 - The initial Starting Room follows the same rules. If it cannot fit, the failed attempt is recorded and generation stops without carving a dungeon.
@@ -64,13 +65,13 @@ This ADR describes the desired generator behavior. It does not describe an exist
    - 5: top-right
    - 6: random valid location
 3. Roll Starting Room:
-   - 1: square, each side based on D6 squares
+   - 1: square, each side based on `max(2, D6)` squares
    - 2: large square, each side based on D6+3 squares
-   - 3: rectangle, one dimension based on D6 and the other on D6+3
+   - 3: rectangle, one dimension based on `max(2, D6)` and the other on D6+3
    - 4: circular, with D6-square radius
-   - 5: cave opening, with D6+3 squares at the opening and D6 at the narrowest point
+   - 5: cave opening, with D6+3 squares at the opening and `max(2, D6)` at the narrowest point
    - 6: cavern, with dimensions based on 2D6 and natural uneven walls
-4. If the literal result cannot fit inside the border, record the failed Starting Room attempt and stop.
+4. If the result cannot fit inside the border, record the failed Starting Room attempt and stop.
 5. Roll Room Exits for the starting room. A None result creates no frontier; generation proceeds only from other valid branches.
 
 ### Room Exits

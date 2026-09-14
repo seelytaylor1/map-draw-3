@@ -91,7 +91,7 @@ A JSON file representing the full Map state: the Level Stack (all Z Level grids)
 History is a stack of full Map snapshots (Level Stack + Stamps + Step Runs + Ramp Runs). One snapshot is taken per completed gesture: mouseup for Brush strokes, and each Stamp, Step Run, or Ramp Run action (place, move, rotate, scale, mirror, delete) individually. Snapshots capture the full Level Stack across all Z Levels.
 
 ## Random Dungeon
-A table-driven procedure that replaces the Map with a connected dungeon layout on Z=0. It grows rooms and hallways from a Starting Room while preserving a one-tile Wall border and a one-tile Wall buffer between unrelated chambers and passages.
+A table-driven procedure that replaces the Map with a connected dungeon layout on Z=0. It grows rooms and hallways from a Starting Room while preserving a one-tile Wall border and a one-tile Wall buffer between unrelated chambers and passages. Generated rooms are at least 2×2 tiles so they read as rooms on the map.
 
 ## One-way Valve
 A doorway type represented by a valve-specific Door Floor Stamp when available. It is ordinary doorway content, not vertical content; generated vertical content is limited to stairs, shafts, and ramps.
