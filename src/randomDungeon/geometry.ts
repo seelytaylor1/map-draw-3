@@ -92,10 +92,11 @@ export function hallwayFootprint(origin: Point, direction: Direction, length: nu
   return { path, footprint: uniquePoints(footprint), end: current, direction: travel }
 }
 
-export function intersectionFootprint(origin: Point, kind: IntersectionKind): { footprint: Point[]; branches: Direction[] } {
+export function intersectionFootprint(origin: Point, kind: IntersectionKind, armLength = 1): { footprint: Point[]; branches: Direction[]; branchPaths: { direction: Direction; path: Point[] }[] } {
   const branches = kind === 'T-intersection' ? ['N', 'E', 'W'] as Direction[] : kind === 'Y-intersection' ? ['N', 'E', 'W'] as Direction[] : DIRECTIONS.slice() as Direction[]
-  const footprint = uniquePoints([origin, ...branches.map(d => step(origin, d))])
-  return { footprint, branches }
+  const branchPaths = branches.map(direction => ({ direction, path: Array.from({ length: armLength }, (_, index) => step(origin, direction, index + 1)) }))
+  const footprint = uniquePoints([origin, ...branchPaths.flatMap(branch => branch.path)])
+  return { footprint, branches, branchPaths }
 }
 
 export function roomFromEntrance(entrance: Point, direction: Direction, width: number, height: number, shape: RoomShape, radius?: number, irregularSubtype?: IrregularSubtype): Point[] {

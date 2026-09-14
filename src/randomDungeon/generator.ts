@@ -136,6 +136,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
       else if (ending <= 4) return generateDoorway({ id: nextId('branch'), origin: end, direction: geometry.direction, kind: 'doorway', sourceExitId: branch.sourceExitId }) || (hallway.terminal = true)
       else { const roomBranch = { id: nextId('branch'), origin: end, direction: geometry.direction, kind: 'room' as const, sourceExitId: branch.sourceExitId }; if (!makeRoom(roomBranch, false, rollRoom(random) as RoomShape)) hallway.terminal = true }
     } else if (roll === 2) {
+      // The three hallway tiles are the approach; generateIntersection places the center next.
       const intersectionBranch = { id: nextId('branch'), origin: end, direction: geometry.direction, kind: 'intersection' as const, sourceExitId: branch.sourceExitId }; queue.push(intersectionBranch)
     } else if (roll === 3) {
       const turn = rollLeftOrRight(random) === 'left' ? turnLeft[geometry.direction] : turnRight[geometry.direction]; queue.push({ id: nextId('branch'), origin: end, direction: turn, kind: 'hallway', sourceExitId: branch.sourceExitId })
@@ -148,16 +149,25 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   }
 
   const generateIntersection = (branch: Branch): boolean => {
-    const kind = rollIntersection(random); const shape = intersectionFootprint(branch.origin, kind); const id = nextId('intersection'); const validDirections: Direction[] = []
-    for (const direction of shape.branches) {
-      const point = step(branch.origin, direction); const entrances = direction === branch.direction ? ledger.connectionEntrances(branch.origin) : [branch.origin]
-      const failure = ledger.validate([point], [...entrances, ...shape.footprint])
-      if (failure) { fail(branch.id, 'intersection', failure.reason, [point], failure.message); continue }
-      const committed = ledger.commit([point], FLOOR, [...entrances, ...shape.footprint]); if ('reason' in committed) { fail(branch.id, 'intersection', committed.reason, [point], committed.message); continue }
-      validDirections.push(direction)
+    const kind = rollIntersection(random); const origin = step(branch.origin, branch.direction); const shape = intersectionFootprint(origin, kind, 3); const id = nextId('intersection'); const validDirections: Direction[] = []; const entrances = ledger.connectionEntrances(branch.origin); const incomingDirection = oppositeDirection[branch.direction]
+    const centerFailure = ledger.validate([origin], entrances)
+    if (centerFailure) { fail(branch.id, 'intersection', centerFailure.reason, [origin], centerFailure.message); return false }
+    const center = ledger.commit([origin], FLOOR, entrances)
+    if ('reason' in center) { fail(branch.id, 'intersection', center.reason, [origin], center.message); return false }
+    for (const branchPath of shape.branchPaths) {
+      // The incoming stem already exists; do not create a second branch back through it.
+      if (branchPath.direction === incomingDirection) { validDirections.push(branchPath.direction); continue }
+      const failure = ledger.validate(branchPath.path, [...entrances, ...shape.footprint])
+      if (failure) { fail(branch.id, 'intersection', failure.reason, branchPath.path, failure.message); continue }
+      const committed = ledger.commit(branchPath.path, FLOOR, [...entrances, ...shape.footprint]); if ('reason' in committed) { fail(branch.id, 'intersection', committed.reason, branchPath.path, committed.message); continue }
+      validDirections.push(branchPath.direction)
     }
-    intersections.push({ id, branchId: branch.id, kind, origin: branch.origin, branches: validDirections })
-    for (const direction of validDirections) { const branchKind = rollIntersectionBranch(random); queue.push({ id: nextId('branch'), origin: step(branch.origin, direction), direction, kind: branchKind, sourceExitId: branch.sourceExitId }) }
+    intersections.push({ id, branchId: branch.id, kind, origin, branches: validDirections })
+    for (const direction of validDirections) {
+      if (direction === incomingDirection) continue
+      const path = shape.branchPaths.find(branchPath => branchPath.direction === direction)!.path
+      const branchKind = rollIntersectionBranch(random); queue.push({ id: nextId('branch'), origin: path[path.length - 1]!, direction, kind: branchKind, sourceExitId: branch.sourceExitId })
+    }
     return true
   }
 
@@ -184,7 +194,12 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     let contentOk = true
     if (beyond === 'hallway') contentOk = generateHallway({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'hallway', sourceExitId: branch.sourceExitId })
     else if (beyond === 'room') contentOk = makeRoom({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'room', sourceExitId: branch.sourceExitId }, false, rollRoom(random) as RoomShape)
-    else if (beyond === 'intersection') contentOk = generateIntersection({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'intersection', sourceExitId: branch.sourceExitId })
+    else if (beyond === 'intersection') {
+      const approach = [1, 2, 3].map(distance => step(destination, branch.direction, distance))
+      const approachPlacement = ledger.commit(approach, FLOOR, [destination])
+      if ('reason' in approachPlacement) { fail(branch.id, 'intersection', approachPlacement.reason, approach, approachPlacement.message); contentOk = false }
+      else contentOk = generateIntersection({ id: nextId('branch'), origin: approach[approach.length - 1]!, direction: branch.direction, kind: 'intersection', sourceExitId: branch.sourceExitId })
+    }
     else {
       const vertical = verticalContent!
       const placed = ledger.commitTransaction([

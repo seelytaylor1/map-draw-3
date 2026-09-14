@@ -57,6 +57,20 @@ describe('random dungeon generation', () => {
     expect(result.failedAttempts.some(attempt => attempt.kind === 'hallway' && attempt.reason === 'lost-buffer')).toBe(false)
   })
 
+  it('starts intersections after the approach and gives each branch a three-tile stem', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const approach = result.hallways.find(hallway => hallway.form === 'intersection')!
+    const intersection = result.intersections[0]!
+    const grid = result.snapshot.grids.get(0)!
+
+    expect(approach.path).toHaveLength(3)
+    expect(intersection.origin).toEqual(step(approach.path[approach.path.length - 1]!, approach.direction))
+    expect(result.failedAttempts.some(attempt => attempt.kind === 'intersection' && attempt.reason === 'lost-buffer')).toBe(false)
+    for (const direction of intersection.branches) {
+      expect([1, 2, 3].map(distance => step(intersection.origin, direction, distance)).every(point => grid[point.row * 44 + point.col] > 0)).toBe(true)
+    }
+  })
+
   it('can grow a second room from a generated branch', () => {
     const result = generateRandomDungeon({ cols: 22, rows: 17, seed: 6 })
     expect(result.rooms.length).toBeGreaterThan(1)
