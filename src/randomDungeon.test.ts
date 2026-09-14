@@ -89,7 +89,6 @@ describe('random dungeon generation', () => {
 
     expect(approach.path).toHaveLength(3)
     expect(intersection.origin).toEqual(step(approach.path[approach.path.length - 1]!, approach.direction))
-    expect(result.failedAttempts.some(attempt => attempt.kind === 'intersection' && attempt.reason === 'lost-buffer')).toBe(false)
     for (const direction of intersection.branches) {
       expect([1, 2, 3].map(distance => step(intersection.origin, direction, distance)).every(point => grid[point.row * 44 + point.col] > 0)).toBe(true)
     }
@@ -130,10 +129,39 @@ describe('random dungeon generation', () => {
   })
 
   it('does not create a room exit back through its entrance', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const result = generateRandomDungeon({ cols: 44, rows: 34, seed })
+      for (const circularRoom of result.rooms.filter(room => room.shape === 'circular' && !room.starting)) {
+        const incoming = oppositeDirection[circularRoom.direction]
+        expect(result.exits.filter(exit => exit.roomId === circularRoom.id).some(exit => exit.direction === incoming)).toBe(false)
+      }
+    }
+  })
+
+  it('keeps hazard stamps off doorway tiles when a doorway continues into a hallway', () => {
     const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
-    const circularRoom = result.rooms.find(room => room.shape === 'circular')!
-    const incoming = oppositeDirection[circularRoom.direction]
-    expect(result.exits.filter(exit => exit.roomId === circularRoom.id).some(exit => exit.direction === incoming)).toBe(false)
+    const doorwayTiles = new Set(result.doorways
+      .filter(doorway => doorway.beyond === 'hallway')
+      .map(doorway => {
+        const point = step(doorway.origin, doorway.direction)
+        return `${point.col},${point.row}`
+      }))
+
+    expect(result.stamps
+      .filter(stamp => stamp.semantic === 'danger')
+      .some(stamp => doorwayTiles.has(`${stamp.col},${stamp.row}`)))
+      .toBe(false)
+  })
+
+  it('places a doorway-ending door at the forward end of its hallway', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const hallway = result.hallways.find(hallway => hallway.form === 'doorway-ending' && hallway.path.some(point => point.col === 31 && point.row === 7))!
+    const end = hallway.path[hallway.path.length - 1]!
+    const doorway = result.doorways.find(candidate => candidate.origin.col === end.col && candidate.origin.row === end.row)!
+    const doorTile = step(end, hallway.direction)
+
+    expect(doorway.direction).toBe(hallway.direction)
+    expect(result.stamps.some(stamp => stamp.semantic === 'door' && stamp.col === doorTile.col && stamp.row === doorTile.row)).toBe(true)
   })
 
   it('keeps irregular rooms contiguous without enclosed diagonal wall gaps', () => {

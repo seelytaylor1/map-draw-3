@@ -146,7 +146,10 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     } else if (roll === 4) {
       const side = rollLeftOrRight(random) === 'left' ? turnLeft[branch.direction] : turnRight[branch.direction]; queue.push({ id: nextId('branch'), origin: geometry.path[Math.floor(geometry.path.length / 2)] ?? end, direction: side, kind: 'hallway', sourceExitId: branch.sourceExitId })
     } else if (roll === 5) {
-      const side = rollLeftOrRight(random) === 'left' ? turnLeft[branch.direction] : turnRight[branch.direction]; generateDoorway({ id: nextId('branch'), origin: geometry.path[Math.floor(geometry.path.length / 2)] ?? end, direction: side, kind: 'doorway', sourceExitId: branch.sourceExitId })
+      // Consume the table's side roll so changing doorway placement does not
+      // reshuffle every later result in the deterministic generation stream.
+      rollLeftOrRight(random)
+      generateDoorway({ id: nextId('branch'), origin: end, direction: geometry.direction, kind: 'doorway', sourceExitId: branch.sourceExitId })
     } else { hallway.terminal = true }
     return true
   }
@@ -195,7 +198,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     else if (isSecret) addLabelIfPossible(conditionLabelText('secret'), destination, branch.direction, 'stamp', branch.id)
     else if (condition === 'trapped') addLabelIfPossible(conditionLabelText('trapped'), destination, branch.direction, 'stamp', branch.id)
     let contentOk = true
-    if (beyond === 'hallway') contentOk = generateHallway({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'hallway', sourceExitId: branch.sourceExitId })
+    if (beyond === 'hallway') contentOk = generateHallway({ id: nextId('branch'), origin: destination, direction: branch.direction, kind: 'hallway', sourceExitId: branch.sourceExitId })
     else if (beyond === 'room') contentOk = makeRoom({ id: nextId('branch'), origin: branch.origin, direction: branch.direction, kind: 'room', sourceExitId: branch.sourceExitId }, false, rollRoom(random) as RoomShape)
     else if (beyond === 'intersection') {
       const approach = [1, 2, 3].map(distance => step(destination, branch.direction, distance))
