@@ -12,6 +12,7 @@ import { summarizeGeneration } from './summary'
 import type { AppSnapshotShape, Direction, DoorCondition, DoorwayRecord, ExitRecord, FeatureType, GenerationAttempt, GenerationInput, GenerationResult, GeneratedLabelRecord, GeneratedStampRecord, HallwayCondition, HallwayForm, HallwayRecord, IntersectionRecord, Point, RoomRecord, RoomShape, StartingLocation } from './types'
 
 type Branch = { id: string; origin: Point; direction: Direction; kind: 'hallway' | 'doorway' | 'room' | 'intersection'; sourceExitId?: string }
+type PendingLabel = { text: string; anchor: Point; facing: Direction; anchorKind: 'stamp' | 'hallway'; branchId: string }
 
 function directionAt(random: D6Random): Direction { return DIRECTIONS[(random.nextD6() - 1) % 4]! }
 function d6(random: D6Random): number { return random.nextD6() }
@@ -53,15 +54,13 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   const seed = normalizeSeed(input.seed); const random = createD6Random(seed); let idCounter = 0
   const nextId = (prefix: string) => `${prefix}-${++idCounter}`
   const ledger = new PlacementLedger(input.cols, input.rows, createGrid(input.cols, input.rows))
-  const rooms: RoomRecord[] = []; const exits: ExitRecord[] = []; const hallways: GenerationResult['hallways'] = []; const stamps: GeneratedStampRecord[] = []; const labels: GeneratedLabelRecord[] = []; const ramps: RampRun[] = []; const failedAttempts: GenerationAttempt[] = []; const intersections: IntersectionRecord[] = []; const connectors: Point[] = []; const doorways: DoorwayRecord[] = []; const unmetRequirements: GenerationResult['unmetRequirements'] = []
+  const rooms: RoomRecord[] = []; const exits: ExitRecord[] = []; const hallways: GenerationResult['hallways'] = []; const stamps: GeneratedStampRecord[] = []; const labels: GeneratedLabelRecord[] = []; const pendingLabels: PendingLabel[] = []; const ramps: RampRun[] = []; const failedAttempts: GenerationAttempt[] = []; const intersections: IntersectionRecord[] = []; const connectors: Point[] = []; const doorways: DoorwayRecord[] = []; const unmetRequirements: GenerationResult['unmetRequirements'] = []
   const queue: Branch[] = []
   const available = input.availableStampTypes ?? STAMP_TYPES
   const fail = (branchId: string, kind: GenerationAttempt['kind'], reason: GenerationAttempt['reason'], candidate: Point[], message: string) => failedAttempts.push({ id: nextId('attempt'), branchId, kind, reason, candidate: candidate.map(p => ({ ...p })), message })
 
   const addLabelIfPossible = (text: string, anchor: Point, facing: Direction, anchorKind: 'stamp' | 'hallway', branchId: string) => {
-    const result = placeGeneratedLabel(nextId('label'), text, anchor, facing, input.cols, input.rows, ledger.grid, [...stamps.map(s => ({ col: s.col, row: s.row })), ...labels.map(l => ({ col: l.col, row: l.row }))])
-    if (!result) { fail(branchId, 'label', 'unavailable-label-position', [anchor], `No valid adjacent tile was available for the ${text} label.`); return }
-    labels.push({ ...result.record, anchorKind });
+    pendingLabels.push({ text, anchor: { ...anchor }, facing, anchorKind, branchId })
   }
 
   const addStamp = (semantic: StampSemantic, position: Point, direction: Direction, branchId: string, required: boolean, category?: string): boolean => {
@@ -172,7 +171,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   }
 
   function generateDoorway(branch: Branch): boolean {
-    const gridBefore = ledger.grid; const stampLength = stamps.length; const labelLength = labels.length; const rampLength = ramps.length; const failureLength = failedAttempts.length; const category = rollDoorway(random); const condition = rollDoorCondition(random, category); const beyond = rollBeyondDoorway(random); let verticalContent: GenerationResult['doorways'][number]['verticalContent']
+    const gridBefore = ledger.grid; const stampLength = stamps.length; const pendingLabelLength = pendingLabels.length; const rampLength = ramps.length; const failureLength = failedAttempts.length; const category = rollDoorway(random); const condition = rollDoorCondition(random, category); const beyond = rollBeyondDoorway(random); let verticalContent: GenerationResult['doorways'][number]['verticalContent']
     if (beyond === 'vertical') verticalContent = rollVerticalContent(random)
     const sourceExit = exits.find(e => e.id === branch.sourceExitId)
     const isSecret = condition === 'secret' || sourceExit?.secret === true
@@ -214,7 +213,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
       }
     }
     if (condition === 'trapped' || condition === 'locked + trapped') { if (!contentOk || !addStamp('trap', beyondDestination, branch.direction, branch.id, true, 'trapped')) contentOk = false }
-    if (!contentOk) { ledger.restore(gridBefore); stamps.splice(stampLength); labels.splice(labelLength); ramps.splice(rampLength); failedAttempts.splice(failureLength); fail(branch.id, 'doorway', 'invalid-path', [branch.origin, destination], 'Required beyond-doorway content could not be committed; doorway transaction rolled back.'); return false }
+    if (!contentOk) { ledger.restore(gridBefore); stamps.splice(stampLength); pendingLabels.splice(pendingLabelLength); ramps.splice(rampLength); failedAttempts.splice(failureLength); fail(branch.id, 'doorway', 'invalid-path', [branch.origin, destination], 'Required beyond-doorway content could not be committed; doorway transaction rolled back.'); return false }
     // Exact source category and condition are retained on the accepted exit.
     const exit = exits.find(e => e.id === branch.sourceExitId); if (exit) { exit.secret = condition === 'secret' || exit.secret; exit.doorwayCategory = category; exit.condition = condition; exit.beyond = beyond; exit.verticalContent = verticalContent }
     doorways.push({ id: nextId('doorway'), branchId: branch.id, origin: { ...branch.origin }, direction: branch.direction, category, condition, beyond, verticalContent })
@@ -224,6 +223,12 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
   const dungeonType = input.dungeonType ?? rollDungeonType(random); const startingLocation = input.startingLocation ?? rollStartingLocation(random); const startingShape = rollStartingRoom(random); const startingBranch: Branch = { id: 'starting', origin: { col: 0, row: 0 }, direction: 'S', kind: 'room' }
   makeRoom(startingBranch, true, startingShape, startingLocation)
   while (queue.length) { const branch = queue.shift()!; if (branch.kind === 'hallway') generateHallway(branch); else if (branch.kind === 'doorway') generateDoorway(branch); else if (branch.kind === 'room') makeRoom(branch, false, rollRoom(random) as RoomShape); else generateIntersection(branch) }
+
+  for (const pending of pendingLabels) {
+    const result = placeGeneratedLabel(nextId('label'), pending.text, pending.anchor, pending.facing, input.cols, input.rows, ledger.grid, [...stamps.map(s => ({ col: s.col, row: s.row })), ...labels.map(l => ({ col: l.col, row: l.row }))])
+    if (!result) { fail(pending.branchId, 'label', 'unavailable-label-position', [pending.anchor], `No valid adjacent Wall tile was available for the ${pending.text} label.`); continue }
+    labels.push({ ...result.record, anchorKind: pending.anchorKind })
+  }
 
   const snapshot: AppSnapshotShape = { grids: new Map([[0, ledger.grid]]), stamps: stamps.map(s => ({ id: s.id, type: s.type, col: s.col, row: s.row, rotation: s.rotation, z: 0 } as Stamp)), steps: [], ramps, labels: labels.map(l => ({ id: l.id, col: l.col, row: l.row, text: l.text })), environmentalColors: new Map() }
   const result = { seed, dungeonType, startingLocation, snapshot, map: snapshot, replacement: snapshot, appSnapshot: snapshot, rooms, exits, hallways, intersections, connectors, doorways, unmetRequirements, stamps, labels, failedAttempts } as GenerationResult

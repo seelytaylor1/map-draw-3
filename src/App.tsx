@@ -39,6 +39,7 @@ import { UpdateNotification } from './ui/UpdateNotification'
 import { generateRandomDungeon } from './randomDungeon/generator'
 import { createRandomSeed } from './randomDungeon/random'
 import type { GenerationAttempt, GenerationResult } from './randomDungeon/types'
+import { formatTileCoordinate } from './coordinates'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -138,6 +139,7 @@ export default function App() {
   const areaPhase: 'idle' | 'selecting' = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? 'selecting' : 'idle'
 
   const [hoverTile, setHoverTile] = useState<Tile | null>(null)
+  const [hoverPointer, setHoverPointer] = useState<{ x: number; y: number } | null>(null)
   const hoverTileRef = useRef<Tile | null>(null)
   const [activeZ, setActiveZ] = useState(0)
   const activeZRef = useRef(0)
@@ -430,6 +432,7 @@ export default function App() {
         tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
       }
       setHoverTile(tile)
+      setHoverPointer({ x: e.evt.clientX, y: e.evt.clientY })
       hoverTileRef.current = tile
 
       const ds = drawingStateRef.current
@@ -1966,7 +1969,11 @@ export default function App() {
         height={size.h}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoverTile(null)}
+        onMouseLeave={() => {
+          setHoverTile(null)
+          setHoverPointer(null)
+          hoverTileRef.current = null
+        }}
         onWheel={handleWheel}
         onContextMenu={e => e.evt.preventDefault()}
         style={{ cursor: (drawingState.tool === 'paint' || drawingState.tool === 'rough') ? 'crosshair' : 'cell' }}
@@ -1976,6 +1983,16 @@ export default function App() {
         <Layer ref={dotLayerRef} listening={false} />
         <Layer ref={labelsLayerRef} />
       </Stage>
+      {hoverTile && hoverPointer && (
+        <div
+          className="coordinate-readout"
+          data-testid="hover-coordinate"
+          aria-hidden="true"
+          style={{ left: hoverPointer.x, top: hoverPointer.y }}
+        >
+          {formatTileCoordinate(hoverTile)}
+        </div>
+      )}
       {editingLabel && labelEditorStyle && (
         <input
           ref={labelEditorRef}

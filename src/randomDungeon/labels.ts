@@ -1,4 +1,4 @@
-import { FLOOR, WATER } from '../constants'
+import { WALL } from '../constants'
 import type { Label } from '../labels'
 import { directionVector, turnLeft, turnRight } from './geometry'
 import type { Direction, GeneratedLabelRecord, Point } from './types'
@@ -17,7 +17,7 @@ export function placeGeneratedLabel(id: string, text: string, anchor: Point, fac
   for (const position of clockwiseAdjacentPositions(anchor, facing)) {
     if (position.col < 0 || position.row < 0 || position.col >= cols || position.row >= rows) continue
     const index = position.row * cols + position.col
-    if ((grid[index] !== FLOOR && grid[index] !== WATER) || blocked.has(`${position.col},${position.row}`)) continue
+    if (grid[index] !== WALL || blocked.has(`${position.col},${position.row}`)) continue
     const label = { id, col: position.col, row: position.row, text }
     return { label, record: { id, text, col: position.col, row: position.row, anchor, anchorKind: 'stamp' } }
   }

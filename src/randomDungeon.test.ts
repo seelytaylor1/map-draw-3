@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { FLOOR, WATER } from './constants'
+import { FLOOR, WALL, WATER } from './constants'
+import { createGrid } from './grid'
 import { generateRandomDungeon } from './randomDungeon/generator'
 import { createD6Random } from './randomDungeon/random'
-import { conditionLabelText, clockwiseAdjacentPositions } from './randomDungeon/labels'
+import { conditionLabelText, clockwiseAdjacentPositions, placeGeneratedLabel } from './randomDungeon/labels'
 import { PlacementLedger } from './randomDungeon/placement'
 import { roomFootprint, roomFromEntrance, step } from './randomDungeon/geometry'
 
@@ -43,6 +44,25 @@ describe('random dungeon generation', () => {
   it('exposes canonical labels and clockwise placement order', () => {
     expect(conditionLabelText('locked + trapped')).toBe('Locked + Trapped')
     expect(clockwiseAdjacentPositions({ col: 4, row: 4 }, 'N')).toEqual([{ col: 4, row: 3 }, { col: 5, row: 4 }, { col: 4, row: 5 }, { col: 3, row: 4 }])
+  })
+
+  it('places generated labels on an available wall tile beside their anchor', () => {
+    const grid = createGrid(5, 5)
+    grid[2 * 5 + 2] = FLOOR
+
+    const placed = placeGeneratedLabel('label-1', 'Hazard', { col: 2, row: 2 }, 'E', 5, 5, grid)
+
+    expect(placed?.record).toMatchObject({ col: 3, row: 2 })
+    expect(grid[placed!.record.row * 5 + placed!.record.col]).toBe(WALL)
+  })
+
+  it('resolves generated labels against the final dungeon geometry', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const grid = result.snapshot.grids.get(0)!
+
+    expect(result.labels.some(label => label.text === 'Hazard' && label.anchor.col === 33 && label.anchor.row === 16)).toBe(true)
+    expect(result.failedAttempts.some(attempt => attempt.kind === 'label')).toBe(false)
+    for (const label of result.labels) expect(grid[label.row * 44 + label.col]).toBe(WALL)
   })
 
   it('keeps an exit hallway connected to the source room', () => {
