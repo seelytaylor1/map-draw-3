@@ -1,12 +1,12 @@
 export const TILE_PX = 20          // screen pixels per tile (display resolution)
 export const FACE_PX = 8           // 3D side-face thickness in pixels
 export const PRINT_DPI = 300
-export const TILES_PER_INCH_OPTIONS = [2, 4] as const
+export const TILES_PER_INCH_OPTIONS = [2, 4, 8] as const
 export type TilesPerInch = typeof TILES_PER_INCH_OPTIONS[number]
-export const DEFAULT_TILES_PER_INCH: TilesPerInch = 2
+export const DEFAULT_TILES_PER_INCH: TilesPerInch = 8
 export const TILES_PER_INCH = DEFAULT_TILES_PER_INCH
-export const DEFAULT_COLS = 22     // 11" × 2 (landscape)
-export const DEFAULT_ROWS = 17     // 8.5" × 2 (landscape)
+export const DEFAULT_COLS = 88     // 11" × 8 (landscape)
+export const DEFAULT_ROWS = 68     // 8.5" × 8 (landscape)
 
 export function isSupportedTilesPerInch(value: number): value is TilesPerInch {
   return TILES_PER_INCH_OPTIONS.includes(value as TilesPerInch)

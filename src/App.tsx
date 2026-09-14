@@ -1889,7 +1889,9 @@ export default function App() {
                   aria-label="Square scale"
                 >
                   {TILES_PER_INCH_OPTIONS.map(value => (
-                    <option key={value} value={value}>{value === 2 ? '½ in' : '¼ in'}</option>
+                    <option key={value} value={value}>
+                      {value === 2 ? '½ in' : value === 4 ? '¼ in' : '⅛ in'}
+                    </option>
                   ))}
                 </select>
               </div>

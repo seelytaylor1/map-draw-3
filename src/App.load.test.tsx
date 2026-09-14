@@ -90,22 +90,23 @@ describe('App load lifecycle', () => {
     expect(openAssetFolder).toHaveBeenCalledTimes(1)
   })
 
-  it('uses the selected square size as the canvas dimension step', () => {
+  it('launches with one-eighth-inch squares and uses that as the canvas dimension step', () => {
     render(<App />)
 
     const widthInput = screen.getByLabelText(/canvas width in inches/i)
     const heightInput = screen.getByLabelText(/canvas height in inches/i)
     const squareScaleInput = screen.getByLabelText(/square scale/i)
 
-    expect(widthInput).toHaveAttribute('step', '0.5')
+    expect(widthInput).toHaveAttribute('step', '0.125')
     expect(widthInput).toHaveAttribute('min', '1')
     expect(widthInput).toHaveAttribute('max', '36')
-    expect(heightInput).toHaveAttribute('step', '0.5')
+    expect(heightInput).toHaveAttribute('step', '0.125')
     expect(heightInput).toHaveAttribute('min', '1')
     expect(heightInput).toHaveAttribute('max', '36')
-    expect(squareScaleInput).toHaveValue('2')
+    expect(squareScaleInput).toHaveValue('8')
     expect(screen.getByRole('option', { name: /½ in/i })).toHaveValue('2')
     expect(screen.getByRole('option', { name: /¼ in/i })).toHaveValue('4')
+    expect(screen.getByRole('option', { name: /⅛ in/i })).toHaveValue('8')
   })
 
   it('adds explicit step controls for canvas size adjustments', () => {
@@ -126,7 +127,7 @@ describe('App load lifecycle', () => {
     expect(Number(widthInput.value)).toBeGreaterThan(before)
   })
 
-  it('changes width by half-inch squares and supports decrement buttons', () => {
+  it('changes width by one-eighth-inch squares and supports decrement buttons', () => {
     render(<App />)
 
     const [widthInput] = screen.getAllByRole('spinbutton') as HTMLInputElement[]
@@ -134,13 +135,13 @@ describe('App load lifecycle', () => {
     const decreaseButton = screen.getByRole('button', { name: /decrease width/i })
 
     fireEvent.click(increaseButton)
-    expect(widthInput.value).toBe('11.5')
+    expect(widthInput.value).toBe('11.13')
 
     fireEvent.click(increaseButton)
-    expect(widthInput.value).toBe('12')
+    expect(widthInput.value).toBe('11.25')
 
     fireEvent.click(decreaseButton)
-    expect(widthInput.value).toBe('11.5')
+    expect(widthInput.value).toBe('11.13')
   })
 
   it('keeps canvas page dimensions fixed when square scale changes', () => {
@@ -167,7 +168,7 @@ describe('App load lifecycle', () => {
     const squareScaleInput = screen.getByLabelText(/square scale/i) as HTMLInputElement
     const swapButton = screen.getByRole('button', { name: /swap width\/length/i })
 
-    expect(squareScaleInput.value).toBe('2')
+    expect(squareScaleInput.value).toBe('8')
     fireEvent.change(squareScaleInput, { target: { value: '4' } })
     expect(squareScaleInput.value).toBe('4')
 
@@ -183,7 +184,7 @@ describe('App load lifecycle', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/canvas height in inches/i), { target: { value: '6.5' } })
+    fireEvent.change(screen.getByLabelText(/canvas height in inches/i), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: /generate random dungeon/i }))
     await Promise.resolve()
 

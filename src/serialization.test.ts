@@ -94,7 +94,7 @@ describe('serialize', () => {
 
   it('normalizes unsupported square scales to the default', () => {
     const save = serialize({ ...BASE, tilesPerInch: 10 })
-    expect(save.tilesPerInch).toBe(2)
+    expect(save.tilesPerInch).toBe(8)
   })
 })
 
@@ -115,7 +115,7 @@ describe('deserialize', () => {
 
   it('normalizes unsupported square scales when loading a save', () => {
     const restored = deserialize({ ...serialize(BASE), tilesPerInch: 10 })
-    expect(restored.tilesPerInch).toBe(2)
+    expect(restored.tilesPerInch).toBe(8)
   })
 
   it('round-trips multiple Z levels', () => {
@@ -143,6 +143,7 @@ describe('deserialize', () => {
     }
     const restored = deserialize(old)
     expect(restored.grids.get(0)).toEqual(new Uint8Array([1, 0, 1, 1]))
+    expect(restored.tilesPerInch).toBe(8)
   })
 
   it('round-trips stamps with z=0 (z omitted in file)', () => {

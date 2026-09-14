@@ -4,7 +4,7 @@
 The full drawing canvas, defined in physical inches. Default dimensions are 8.5×11" landscape. Everywhere on a Map begins as Wall. The user paints Floor to create dungeon rooms and corridors.
 
 ## Tile
-The atomic unit of the Map grid. One square cell. The default physical size is 1/2 inch (2 tiles per inch); the user may choose 1/4 inch (4 tiles per inch). At 300dpi export, the tile is rendered at 150px or 75px respectively. Changing the square size preserves the Map's physical dimensions and resizes each level's Tile Grid.
+The atomic unit of the Map grid. One square cell. The default physical size is 1/8 inch (8 tiles per inch); the user may choose 1/2 inch (2 tiles per inch) or 1/4 inch (4 tiles per inch). At 300dpi export, the tile is rendered at 37.5px, 150px, or 75px respectively. Changing the square size preserves the Map's physical dimensions and resizes each level's Tile Grid.
 
 ## Tile Grid
 A 2D array of cell states for a single Z Level — the authoritative data model for one floor of the Map. Each cell is either Wall, Floor, or Water. The grid dimensions (cols × rows) are derived from canvas dimensions in inches times tiles-per-inch and are identical at every Z Level.
