@@ -96,7 +96,7 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
       } else if (irregularSubtype === 'natural-cavern') shape = 'natural-cavern'
     }
     const topLeft = starting ? startingTopLeft(location!, input.cols, input.rows, dimensions.width, dimensions.height, random) : undefined
-    const tiles = starting ? roomFootprint(shape, dimensions.width, dimensions.height, topLeft!, dimensions.radius) : roomFromEntrance(branch.origin, branch.direction, dimensions.width, dimensions.height, shape, dimensions.radius)
+    const tiles = starting ? roomFootprint(shape, dimensions.width, dimensions.height, topLeft!, dimensions.radius, irregularSubtype) : roomFromEntrance(branch.origin, branch.direction, dimensions.width, dimensions.height, shape, dimensions.radius, irregularSubtype)
     const candidate = starting ? tiles : uniquePoints([step(branch.origin, branch.direction), ...tiles])
     const placement = ledger.commit(candidate, FLOOR, starting ? [] : ledger.connectionEntrances(branch.origin))
     if ('reason' in placement) { fail(branch.id, starting ? 'starting-room' : 'room', placement.reason, candidate, placement.message); return false }

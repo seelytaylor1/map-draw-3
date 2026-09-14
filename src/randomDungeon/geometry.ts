@@ -1,4 +1,4 @@
-import type { Direction, HallwayForm, IntersectionKind, Point, RoomShape } from './types'
+import type { Direction, HallwayForm, IntersectionKind, IrregularSubtype, Point, RoomShape } from './types'
 
 export const DIRECTIONS: readonly Direction[] = ['N', 'E', 'S', 'W']
 export const directionVector: Record<Direction, Point> = { N: { col: 0, row: -1 }, E: { col: 1, row: 0 }, S: { col: 0, row: 1 }, W: { col: -1, row: 0 } }
@@ -36,14 +36,32 @@ export function rectangleFootprint(width: number, height: number, topLeft: Point
   return points
 }
 
-export function roomFootprint(shape: RoomShape, width: number, height: number, topLeft: Point, radius?: number): Point[] {
+function irregularFootprint(width: number, height: number, topLeft: Point, subtype: IrregularSubtype = 'polygonal'): Point[] {
+  if (subtype === 'natural-cavern') return rasterizeNatural(width, height).map(p => ({ col: topLeft.col + p.col, row: topLeft.row + p.row }))
+  if (subtype === 'underground-feature') return rectangleFootprint(width, height, topLeft)
+
+  const points: Point[] = []
+  const maxInset = Math.min(2, Math.floor((width - 1) / 2))
+  for (let row = 0; row < height; row++) {
+    let left = 0
+    let right = width - 1
+    if (subtype === 'letter-shaped' && row >= Math.ceil(height / 2)) right = Math.max(0, Math.floor((width - 1) / 2))
+    if (subtype === 'polygonal' && (row === 0 || row === height - 1)) { left = maxInset > 0 ? 1 : 0; right -= maxInset > 0 ? 1 : 0 }
+    if (subtype === 'trapezoidal') {
+      const inset = height <= 1 ? 0 : Math.floor((row * maxInset) / (height - 1))
+      left = inset; right -= inset
+    }
+    if (subtype === 'cornered' && row === 0 && width > 2) left = 1
+    if (subtype === 'cornered' && row === height - 1 && width > 2) right -= 1
+    for (let col = left; col <= right; col++) points.push({ col: topLeft.col + col, row: topLeft.row + row })
+  }
+  return points.length > 0 ? points : [{ col: topLeft.col, row: topLeft.row }]
+}
+
+export function roomFootprint(shape: RoomShape, width: number, height: number, topLeft: Point, radius?: number, irregularSubtype?: IrregularSubtype): Point[] {
   if (shape === 'circular') return rasterizeCircle(radius ?? Math.floor(Math.min(width, height) / 2)).map(p => ({ col: topLeft.col + p.col + Math.floor(width / 2), row: topLeft.row + p.row + Math.floor(height / 2) }))
   if (shape === 'cavern' || shape === 'cave-opening' || shape === 'natural-cavern') return rasterizeNatural(width, height).map(p => ({ col: topLeft.col + p.col, row: topLeft.row + p.row }))
-  if (shape === 'irregular-chamber') {
-    const points = rasterizeNatural(width, height).filter(p => (p.col + p.row) % 5 !== 0)
-    if (points.length === 0) points.push({ col: Math.floor(width / 2), row: Math.floor(height / 2) })
-    return points.map(p => ({ col: topLeft.col + p.col, row: topLeft.row + p.row }))
-  }
+  if (shape === 'irregular-chamber') return irregularFootprint(width, height, topLeft, irregularSubtype)
   return rectangleFootprint(width, height, topLeft)
 }
 
@@ -75,7 +93,7 @@ export function intersectionFootprint(origin: Point, kind: IntersectionKind): { 
   return { footprint, branches }
 }
 
-export function roomFromEntrance(entrance: Point, direction: Direction, width: number, height: number, shape: RoomShape, radius?: number): Point[] {
+export function roomFromEntrance(entrance: Point, direction: Direction, width: number, height: number, shape: RoomShape, radius?: number, irregularSubtype?: IrregularSubtype): Point[] {
   const topLeft = direction === 'E'
     ? { col: entrance.col + 2, row: entrance.row - Math.floor(height / 2) }
     : direction === 'W'
@@ -83,5 +101,5 @@ export function roomFromEntrance(entrance: Point, direction: Direction, width: n
       : direction === 'S'
         ? { col: entrance.col - Math.floor(width / 2), row: entrance.row + 2 }
         : { col: entrance.col - Math.floor(width / 2), row: entrance.row - height - 1 }
-  return roomFootprint(shape, width, height, topLeft, radius)
+  return roomFootprint(shape, width, height, topLeft, radius, irregularSubtype)
 }

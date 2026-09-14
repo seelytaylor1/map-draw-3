@@ -4,7 +4,7 @@ import { generateRandomDungeon } from './randomDungeon/generator'
 import { createD6Random } from './randomDungeon/random'
 import { conditionLabelText, clockwiseAdjacentPositions } from './randomDungeon/labels'
 import { PlacementLedger } from './randomDungeon/placement'
-import { roomFromEntrance, step } from './randomDungeon/geometry'
+import { roomFootprint, roomFromEntrance, step } from './randomDungeon/geometry'
 
 describe('random dungeon generation', () => {
   it('uses an inclusive deterministic D6 stream', () => {
@@ -68,6 +68,35 @@ describe('random dungeon generation', () => {
     expect(roomFromEntrance(entrance, 'W', 5, 3, 'square').every(point => point.col <= 8)).toBe(true)
     expect(roomFromEntrance(entrance, 'S', 5, 3, 'square').every(point => point.row >= 12)).toBe(true)
     expect(roomFromEntrance(entrance, 'N', 5, 3, 'square').every(point => point.row <= 8)).toBe(true)
+  })
+
+  it('keeps irregular rooms contiguous without enclosed diagonal wall gaps', () => {
+    const subtypes = ['letter-shaped', 'polygonal', 'trapezoidal', 'cornered', 'natural-cavern', 'underground-feature'] as const
+    for (const subtype of subtypes) {
+      const topLeft = { col: 4, row: 4 }
+      const points = roomFootprint('irregular-chamber', 7, 7, topLeft, undefined, subtype)
+      const keys = new Set(points.map(point => `${point.col},${point.row}`))
+      const queue = [points[0]!]
+      const visited = new Set<string>([`${points[0]!.col},${points[0]!.row}`])
+      while (queue.length) {
+        const point = queue.shift()!
+        for (const neighbor of [{ col: point.col + 1, row: point.row }, { col: point.col - 1, row: point.row }, { col: point.col, row: point.row + 1 }, { col: point.col, row: point.row - 1 }]) {
+          const key = `${neighbor.col},${neighbor.row}`
+          if (keys.has(key) && !visited.has(key)) { visited.add(key); queue.push(neighbor) }
+        }
+      }
+      expect(visited.size, subtype).toBe(points.length)
+      for (let row = topLeft.row + 1; row < topLeft.row + 6; row++) for (let col = topLeft.col + 1; col < topLeft.col + 6; col++) {
+        const key = `${col},${row}`
+        if (keys.has(key)) continue
+        expect([
+          `${col + 1},${row}`,
+          `${col - 1},${row}`,
+          `${col},${row + 1}`,
+          `${col},${row - 1}`,
+        ].every(neighbor => keys.has(neighbor)), `${subtype} encloses ${key}`).toBe(false)
+      }
+    }
   })
 
   it('places a generated door on the connector tile beyond the room wall', () => {
