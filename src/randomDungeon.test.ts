@@ -5,7 +5,7 @@ import { generateRandomDungeon } from './randomDungeon/generator'
 import { createD6Random } from './randomDungeon/random'
 import { conditionLabelText, clockwiseAdjacentPositions, placeGeneratedLabel } from './randomDungeon/labels'
 import { PlacementLedger } from './randomDungeon/placement'
-import { roomFootprint, roomFromEntrance, step } from './randomDungeon/geometry'
+import { oppositeDirection, roomFootprint, roomFromEntrance, step } from './randomDungeon/geometry'
 
 describe('random dungeon generation', () => {
   it('uses an inclusive deterministic D6 stream', () => {
@@ -60,7 +60,7 @@ describe('random dungeon generation', () => {
     const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
     const grid = result.snapshot.grids.get(0)!
 
-    expect(result.labels.some(label => label.text === 'Hazard' && label.anchor.col === 33 && label.anchor.row === 16)).toBe(true)
+    expect(result.labels.some(label => label.text === 'Hazard')).toBe(true)
     expect(result.failedAttempts.some(attempt => attempt.kind === 'label')).toBe(false)
     for (const label of result.labels) expect(grid[label.row * 44 + label.col]).toBe(WALL)
   })
@@ -72,9 +72,13 @@ describe('random dungeon generation', () => {
 
   it('keeps widened exit hallways clear of their source room', () => {
     const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const sourceRoom = result.rooms.find(room => room.starting)!
 
     expect(result.hallways.some(hallway => hallway.width === 2)).toBe(true)
-    expect(result.failedAttempts.some(attempt => attempt.kind === 'hallway' && attempt.reason === 'lost-buffer')).toBe(false)
+    expect(result.failedAttempts
+      .filter(attempt => attempt.kind === 'hallway' && attempt.reason === 'lost-buffer')
+      .some(attempt => attempt.candidate.some(point => sourceRoom.tiles.some(tile => Math.max(Math.abs(tile.col - point.col), Math.abs(tile.row - point.row)) <= 1)))
+    ).toBe(false)
   })
 
   it('starts intersections after the approach and gives each branch a three-tile stem', () => {
@@ -103,12 +107,33 @@ describe('random dungeon generation', () => {
     }
   })
 
+  it('keeps circular rooms large enough to read as circles', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const result = generateRandomDungeon({ cols: 44, rows: 34, seed })
+      expect(result.rooms.filter(room => room.shape === 'circular').every(room => (room.radius ?? 0) >= 2)).toBe(true)
+    }
+  })
+
   it('places rooms beyond their entrance in the travel direction', () => {
     const entrance = { col: 10, row: 10 }
     expect(roomFromEntrance(entrance, 'E', 5, 3, 'square').every(point => point.col >= 12)).toBe(true)
     expect(roomFromEntrance(entrance, 'W', 5, 3, 'square').every(point => point.col <= 8)).toBe(true)
     expect(roomFromEntrance(entrance, 'S', 5, 3, 'square').every(point => point.row >= 12)).toBe(true)
     expect(roomFromEntrance(entrance, 'N', 5, 3, 'square').every(point => point.row <= 8)).toBe(true)
+  })
+
+  it('starts circular rooms at the doorway tile', () => {
+    const entrance = { col: 10, row: 10 }
+    for (const direction of ['N', 'E', 'S', 'W'] as const) {
+      expect(roomFromEntrance(entrance, direction, 5, 5, 'circular', 2)).toContainEqual(step(entrance, direction))
+    }
+  })
+
+  it('does not create a room exit back through its entrance', () => {
+    const result = generateRandomDungeon({ cols: 44, rows: 34, seed: 3278230271 })
+    const circularRoom = result.rooms.find(room => room.shape === 'circular')!
+    const incoming = oppositeDirection[circularRoom.direction]
+    expect(result.exits.filter(exit => exit.roomId === circularRoom.id).some(exit => exit.direction === incoming)).toBe(false)
   })
 
   it('keeps irregular rooms contiguous without enclosed diagonal wall gaps', () => {

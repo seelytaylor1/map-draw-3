@@ -100,12 +100,15 @@ export function intersectionFootprint(origin: Point, kind: IntersectionKind, arm
 }
 
 export function roomFromEntrance(entrance: Point, direction: Direction, width: number, height: number, shape: RoomShape, radius?: number, irregularSubtype?: IrregularSubtype): Point[] {
+  // Circular rooms use the doorway as their first floor tile so their curved
+  // perimeter does not leave an unnecessary straight connector in front of it.
+  const entranceOffset = shape === 'circular' ? 1 : 2
   const topLeft = direction === 'E'
-    ? { col: entrance.col + 2, row: entrance.row - Math.floor(height / 2) }
+    ? { col: entrance.col + entranceOffset, row: entrance.row - Math.floor(height / 2) }
     : direction === 'W'
-      ? { col: entrance.col - width - 1, row: entrance.row - Math.floor(height / 2) }
+      ? { col: entrance.col - width - (entranceOffset - 1), row: entrance.row - Math.floor(height / 2) }
       : direction === 'S'
-        ? { col: entrance.col - Math.floor(width / 2), row: entrance.row + 2 }
-        : { col: entrance.col - Math.floor(width / 2), row: entrance.row - height - 1 }
+        ? { col: entrance.col - Math.floor(width / 2), row: entrance.row + entranceOffset }
+        : { col: entrance.col - Math.floor(width / 2), row: entrance.row - height - (entranceOffset - 1) }
   return roomFootprint(shape, width, height, topLeft, radius, irregularSubtype)
 }

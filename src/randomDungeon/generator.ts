@@ -20,7 +20,7 @@ function dimensionsFor(shape: RoomShape, random: D6Random): { width: number; hei
   if (shape === 'square') { const n = d6(random); return { width: n, height: n } }
   if (shape === 'large-square') { const n = d6(random) + 3; return { width: n, height: n } }
   if (shape === 'rectangle') return { width: d6(random), height: d6(random) + 3 }
-  if (shape === 'circular') { const radius = d6(random); return { width: radius * 2 + 1, height: radius * 2 + 1, radius } }
+  if (shape === 'circular') { const radius = Math.max(2, d6(random)); return { width: radius * 2 + 1, height: radius * 2 + 1, radius } }
   if (shape === 'cave-opening') return { width: d6(random) + 3, height: d6(random) }
   return { width: d6(random), height: d6(random) }
 }
@@ -71,7 +71,11 @@ export function generateRandomDungeon(input: GenerationInput): GenerationResult 
     return true
   }
 
-  const enqueueRoomExits = (room: RoomRecord) => { const rolled = exitsFor(room, random, () => nextId('exit')); for (const exit of rolled) { exits.push(exit); queue.push({ id: nextId('branch'), origin: exit.origin, direction: exit.direction, kind: exit.exitType, sourceExitId: exit.id }) } }
+  const enqueueRoomExits = (room: RoomRecord) => {
+    const rolled = exitsFor(room, random, () => nextId('exit'))
+    const exitsAwayFromCircleEntrance = room.shape === 'circular' && !room.starting ? rolled.filter(exit => exit.direction !== oppositeDirection[room.direction]) : rolled
+    for (const exit of exitsAwayFromCircleEntrance) { exits.push(exit); queue.push({ id: nextId('branch'), origin: exit.origin, direction: exit.direction, kind: exit.exitType, sourceExitId: exit.id }) }
+  }
 
   const recordRoom = (id: string, origin: Point, direction: Direction, shape: RoomShape, width: number, height: number, radius: number | undefined, feature: FeatureType | undefined, tiles: Point[], starting: boolean, exitKind: RoomRecord['exits']) => {
     const room: RoomRecord = { id, origin: { ...origin }, direction, shape, width, height, ...(radius === undefined ? {} : { radius }), ...(feature === undefined ? {} : { feature }), tiles: tiles.map(p => ({ ...p })), starting, exits: exitKind }; rooms.push(room); enqueueRoomExits(room); return room
