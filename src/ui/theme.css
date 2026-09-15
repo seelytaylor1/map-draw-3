@@ -381,6 +381,20 @@
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-danger { color: #e08b71; border-color: rgba(193, 96, 74, 0.4); }
 
+.generation-actions {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.generation-actions .btn {
+  min-width: 0;
+  padding-left: 6px;
+  padding-right: 6px;
+  font-size: 10px;
+}
+.generation-actions .btn-primary { flex: 1.8; }
+.generation-actions .btn:not(.btn-primary) { flex: 1; }
+
 /* color field */
 .color-field {
   display: flex;

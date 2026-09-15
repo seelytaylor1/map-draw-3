@@ -1376,6 +1376,11 @@ export default function App() {
     return generateRandomDungeonWithSeed(seed)
   }, [generateRandomDungeonWithSeed, generationSeedInput])
 
+  const handleNewSeed = useCallback(() => {
+    generationSeedLockedRef.current = false
+    return generateRandomDungeonWithSeed(createRandomSeed())
+  }, [generateRandomDungeonWithSeed])
+
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
 
@@ -1919,9 +1924,14 @@ export default function App() {
               aria-label="Dungeon seed"
             />
           </div>
-          <button className="btn btn-primary" style={{ width: '100%', marginTop: 6 }} onClick={handleGenerateRandomDungeon}>
-            <IconCave size={13} /> Generate Random Dungeon
-          </button>
+          <div className="generation-actions" style={{ marginTop: 6 }}>
+            <button className="btn btn-primary" onClick={handleGenerateRandomDungeon}>
+              <IconCave size={13} /> Generate Dungeon
+            </button>
+            <button className="btn" onClick={handleNewSeed}>
+              New Seed
+            </button>
+          </div>
           {generationResult && (
             <div className="hint" style={{ marginTop: 8 }}>
               <div style={{ color: 'var(--text)', marginBottom: 3 }}>Generated {generationResult.summary.dungeonType} dungeon</div>
