@@ -1,4 +1,4 @@
-import { STAMP_TYPES, type Rotation, type Stamp, type StampType } from '../stamps'
+import { STAMP_TYPES, type Rotation, type Stamp, type StampType } from '../../stamps'
 import type { Direction } from './types'
 
 export type StampSemantic = 'door' | 'secret-door' | 'valve' | 'trap' | 'danger' | 'stairs' | 'shaft' | 'rubble' | 'pillar'

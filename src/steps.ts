@@ -42,7 +42,7 @@ export interface StepSideFace {
   side: 'south' | 'east'
 }
 
-export function isoStepSideFaces(run: StepRun, tileW: number, tileH: number, faceH: number): StepSideFace[] {
+export function isoStepSideFaces(run: StepRun, tileW: number, tileH: number, _faceH: number): StepSideFace[] {
   const side = run.direction === 'E' || run.direction === 'W' ? 'south' : 'east'
   const drop = Z_STEP_HEIGHT / STEP_TREAD_COUNT
   const sign = run.ascending ? -1 : 1

@@ -1,4 +1,4 @@
-import type { D6Random } from './random'
+import type { D6Random } from '../random'
 import type { BeyondDoorway, DoorCondition, DoorwayCategory, DungeonType, ExitType, FeatureType, HallwayCondition, IntersectionKind, IrregularSubtype, RoomExitKind, RoomShape, StartingLocation, VerticalContent } from './types'
 
 const bySix = <T>(random: D6Random, values: readonly T[]): T => values[random.nextD6() - 1]!

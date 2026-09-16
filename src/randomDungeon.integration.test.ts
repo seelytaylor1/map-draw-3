@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { generateRandomDungeon } from './randomDungeon/generator'
-import { resolveStamp } from './randomDungeon/stamps'
+import { generateLegacyRandomDungeon as generateRandomDungeon } from './randomDungeon/legacy/generator'
+import { resolveStamp } from './randomDungeon/legacy/stamps'
 import { serialize, deserialize } from './serialization'
 
 describe('random dungeon application boundary', () => {

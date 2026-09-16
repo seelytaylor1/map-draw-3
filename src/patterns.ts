@@ -1,5 +1,5 @@
 // src/patterns.ts
-import { FLOOR, WALL } from './constants'
+import { WALL } from './constants'
 
 // ---------------------------------------------------------------------------
 // Types

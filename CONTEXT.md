@@ -91,10 +91,79 @@ A JSON file representing the full Map state: the Level Stack (all Z Level grids)
 History is a stack of full Map snapshots (Level Stack + Stamps + Step Runs + Ramp Runs). One snapshot is taken per completed gesture: mouseup for Brush strokes, and each Stamp, Step Run, or Ramp Run action (place, move, rotate, scale, mirror, delete) individually. Snapshots capture the full Level Stack across all Z Levels.
 
 ## Random Dungeon
-A table-driven procedure that replaces the Map with a connected dungeon layout on Z=0. It grows rooms and hallways from a Starting Room while preserving a one-tile Wall border and a one-tile Wall buffer between unrelated chambers and passages. Generated rooms are at least 2×2 tiles so they read as rooms on the map.
+A legacy generated-map procedure, quarantined under `src/randomDungeon/legacy/`, that replaces the Map with a connected dungeon layout on Z=0 by growing rooms and hallways from a Starting Room. It remains available through an explicit compatibility Adapter for focused regression coverage. The production Generate command uses the mission-first, style-selected model instead.
+
+## Mission
+An abstract structure of tasks, dependencies, keys, locks, branches, rewards, cycles, and a goal that describes what the player must negotiate. A Mission is independent of the physical arrangement used to realize it.
+
+## Mission Node
+A node in a Mission representing a player-facing task or mission element, such as a challenge, reward, key, lock, or objective. A Mission Node is not a physical room; Space Grammar rules determine how it is realized spatially.
+
+## Mission Pattern
+A high-level structure in a Mission Grammar, such as an Opening, Progression, Loop, Goal, or Loop Challenge. A Mission Pattern expands into primitive Mission Nodes before the Mission is realized as physical space.
+
+## Mission Grammar
+A set of graph-rewrite rules that constructs a Mission in two shallow levels: broad Mission Patterns first, followed by primitive Mission Nodes and their dependencies.
+
+## Space Grammar
+A set of rules that transforms a Mission into a physical dungeon arrangement. All Space Grammars use a shared realization engine; a user-selected Generation Style supplies the placement, module, connection, and description policies that determine how mission structures are spatially expressed. Space Grammar may add supporting geometry, but every gameplay-relevant traversable connection must correspond to an explicit Mission relationship.
+
+## Generation Style
+A user-selected Space Grammar that gives a generated dungeon its characteristic topology, module selection, connection behavior, and spatial organization. Every Generation Style must support the complete Mission vocabulary and all Loop Challenges; it may vary their spatial realization, but may not omit or reinterpret them. Critical Spine has an explicit Start-to-Goal spine with distinct shortcut routes; Central Hub has an explicit Start hub with declared spokes and no incidental convergence; Branch-and-merge has explicit branch-and-merge structure. Every Mission relationship realized in space is represented by a declared spatial connection.
+
+## Spatial Module
+A typed intermediate structure of dungeon space—such as a room, corridor, branch, junction, cycle, hub, gate, secret connection, or terminal challenge—with a readable footprint and connection ports. Spatial Modules are produced by Space Grammar rules and are realized as Tile geometry after placement; they are not necessarily pre-authored room templates. A module may realize or support a Mission Node's spatial anchor, and may contain multiple Mission Nodes only when an explicit production permits co-location. Junctions must be explicit; ordinary corridor overlap is invalid.
+
+## Generated Dungeon
+A complete dungeon layout produced from a Mission and a selected Generation Style, then realized on a Map while respecting the Map's physical bounds and readability requirements.
+
+## Generation Transaction
+A complete generation operation that either commits one finished Generated Dungeon as one Map replacement or leaves the current Map unchanged. Intermediate placement attempts are not user-visible map artifacts.
+
+## Generation Diagnostic
+An explanation of a generation result that identifies the style, inputs, mission or space rule, and constraint involved. A failed generation retains enough diagnostic information to reproduce and troubleshoot the failure without exposing partial geometry as a Generated Dungeon.
+
+## Page Capacity
+The usable amount of readable dungeon complexity available on a Map after accounting for its physical dimensions, tile size, border, buffers, grid-cell footprints, labels, and markers. Smaller tile sizes intentionally provide more grid cells and can support denser spatial layouts on the same physical page.
+
+## Grid-Cell Footprint
+A Spatial Module's size and shape expressed in Map grid cells. The new generator uses grid-cell footprints as its primary spatial constraint; room-like modules have a hard 3×3-cell minimum, while larger footprints vary by mission and style. Corridors default to 1 cell wide; tile scale changes how much cell-based structure fits on the physical page and is therefore an intentional density control.
+
+## Room Connection Aperture
+An explicit opening in a room's one-cell Wall buffer for a planned corridor or other connection. Its width matches the designated connection—typically 1, 2, or 4 cells—so wide hallways can enter rooms normally without allowing incidental crossings or accidental merges. The aperture must fit the room's wall span; if it does not, placement must backtrack or fail rather than tapering the corridor automatically.
+
+## Semantic Stamp Realization
+The rasterization step that maps a generated floor or connection type recorded in metadata to its corresponding implemented stamp, such as a secret door, locked door, concealed door, or key marker. Semantic types remain explicit until the map is written. The build validates that required types have implemented stamps; a missing asset is a build failure, not a reason to silently replace the type with a generic icon during generation. Key and Lock identifiers remain in metadata and summary by default; printed text labels are optional.
+
+## Complexity Budget
+A deterministic set of mission and spatial targets derived before generation from the complexity setting and seed. It may include mission-node count, branch count, challenge density, and supporting-space allowance. Page dimensions, tile size, and style determine whether the fixed budget fits; they do not change the requested mission. A request that cannot meet its budget within those constraints fails explicitly rather than being silently weakened.
+
+## Complexity Preset
+A named user-facing choice, such as Compact, Standard, or Dense, that selects a fixed Complexity Budget. The initial targets are Compact (5 Mission Nodes, 0 branches, 0 preset loops), Standard (8 Mission Nodes, 1 branch, 1 preset loop), and Dense (12 Mission Nodes, 2 branches, 2 preset loops). The requested loop count remains an exact user override of the preset loop target. The exact targets remain inspectable so the preset does not hide the requested design.
+
+## Generation Preflight
+A feasibility assessment performed automatically before spatial placement that compares the requested Mission and Generation Style against the Map's Page Capacity. Challenge-derived Key/Lock dependencies are included in that assessment. `fit` means the fixed request is expected to pass deterministic placement and validation; `warning` means the request remains valid but bounded placement may still fail because the page is crowded; `impossible` means a known constraint makes the request unsatisfiable, including an explicitly selected Loop Challenge that the requested loop cannot realize, in which case generation must stop rather than substitute a challenge or produce a degraded Mission or invalid topology. Preflight does not change the current Map or require a separate user confirmation.
+
+## Cycle
+An intentional mission and space structure containing multiple routes between related nodes. A Cycle is created explicitly so a Loop Challenge can operate on its structure rather than being inferred from accidental spatial connections.
+
+## Loop Challenge
+A Mission transformation applied independently to a Cycle that gives that loop a specific gameplay purpose. The base Cycle is only the starting structure; every Loop Challenge transforms it into the final topology, which may preserve, expand, rewire, or consume the Cycle. Only the transformed topology is spatially realized, and unused base edges must not remain as accidental routes or extra Cycles. Different loops in one Mission may use different Loop Challenges. An explicit per-loop challenge takes precedence; the global loop preference fills every unspecified loop, and `Varied` performs a seeded uniform random selection from the compatible challenges for that loop. When loops exist without explicit selections, `Varied` is the default preference. Compatible means the challenge's required roles and static rules are available; physical placement is validated separately. Repeated challenges are valid outcomes; no hidden diversity or tastefulness rule is applied. Per-loop selections map by loop index; omitted entries use the global preference, while more entries than the requested loop count are an invalid request. The UI exposes one selector per requested loop: changing the loop count preserves choices by loop index, removes choices beyond the new count, and defaults newly added loops to `Varied`. An explicit challenge is a fixed requirement: placement may retry compatible productions and locations, but generation must report the request as impossible if that challenge cannot be realized for its loop. A single global forced challenge is not sufficient to define every loop when per-loop selections are present.
+
+## Static Dungeon Graph
+A representation of dungeon tasks and physical connections without simulating runtime actions or state changes. Locks, one-way connections, blocked returns, secrets, and similar conditions are recorded as static relationships or annotations.
+
+## Key/Lock Dependency
+A static Mission relationship stating that a Lock requires a corresponding Key. Key/Lock dependencies are derived from the selected Loop Challenges rather than independently chosen content counts; no loops or no lock-bearing challenges therefore produce no Keys or Locks. A `Lock & Key` challenge creates one matching Key/Lock pair, a `Double Lock` challenge creates two distinct pairs, and an `Unknown Return` challenge creates the required locked Goal plus its matching Key in the Key room. Every required objective Lock is placed on the door into the Goal or objective room, and a reachable bypass to its matching Key must remain available before the Lock is opened; a required Lock can never seal the only route to its own Key. `Unknown Return` statically follows `Start → locked door into Goal room → bypass around Goal room → one-way valve → Key room → one or more supporting rooms → Start → the same door → Goal room, now open`; the supporting rooms are spatial modules, not Mission Nodes or extra Mission complexity. The Generation Request has no independent key-count or lock-count fields; legacy callers that provide them receive an invalid-request diagnostic instead of having them ignored. The relationship describes intended progression for validation and spatial placement without simulating how the key is acquired or how the lock behaves during play. An optional Lock may affect only optional content and must never be the sole blocker on the full Start-to-Goal path; the Unknown Return Goal lock is required and is not optional content. A secret connection is required only when it is explicitly represented as the Lock in such a dependency; secrecy alone does not make a route critical.
+
+## Spatial Coupling
+A property of a Mission relationship that tells Space Grammar how strongly placement is constrained. `tight` coupling requires spatial order or relative placement, such as placing a Key before its Lock; `loose` coupling preserves the mission dependency while allowing broad spatial freedom.
+
+## Progression Validation
+An abstract solvability check over the static Mission and Space graphs. Starting from Start, it repeatedly collects reachable Keys and opens matching Locks until no new progression is possible, then verifies that the Goal is reachable. It validates design intent without simulating runtime player actions or mutable game state.
 
 ## One-way Valve
-A doorway type represented by a valve-specific Door Floor Stamp when available. It is ordinary doorway content, not vertical content; generated vertical content is limited to stairs, shafts, and ramps.
+A required directional doorway transition represented by explicit Space metadata and a valve-specific Door Floor Stamp when available. In the Unknown Return Mission, it sits on the bypass around the locked Goal room and permits travel from the Goal-side approach toward the Key room only; it is not traversable backward, so the return to Start must use the separate route through one or more supporting rooms. If a style cannot place and represent that direction, the request is impossible rather than silently downgraded. Its direction and role are static Mission and Space metadata, not runtime simulation. It is ordinary doorway content, not vertical content; generated vertical content is limited to stairs, shafts, and ramps.
 
 ## Terminal Hallway
 A valid hallway that has no room beyond its end. It remains playable Floor space and does not imply a doorway or chamber beyond it.

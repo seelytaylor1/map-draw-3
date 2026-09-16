@@ -108,7 +108,6 @@ describe('isoStepTreads descent', () => {
   const r = run({ col: 0, row: 0, direction: 'E' })
   const treads = isoStepTreads(r, TILE_W, TILE_H)
   const drop = Z_STEP_HEIGHT / STEP_TREAD_COUNT
-
   it('each tread sits one riser drop lower than the previous', () => {
     for (let i = 1; i < treads.length; i++) {
       // corner 0 of tread i shares u with corner 1 of tread i-1: same projected
@@ -207,7 +206,6 @@ describe('isoStepSideFaces', () => {
   const TILE_W = 40
   const TILE_H = 20
   const FACE = 8
-  const drop = Z_STEP_HEIGHT / STEP_TREAD_COUNT
 
   it('returns one face per tread', () => {
     const faces = isoStepSideFaces(run(), TILE_W, TILE_H, FACE)

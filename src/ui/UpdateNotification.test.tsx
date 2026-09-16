@@ -4,7 +4,6 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom/vitest'
 import { UpdateNotification } from './UpdateNotification'
-import type { UpdaterState } from '../hooks/useUpdater'
 
 afterEach(cleanup)
 

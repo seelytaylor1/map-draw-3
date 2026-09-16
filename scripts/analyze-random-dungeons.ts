@@ -1,6 +1,6 @@
 import { FLOOR, WATER } from '../src/constants'
-import { generateRandomDungeon } from '../src/randomDungeon/generator'
-import type { GenerationResult } from '../src/randomDungeon/types'
+import { generateLegacyRandomDungeon } from '../src/randomDungeon/legacy/generator'
+import type { GenerationResult } from '../src/randomDungeon/legacy/types'
 
 const cols = Number(process.argv[2] ?? 88)
 const rows = Number(process.argv[3] ?? 68)
@@ -11,7 +11,7 @@ if (![cols, rows, sampleSize, firstSeed].every(Number.isFinite) || cols < 3 || r
   throw new Error('Usage: vite-node scripts/analyze-random-dungeons.ts [cols] [rows] [count] [firstSeed]')
 }
 
-const results = Array.from({ length: sampleSize }, (_, index) => generateRandomDungeon({
+const results = Array.from({ length: sampleSize }, (_, index) => generateLegacyRandomDungeon({
   cols,
   rows,
   seed: firstSeed + index,

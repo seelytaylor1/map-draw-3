@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildLabelScene, buildTileScene, buildStampScene } from './viewportScene'
 import { createGrid, paintTiles } from './grid'
-import { FLOOR, WATER, LAVA, DARKNESS, WATER_COLOR } from './constants'
+import { WATER, LAVA, DARKNESS, WATER_COLOR } from './constants'
 import type { Stamp } from './stamps'
 
 const TILE_PX = 60

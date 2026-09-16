@@ -32,8 +32,6 @@ export function createD6Random(seed: number | string): D6Random {
   }
 }
 
-export const createRandom = createD6Random
-
 export function createRandomSeed(): number {
   const cryptoObject = globalThis.crypto
   if (cryptoObject?.getRandomValues) {

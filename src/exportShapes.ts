@@ -1,4 +1,4 @@
-import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, WALL, LAVA, DARKNESS, getTileColor, type TileState } from './constants'
+import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, getTileColor, type TileState } from './constants'
 import { getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import { isObjectStamp, stampSize, type Stamp } from './stamps'

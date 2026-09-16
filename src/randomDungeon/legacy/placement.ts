@@ -1,5 +1,5 @@
-import { FLOOR, WALL, WATER, type TileState } from '../constants'
-import { createGrid } from '../grid'
+import { FLOOR, WALL, WATER, type TileState } from '../../constants'
+import { createGrid } from '../../grid'
 import type { Direction, FailureReason, Point } from './types'
 
 export interface PlacementFailure { reason: FailureReason; candidate: Point[]; message: string }

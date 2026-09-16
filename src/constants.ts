@@ -67,10 +67,7 @@ export function getTileColor(
     case MOSSY_STONE:
     case RUBBLE:
       return customColors.get(tileState) ?? ENVIRONMENTAL_DEFAULTS[tileState] ?? FLOOR_COLOR
-    default: {
-      const _exhaustive: never = tileState
-      return FLOOR_COLOR
-    }
+    default: return FLOOR_COLOR
   }
 }
 

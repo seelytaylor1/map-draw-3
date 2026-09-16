@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { FLOOR, WALL, WATER } from './constants'
 import { createGrid } from './grid'
-import { generateRandomDungeon } from './randomDungeon/generator'
+import { generateLegacyRandomDungeon as generateRandomDungeon } from './randomDungeon/legacy/generator'
 import { createD6Random } from './randomDungeon/random'
-import { conditionLabelText, clockwiseAdjacentPositions, placeGeneratedLabel } from './randomDungeon/labels'
-import { PlacementLedger } from './randomDungeon/placement'
-import { oppositeDirection, roomFootprint, roomFromEntrance, step } from './randomDungeon/geometry'
+import { conditionLabelText, clockwiseAdjacentPositions, placeGeneratedLabel } from './randomDungeon/legacy/labels'
+import { PlacementLedger } from './randomDungeon/legacy/placement'
+import { oppositeDirection, roomFootprint, roomFromEntrance, step } from './randomDungeon/legacy/geometry'
 
 describe('random dungeon generation', () => {
   it('uses an inclusive deterministic D6 stream', () => {

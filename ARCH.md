@@ -1,12 +1,12 @@
-# Architecture Plan: Table-Driven Random Dungeon Generation
+# Architecture Plan: Mission-First Random Dungeon Generation
 
-Status: Proposed  
-Source decisions: [ADR 0001](docs/adr/0001-table-driven-random-dungeon-generation.md)  
+Status: Accepted / production cutover
+Source decisions: [Mission-first generation styles proposal](docs/proposal-dungeon-generation-styles.md), [ADR 0001](docs/adr/0001-table-driven-random-dungeon-generation.md)
 Domain vocabulary: [CONTEXT.md](CONTEXT.md)
 
 ## Outcome
 
-Add a deterministic random-dungeon engine that produces one complete replacement for the current Map, plus temporary explanation data for the generation summary and diagnostics. The engine will be a pure, testable Module. React and Tauri will only handle confirmation, invoking generation, committing the resulting snapshot to Undo / Redo history, and displaying the result.
+The production Generate Dungeon path is a deterministic, mission-first engine that produces one complete replacement for the current Map, plus temporary explanation data for the generation summary and diagnostics. A shallow Mission Grammar creates generic progression, Key/Lock dependencies, and exact non-trivial Cycles before a selected Space Grammar (Spine + Shortcuts, Orbit Gates, or Cavern Pressure) places typed Spatial Modules and rasterizes them. The engine is a pure, testable Module. React and Tauri only handle confirmation, invoking generation, committing the resulting snapshot to Undo / Redo history, and displaying the result.
 
 The implementation must preserve these architectural facts:
 
@@ -16,6 +16,25 @@ The implementation must preserve these architectural facts:
 - One successful generation is one call to `push`, therefore one undoable history action.
 - The same seed, canvas settings, and generator inputs produce the same map state and metadata.
 - No generator code creates Konva nodes, reads the DOM, calls `Math.random`, or writes a Save File.
+- The legacy table-driven bottom-up procedure remains available as a compatibility primitive for its focused tests, but it is not the production command's foundation.
+
+## Production generation modules
+
+The mission-first path is implemented in the following pure modules:
+
+- `commonTypes.ts` contains shared generation geometry and AppSnapshot vocabulary; it is the single source for `Point`, `Direction`, and `AppSnapshotShape`.
+- `missionTypes.ts` contains temporary Mission, Space, request, budget, capacity, and diagnostic vocabulary.
+- `preflight.ts` validates shared inputs and derives a fixed inspectable Complexity Budget and Page Capacity assessment.
+- `mission.ts` expands Opening, Progression, and Goal patterns into primitive nodes, generic Key/Lock dependencies, exact Cycles, and the complete ten-pattern Loop Challenge registry.
+- `progression.ts` performs static fixed-point Key acquisition and Lock opening without runtime simulation.
+- `space.ts` places typed modules with explicit ports and connections, rejects unplanned ordinary crossings, and rasterizes semantic markers through the implemented stamp catalog.
+- `generatedContent.ts` is the generated-content Adapter between stable marker semantics and the existing Floor Stamp catalog.
+- `styles.ts` is the shared style registry and contract surface for Spine + Shortcuts, Orbit Gates, and Cavern Pressure.
+- `missionGenerator.ts` is the generation transaction boundary. It runs preflight, mission expansion, style placement, progression/space validation, rasterization, and returns either a complete snapshot or diagnostics with no partial snapshot.
+
+`missionFirst.ts` is the canonical public Interface for the mission-first pipeline and the app imports it directly. `generator.ts` is only a compatibility Adapter that exposes the quarantined legacy implementation; it is not part of the production command path.
+
+Prototype isolation is explicit: the production `src/main.tsx` has one editor entry point, Metroidvania has a separate opt-in HTML entry under `scripts/prototypes/`, and the room-layout experiment remains a named CLI script. Vitest includes only `src/**/*.test.{ts,tsx}`, so physical prototype worktrees cannot create duplicate test runs.
 
 ## Current architecture and fit
 
@@ -36,15 +55,27 @@ Use a feature folder so the generator can grow without creating one large file:
 
 ```text
 src/randomDungeon/
-  types.ts
+  commonTypes.ts
+  missionTypes.ts
+  missionFirst.ts
+  missionGenerator.ts
+  mission.ts
+  progression.ts
+  preflight.ts
+  styles.ts
+  space.ts
   random.ts
-  tables.ts
-  geometry.ts
-  placement.ts
-  stamps.ts
-  labels.ts
-  generator.ts
-  summary.ts
+  loopChallenges.ts
+  generator.ts                 # compatibility Adapter only
+  legacy/                      # quarantined table-driven implementation
+    types.ts
+    tables.ts
+    geometry.ts
+    placement.ts
+    stamps.ts
+    labels.ts
+    generator.ts
+    summary.ts
 src/randomDungeon.test.ts
 src/randomDungeon.geometry.test.ts
 src/randomDungeon.placement.test.ts
@@ -54,7 +85,7 @@ src/randomDungeon.integration.test.tsx
 
 The exact test-file split may follow the repository's existing convention, but the seams below should remain visible and independently testable.
 
-### `types.ts` — generation vocabulary and result shape
+### `legacy/types.ts` — compatibility vocabulary and result shape
 
 Define the generator-only types for:
 
@@ -78,7 +109,7 @@ Provide a small seeded random Module with a single `nextD6()` operation and a se
 
 The seed factory may use platform randomness once when the user starts generation. Tests and diagnostic replay pass an explicit seed to the pure generator.
 
-### `tables.ts` — declarative source-table decisions
+### `legacy/tables.ts` — declarative source-table decisions
 
 Encode the ADR tables as named table rolls and small dispatch functions. Each roll should retain both its semantic result and enough source information for metadata. This Module owns:
 
@@ -90,7 +121,7 @@ Encode the ADR tables as named table rolls and small dispatch functions. Each ro
 
 Table data should be easy to exhaustively test. Do not bury table decisions inside coordinate code or React event handlers.
 
-### `geometry.ts` — candidate footprints and direction transforms
+### `legacy/geometry.ts` — candidate footprints and direction transforms
 
 Represent every proposed room, connector, and hallway as grid-coordinate geometry before it touches the Tile Grid. This Module owns:
 
@@ -102,7 +133,7 @@ Represent every proposed room, connector, and hallway as grid-coordinate geometr
 
 Geometry should return plain coordinate data, not mutate a `Uint8Array`. It must distinguish the carved footprint from decoration or marker positions so a valid hallway can survive a failed room extension.
 
-### `placement.ts` — validation and transactional commit
+### `legacy/placement.ts` — validation and transactional commit
 
 Create the deepest Module in the feature: callers submit a candidate transaction and receive either a committed result or a structured failure. Its Interface should hide the details of border checks, overlap checks, buffer expansion, and atomic writes.
 
@@ -125,9 +156,11 @@ Use transaction phases where the ADR requires different atomic scopes:
 
 The ledger should make the Deletion test pass: removing this Module would force border, buffer, overlap, and rollback logic into every table procedure. That concentration is the intended Depth and Leverage of the Module.
 
-### `stamps.ts` — generated Floor Stamp Adapter
+### `generatedContent.ts` — generated Floor Stamp Adapter
 
-Add a generated-content Adapter over the existing `stamps.ts` asset vocabulary. It maps semantic requests such as door, secret door, one-way valve, trap/danger, stairs, shaft, and rubble/pillar to the closest available Floor Stamp type. Generated ramps use the existing `RampRun` model rather than a door stamp.
+Add a generated-content Adapter over the existing `stamps.ts` asset vocabulary. It maps mission semantic requests such as key, lock, secret, danger, blocked return, one-way valve, and hub to the closest available Floor Stamp type. Legacy vertical content remains in the compatibility path; generated ramps use the existing `RampRun` model rather than a door stamp.
+
+The legacy queue retains its own `legacy/stamps.ts` implementation for compatibility-only records; the mission-first pipeline uses `generatedContent.ts`.
 
 The Adapter must:
 
@@ -139,7 +172,7 @@ The Adapter must:
 
 This is a real Seam because the table vocabulary and asset vocabulary are different. The Adapter keeps that translation local and prevents `generator.ts` from depending on asset filenames.
 
-### `labels.ts` — canonical condition labels and placement
+### `legacy/labels.ts` — canonical condition labels and placement
 
 Create the generated-label Adapter over the existing `Label` type. It should own:
 
@@ -151,7 +184,15 @@ Create the generated-label Adapter over the existing `Label` type. It should own
 
 Labels are visible Map elements only after their underlying required geometry and stamp transaction succeeds. A label that is optional under the ADR must never invalidate otherwise valid geometry.
 
-### `generator.ts` — queue-driven orchestration
+### `generator.ts` — compatibility Adapter
+
+The root `generator.ts` contains no generation rules. It re-exports the legacy operation under its historical name for external callers that have not migrated. Production code and internal tests use either `missionFirst.ts` or the explicit `legacy/` paths.
+
+### `legacy/generator.ts` — quarantined legacy orchestration
+
+The table-driven queue below is retained for compatibility with the original
+input shape and focused geometry tests. It is not the production Generate
+Dungeon path; mission-first orchestration lives in `missionGenerator.ts`.
 
 Expose one narrow generation operation:
 
@@ -176,7 +217,7 @@ Return an AppSnapshot-shaped replacement containing only Z=0 generated state: th
 
 Vertical results remain anchored at Z=0. Stairs and shafts use the closest available Floor Stamp; ramps use a `RampRun`. They must not create additional Z Levels, Step Runs, or persisted generation metadata.
 
-### `summary.ts` — compact result projection
+### `legacy/summary.ts` — compact result projection
 
 Derive the user-facing summary from the Generation Result rather than incrementing UI counters during generation. Include seed, Dungeon Type, Starting Room result, rooms, hallways, Terminal Hallways, visible Stamps/Labels, and failed-attempt count. Keep detailed records available for diagnostics without requiring them in the compact UI.
 
@@ -184,13 +225,12 @@ Derive the user-facing summary from the Generation Result rather than incrementi
 
 Add a `handleGenerateRandomDungeon` command in `App.tsx`, or extract the existing file/new confirmation logic into a small command Adapter if duplication becomes noticeable. The command flow is:
 
-1. Check the existing dirty state and use the normal unsaved-changes confirmation.
-2. Choose one seed and call `generateRandomDungeon` with the current canvas dimensions and generation inputs.
-3. On success, push exactly one new AppSnapshot into history. Do not call several `push` operations for rooms, hallways, or markers.
-4. Set the Active Z Level to 0, clear transient drawing/selection state, and retain editor settings that are not Map content.
-5. Store the Generation Result metadata in ephemeral React state for the compact summary and diagnostics.
-6. Leave the current file path intact so the replacement marks the existing document dirty and Save writes the generated Map normally.
-7. On a generation error, leave the existing Map and history untouched and show the error through the existing load/error presentation pattern.
+1. Choose one seed and call `generateMissionDungeon` with the current canvas dimensions and shared generation inputs. Generation intentionally does not show an unsaved-changes confirmation.
+2. On success, push exactly one new AppSnapshot into history. Do not call several `push` operations for rooms, hallways, or markers.
+3. Set the Active Z Level to 0, clear transient drawing/selection state, and retain editor settings that are not Map content.
+4. Store the Generation Result metadata in ephemeral React state for the compact summary and diagnostics.
+5. Leave the current file path intact so the replacement marks the existing document dirty and Save writes the generated Map normally.
+6. On a generation error, leave the existing Map and history untouched and show the error through the existing load/error presentation pattern.
 
 The first UI can be a toolbar action in the existing Canvas & File or a dedicated Generation section, with a compact result summary and an optional details view. No generator-specific rendering path is needed: existing Top-Down View, Iso View, Export, Stamps, and Labels consume the generated Map state.
 
@@ -272,8 +312,8 @@ npm run build
 
 These points are constrained by the ADR but require a concrete representation in code:
 
-- The exact coordinate rule for Starting Location roll 6 (“random valid location”) must be documented in `tables.ts` and tested as part of the deterministic stream.
+- The exact coordinate rule for Starting Location roll 6 (“random valid location”) must be documented in `legacy/tables.ts` and tested as part of the deterministic stream.
 - Circle, cave opening, cavern, and natural uneven-wall footprints need one canonical discrete-grid rasterization each; they must not use view-specific approximations.
-- The semantic priority lists for “closest available” Floor Stamps must be centralized in the generated-content Adapter and tested against the current asset set.
+- The semantic priority lists for “closest available” Floor Stamps are centralized in `generatedContent.ts` and tested against the current asset set.
 - The definition of an “unrelated” footprint must be represented by the placement ledger so explicit entrances are exceptions without weakening global buffer checks.
 - Whether editor color settings are retained is a UI-state decision; the Map replacement must at minimum discard environmental paint while leaving non-content preferences stable unless the product explicitly chooses otherwise.

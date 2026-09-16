@@ -1,5 +1,5 @@
-import { WALL } from '../constants'
-import type { Label } from '../labels'
+import { WALL } from '../../constants'
+import type { Label } from '../../labels'
 import { directionVector, turnLeft, turnRight } from './geometry'
 import type { Direction, GeneratedLabelRecord, Point } from './types'
 

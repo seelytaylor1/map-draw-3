@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -9,7 +9,7 @@ import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTile
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
-  addStamp, isObjectStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
+  addStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
 import { addStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
@@ -36,9 +36,9 @@ import {
 import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
-import { generateRandomDungeon } from './randomDungeon/generator'
+import { ALL_LOOP_CHALLENGES, generateMissionDungeon, preflightGeneration } from './randomDungeon/missionFirst'
 import { createRandomSeed } from './randomDungeon/random'
-import type { GenerationAttempt, GenerationResult } from './randomDungeon/types'
+import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
@@ -49,22 +49,6 @@ const WALL_PRESETS = [
   { label: 'Repro Blue', color: '#A8C8E8', opacity: 1 },
   { label: 'Transparent', color: '#000000', opacity: 0 },
 ]
-
-const GENERATION_FAILURE_LABELS: Record<GenerationAttempt['reason'], string> = {
-  'out-of-bounds': 'outside the one-tile Wall border',
-  overlap: 'overlapping existing geometry',
-  'lost-buffer': 'breaking the one-tile Wall buffer',
-  'invalid-path': 'having no valid continuation',
-  'unavailable-required-stamp': 'missing a required marker asset',
-  'unavailable-label-position': 'having no valid label position',
-  'invalid-input': 'using invalid generation input',
-}
-
-function summarizeGenerationFailures(attempts: GenerationAttempt[]): Array<{ reason: GenerationAttempt['reason']; count: number }> {
-  const counts = new Map<GenerationAttempt['reason'], number>()
-  for (const attempt of attempts) counts.set(attempt.reason, (counts.get(attempt.reason) ?? 0) + 1)
-  return [...counts.entries()].map(([reason, count]) => ({ reason, count }))
-}
 
 function hexToRgba(hex: string, alpha: number): string {
   if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return `rgba(0,0,0,${alpha})`
@@ -163,12 +147,37 @@ export default function App() {
   const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null)
+  const [generationResult, setGenerationResult] = useState<MissionGenerationResult | null>(null)
   const [generationSeedInput, setGenerationSeedInput] = useState('')
   const generationSeedLockedRef = useRef(false)
+  const [generationStyle, setGenerationStyle] = useState<GenerationStyle>('spine-shortcuts')
+  const [generationComplexity, setGenerationComplexity] = useState<ComplexityPreset>('standard')
+  const [generationLoopCount, setGenerationLoopCount] = useState(1)
+  const [generationLoopPreference, setGenerationLoopPreference] = useState<LoopPreference>('varied')
+  const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
   const isDirty = history.past.length !== savedHistoryLength
+  const generationPreviewSeed = generationSeedInput.trim() === '' ? 0 : generationSeedInput
+  const generationRequest: GenerationRequest = {
+    style: generationStyle,
+    seed: generationPreviewSeed,
+    cols,
+    rows,
+    tilesPerInch,
+    orientation: cols >= rows ? 'landscape' : 'portrait',
+    complexity: generationComplexity,
+    loopCount: generationLoopCount,
+    loopPreference: generationLoopPreference,
+    loopChallenges: generationLoopChallenges.slice(0, Math.max(0, generationLoopCount)),
+  }
+  const generationPreflight = preflightGeneration(generationRequest)
+
+  const setRequestedLoopCount = (value: number) => {
+    const next = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+    setGenerationLoopCount(next)
+    setGenerationLoopChallenges(previous => Array.from({ length: next }, (_, index) => previous[index]))
+  }
 
   useEffect(() => {
     if (!isTauri()) return
@@ -184,6 +193,7 @@ export default function App() {
 
   const stageRef = useRef<Konva.Stage>(null)
   const pendingFitRef = useRef(false)
+  const [fitRequest, setFitRequest] = useState(0)
   const layerRef = useRef<Konva.Layer>(null)
   const stampLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
@@ -559,7 +569,7 @@ export default function App() {
 
   useEffect(() => {
     if (pendingFitRef.current) { pendingFitRef.current = false; fitView() }
-  }, [cols, rows, fitView])
+  }, [cols, rows, fitView, fitRequest])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1096,6 +1106,7 @@ export default function App() {
     setRows(newRows)
     setTilesPerInch(snappedTiles)
     pendingFitRef.current = true
+    setFitRequest(value => value + 1)
   }
 
   const handleWidthChange = (inches: number) => {
@@ -1113,6 +1124,7 @@ export default function App() {
     })
     setCols(newCols)
     pendingFitRef.current = true
+    setFitRequest(value => value + 1)
   }
 
   const handleHeightChange = (inches: number) => {
@@ -1130,6 +1142,7 @@ export default function App() {
     })
     setRows(newRows)
     pendingFitRef.current = true
+    setFitRequest(value => value + 1)
   }
 
   const stepCanvasDimension = (dimension: 'width' | 'height', delta: number) => {
@@ -1334,35 +1347,33 @@ export default function App() {
     setSavedHistoryLength(0)
     setGenerationResult(null)
     pendingFitRef.current = true
+    setFitRequest(value => value + 1)
   }, [])
 
   const generateRandomDungeonWithSeed = useCallback(async (seed: number) => {
-    if (isDirtyRef.current) {
-      const confirmed = window.confirm('You have unsaved changes. Generate a random dungeon anyway?')
-      if (!confirmed) return
-    }
     try {
-      const result = generateRandomDungeon({ cols, rows, seed })
-      setGenerationSeedInput(String(result.summary.seed))
-      if (result.summary.startingRoom === 'failed') {
-        const failure = result.failedAttempts.find(attempt => attempt.kind === 'starting-room')
-        setGenerationResult(null)
-        setLoadError(`Generation stopped: the starting room could not fit on this canvas. ${failure?.message ?? 'Choose a larger canvas and try again.'}`)
+      const result = generateMissionDungeon({ ...generationRequest, seed })
+      setGenerationSeedInput(String(result.seed))
+      setGenerationResult(result)
+      if (!result.ok || !result.snapshot) {
+        const failure = result.diagnostics[0]
+        setLoadError(`Generation stopped: ${failure?.message ?? 'The fixed request could not be realized. Choose different inputs.'}`)
         return
       }
-      setHistory(h => push(h, result.snapshot))
+      const snapshot = result.snapshot
+      setHistory(h => push(h, snapshot))
       setActiveZ(0)
       activeZRef.current = 0
       setHoverTile(null)
       setEditingLabelId(null)
       dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape } })
-      setGenerationResult(result)
       setLoadError(null)
       pendingFitRef.current = true
+      setFitRequest(value => value + 1)
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Random dungeon generation failed.')
+      setLoadError(error instanceof Error ? error.message : 'Mission-first dungeon generation failed.')
     }
-  }, [cols, rows, brushShape])
+  }, [brushShape, generationRequest])
 
   const handleGenerateRandomDungeon = useCallback(() => {
     if (!generationSeedLockedRef.current) return generateRandomDungeonWithSeed(createRandomSeed())
@@ -1462,6 +1473,7 @@ export default function App() {
       setDarknessColor(save.darknessColor)
       setLoadError(null)
       pendingFitRef.current = true
+      setFitRequest(value => value + 1)
       setSavedHistoryLength(0)
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load file')
@@ -1500,8 +1512,6 @@ export default function App() {
         }
       })()
     : undefined
-  const generationFailureSummary = generationResult ? summarizeGenerationFailures(generationResult.failedAttempts) : []
-
   return (
     <div
       ref={containerRef}
@@ -1902,7 +1912,51 @@ export default function App() {
               </div>
               <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
+
+            <div className="canvas-size-row" style={{ marginTop: 8 }}>
+              <label className="label-dim" style={{ width: 80, flexShrink: 0 }} htmlFor="generation-style">Generation style</label>
+              <select id="generation-style" className="num-field canvas-size-input" value={generationStyle} onChange={e => setGenerationStyle(e.target.value as GenerationStyle)} aria-label="Generation style">
+                <option value="spine-shortcuts">Critical Spine</option>
+                <option value="orbit-gates">Central Hub</option>
+                <option value="cavern-pressure">Branch-and-merge</option>
+              </select>
+            </div>
+            <div className="canvas-size-row">
+              <label className="label-dim" style={{ width: 80, flexShrink: 0 }} htmlFor="generation-complexity">Complexity</label>
+              <select id="generation-complexity" className="num-field canvas-size-input" value={generationComplexity} onChange={e => setGenerationComplexity(e.target.value as ComplexityPreset)} aria-label="Complexity preset">
+                <option value="compact">Compact</option>
+                <option value="standard">Standard</option>
+                <option value="dense">Dense</option>
+              </select>
+            </div>
+            <div className="row" style={{ marginTop: 4 }}>
+              <label className="label-dim" htmlFor="generation-loop-count">Loops</label>
+              <input id="generation-loop-count" className="num-field" type="number" min={0} max={20} value={generationLoopCount} onChange={e => setRequestedLoopCount(Number(e.target.value))} aria-label="Loop count" />
+              <select className="num-field" style={{ flex: 1 }} value={generationLoopPreference} onChange={e => setGenerationLoopPreference(e.target.value as LoopPreference)} aria-label="Loop preference">
+                <option value="varied">Varied loop challenges</option>
+                {ALL_LOOP_CHALLENGES.map(challenge => <option key={challenge} value={challenge}>{challenge.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
+              </select>
+            </div>
+            {generationLoopChallenges.slice(0, generationLoopCount).map((challenge, index) => (
+              <div className="row" style={{ marginTop: 4 }} key={`loop-challenge-${index}`}>
+                <label className="label-dim" htmlFor={`generation-loop-challenge-${index}`}>Loop {index + 1}</label>
+                <select id={`generation-loop-challenge-${index}`} className="num-field" style={{ flex: 1 }} value={challenge ?? generationLoopPreference} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
+                  <option value="varied">Varied</option>
+                  {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{option.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
+                </select>
+              </div>
+            ))}
           </div>
+
+          <details className="hint" style={{ marginTop: 8 }} open>
+            <summary>Generation preflight: {generationPreflight.status}</summary>
+            <div>{generationPreflight.budget.missionNodes} mission nodes · {generationPreflight.budget.branches} branches · {generationPreflight.budget.challengeDensity} challenge density · {generationPreflight.budget.supportingSpace} supporting cells</div>
+            <div>Preset loop target {generationPreflight.budget.presetLoopTarget} · minimum rooms {generationPreflight.budget.minimumRooms} · corridors {generationPreflight.budget.corridorWidths.join(', ')}</div>
+            <div>Derived dependencies: {generationPreflight.budget.derivedKeys} key{generationPreflight.budget.derivedKeys === 1 ? '' : 's'} · {generationPreflight.budget.derivedLocks} lock{generationPreflight.budget.derivedLocks === 1 ? '' : 's'}</div>
+            <div>Exactly {generationPreflight.budget.requestedLoops} loop{generationPreflight.budget.requestedLoops === 1 ? '' : 's'} · {generationPreflight.estimatedRooms} estimated room anchors</div>
+            <div>{generationPreflight.capacity.usableCols}×{generationPreflight.capacity.usableRows} usable cells · {generationPreflight.capacity.roomSlots} buffered room slots</div>
+            {generationPreflight.diagnostics.slice(0, 3).map(diagnostic => <div key={`${diagnostic.code}-${diagnostic.message}`} style={{ color: diagnostic.stage === 'input' || generationPreflight.status === 'impossible' ? '#e08b71' : 'var(--text)' }}>{diagnostic.message}</div>)}
+          </details>
 
           <div className="row">
             <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
@@ -1925,7 +1979,7 @@ export default function App() {
             />
           </div>
           <div className="generation-actions" style={{ marginTop: 6 }}>
-            <button className="btn btn-primary" onClick={handleGenerateRandomDungeon}>
+            <button className="btn btn-primary" onClick={handleGenerateRandomDungeon} disabled={generationPreflight.status === 'impossible'}>
               <IconCave size={13} /> Generate Dungeon
             </button>
             <button className="btn" onClick={handleNewSeed}>
@@ -1934,16 +1988,27 @@ export default function App() {
           </div>
           {generationResult && (
             <div className="hint" style={{ marginTop: 8 }}>
-              <div style={{ color: 'var(--text)', marginBottom: 3 }}>Generated {generationResult.summary.dungeonType} dungeon</div>
+              <div style={{ color: 'var(--text)', marginBottom: 3 }}>{generationResult.ok ? `Generated ${generationResult.summary.style}` : 'Generation request failed'}</div>
               <div>Seed {generationResult.summary.seed}</div>
-              <div>{generationResult.summary.rooms} rooms · {generationResult.summary.hallways} hallways · {generationResult.summary.terminalHallways} terminal</div>
-              <div>{generationResult.summary.visibleStamps} stamps · {generationResult.summary.visibleLabels} labels · {generationResult.summary.failedAttempts} rejected attempts</div>
-              {generationFailureSummary.length > 0 && (
+              <div>{generationResult.summary.mission.nodes} mission nodes · {generationResult.summary.mission.cycles} cycles · {generationResult.summary.space.modules} spatial modules</div>
+              <div>{generationResult.summary.mission.keys} keys · {generationResult.summary.mission.locks} locks · {generationResult.summary.rejectedAttempts} rejected attempts</div>
+              {generationResult.failedAttempts.length > 0 && (
                 <details style={{ marginTop: 4 }}>
                   <summary>Why attempts were rejected</summary>
-                  {generationFailureSummary.map(({ reason, count }) => (
-                    <div key={reason}>{count}× {GENERATION_FAILURE_LABELS[reason]}</div>
-                  ))}
+                  {generationResult.failedAttempts.map((attempt, index) => <div key={`${attempt.code}-${index}`}>{attempt.message}</div>)}
+                </details>
+              )}
+              <details style={{ marginTop: 4 }}>
+                <summary>Mission &amp; Space inspector</summary>
+                <div>{generationResult.summary.mission.patterns} patterns → {generationResult.summary.mission.nodes} primitive nodes</div>
+                {generationResult.summary.mission.pairings.map(pairing => <div key={pairing.keyId}>{pairing.keyId} → {pairing.lockIds.length ? pairing.lockIds.join(', ') : 'optional'}</div>)}
+                {generationResult.summary.mission.loopChallenges.map(loop => <div key={loop.cycleId}>{loop.cycleId}: {loop.challenge} · {loop.realization}</div>)}
+                <div>{generationResult.summary.space.realization}</div>
+              </details>
+              {generationResult.diagnostics.length > 0 && (
+                <details style={{ marginTop: 4 }}>
+                  <summary>Generation diagnostic trace</summary>
+                  {generationResult.diagnostics.slice(0, 12).map((diagnostic, index) => <div key={`${diagnostic.stage}-${diagnostic.code}-${index}`}>{diagnostic.stage}: {diagnostic.message}</div>)}
                 </details>
               )}
             </div>

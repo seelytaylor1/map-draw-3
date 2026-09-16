@@ -1,11 +1,8 @@
-import type { Label } from '../labels'
-import type { Stamp, StampType, Rotation } from '../stamps'
-import type { TileState } from '../constants'
-import type { StepRun } from '../steps'
-import type { RampRun } from '../ramps'
+import type { StampType, Rotation } from '../../stamps'
+import type { AppSnapshotShape, Direction, Point } from '../commonTypes'
 
-export type Point = { col: number; row: number }
-export type Direction = 'N' | 'E' | 'S' | 'W'
+export type { AppSnapshotShape, Direction, Point } from '../commonTypes'
+
 export type DungeonType = 'Caves' | 'Tombs' | 'Ruins'
 export type StartingLocation = 'center' | 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' | 'random'
 export type RoomShape = 'square' | 'large-square' | 'rectangle' | 'circular' | 'cave-opening' | 'cavern' | 'natural-cavern' | 'underground-feature'
@@ -100,15 +97,6 @@ export interface GenerationAttempt {
   message: string
 }
 
-export interface AppSnapshotShape {
-  grids: Map<number, Uint8Array>
-  stamps: Stamp[]
-  steps: StepRun[]
-  ramps: RampRun[]
-  labels: Label[]
-  environmentalColors: Map<number, string>
-}
-
 export interface GenerationInput {
   cols: number
   rows: number
@@ -152,5 +140,3 @@ export interface GenerationResult {
   failedAttempts: GenerationAttempt[]
   summary: GenerationSummary
 }
-
-export const TRAVERSABLE_STATES: readonly TileState[] = [1, 2]

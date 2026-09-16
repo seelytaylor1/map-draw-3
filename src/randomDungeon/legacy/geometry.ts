@@ -80,7 +80,7 @@ export function hallwayFootprint(origin: Point, direction: Direction, length: nu
   const left = (d: Direction) => turnLeft[d]
   for (let i = 1; i <= length; i++) {
     current = step(current, travel); path.push(current)
-    const v = directionVector[travel]; const side = directionVector[left(travel)]
+    const side = directionVector[left(travel)]
     // A doorway is one tile wide. Let the hallway widen after it clears the
     // source room so the wider footprint does not clip the room's corner.
     const segmentWidth = i === 1 ? 1 : width

@@ -17,5 +17,7 @@ export default defineConfig({
   plugins: [react(), viteSingleFile()],
   test: {
     environment: 'node',
+    include: ['src/**/*.test.{ts,tsx}'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],
   },
 })
