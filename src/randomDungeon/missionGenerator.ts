@@ -37,15 +37,23 @@ export function generateMissionDungeon(input: GenerationRequest): MissionGenerat
   const progression = validateProgression(mission)
   if (!progression.solvable) return failure(request, mission, preflight, [...preflight.diagnostics, ...mission.diagnostics, ...progression.diagnostics])
 
-  const space = buildSpacePlan(request, mission)
-  const spaceValidation = validateSpacePlan(request, space, mission)
-  if (!spaceValidation.valid) return failure(request, mission, preflight, [...preflight.diagnostics, ...spaceValidation.diagnostics], spaceValidation.diagnostics)
+  let space = buildSpacePlan(request, mission)
+  let spaceValidation = validateSpacePlan(request, space, mission)
+  let attempts = 0
+  const rejected: GenerationDiagnostic[] = []
+  while (!spaceValidation.valid && attempts < 31) {
+    const reason = spaceValidation.diagnostics[0]!
+    rejected.push({ ...reason, message: `Placement ${attempts + 1}: ${reason.message}` })
+    space = buildSpacePlan(request, mission, ++attempts)
+    spaceValidation = validateSpacePlan(request, space, mission)
+  }
+  if (!spaceValidation.valid) return failure(request, mission, preflight, [...preflight.diagnostics, ...spaceValidation.diagnostics], [...rejected, spaceValidation.diagnostics[0]!])
   const rasterized = rasterizeSpacePlan(request, mission, space)
   if (!rasterized.snapshot) return failure(request, mission, preflight, [...preflight.diagnostics, ...rasterized.diagnostics], rasterized.diagnostics)
 
   const diagnostics = [...preflight.diagnostics, ...mission.diagnostics, ...rasterized.diagnostics]
-  const summary: MissionGenerationSummary = { seed: normalizeSeed(request.seed), style: request.style, status: 'success', budget: preflight.budget, preflight, mission: summarizeMission(mission), space: { modules: space.modules.length, connections: space.connections.length, realization: describeSpaceRealization(request, space) }, diagnostics, rejectedAttempts: 0 }
-  return { ok: true, request, seed: normalizeSeed(request.seed), snapshot: rasterized.snapshot, mission, space, preflight, summary, diagnostics, failedAttempts: [] }
+  const summary: MissionGenerationSummary = { seed: normalizeSeed(request.seed), style: request.style, status: 'success', budget: preflight.budget, preflight, mission: summarizeMission(mission), space: { modules: space.modules.length, connections: space.connections.length, realization: describeSpaceRealization(request, space) }, diagnostics, rejectedAttempts: attempts }
+  return { ok: true, request, seed: normalizeSeed(request.seed), snapshot: rasterized.snapshot, mission, space, preflight, summary, diagnostics, failedAttempts: rejected }
 }
 
 export { createComplexityBudget, preflightGeneration, validateGenerationRequest }

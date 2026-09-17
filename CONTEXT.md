@@ -170,3 +170,6 @@ A valid hallway that has no room beyond its end. It remains playable Floor space
 
 ## Generation Attempt
 A proposed extension from a dungeon exit. An attempt either becomes accepted room, hallway, doorway, intersection, or vertical content, or is rejected without partial geometry; rejected attempts retain their reason for generation diagnostics.
+
+## Mission-preserving Layout Search
+The mission-first generator uses up to 32 seeded room-placement candidates, followed by buffered doorway-to-doorway routing. Room sizes account for page capacity and exit count; rectangular, chamfered, and cruciform footprints create distinct chambers. Goals and hubs are spatial landmarks. Corridors cannot overlap or touch outside declared rooms, including within cycles. Every guarded entrance receives its own lock marker. See `docs/adr/0002-mission-preserving-dungeon-layouts.md`.

@@ -78,6 +78,7 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       const dependency = addRequiredKeyLock(mission, cycle, cycle.roles.challengeNode, '', false)
       const lockEdge = mission.edges.find(candidate => candidate.from === cycle.roles.challengeNode && candidate.to === cycle.roles.objectiveNode)
       if (lockEdge) lockEdge.lockId = dependency.lockId
+      for (const entry of mission.edges.filter(e => e.to === cycle.roles.objectiveNode)) entry.lockId = dependency.lockId
       const valve = edge(`unknown-return-valve-${cycle.id}`, cycle.roles.challengeNode, dependency.keyNodeId, 'return', { oneWay: true })
       const returnEdge = edge(`unknown-return-back-${cycle.id}`, dependency.keyNodeId, cycle.roles.anchorNode, 'return')
       mission.edges.push(valve, returnEdge)
@@ -90,7 +91,8 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       const hub = mission.nodes.find(candidate => candidate.id === cycle.roles.anchorNode)
       if (hub) hub.kind = 'hub'
       removeEdges(mission, cycle.routeEdgeIds)
-      const spokes = [cycle.roles.challengeNode, cycle.roles.objectiveNode].map(target => edge(`spoke-${cycle.id}-${target}`, cycle.roles.anchorNode, target, 'cycle-route'))
+      const destinations = [...new Set([...cycle.routeA, ...cycle.routeB])].filter(id => id !== cycle.roles.anchorNode)
+      const spokes = destinations.map(target => edge(`spoke-${cycle.id}-${target}`, cycle.roles.anchorNode, target, 'cycle-route'))
       mission.edges.push(...spokes)
       cycle.routeA = [cycle.roles.anchorNode, cycle.roles.challengeNode]
       cycle.routeB = [cycle.roles.anchorNode, cycle.roles.objectiveNode]
@@ -103,7 +105,7 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'double-lock': { ...base, realization: 'two distinct locks on one objective', rewrite: (mission, cycle) => {
       const first = addRequiredKeyLock(mission, cycle, cycle.roles.anchorNode, '')
       const secondKeyId = `key-${cycle.id}-2`
-      const secondKeyNodeId = addKey(mission, cycle, secondKeyId, cycle.roles.challengeNode)
+      addKey(mission, cycle, secondKeyId, cycle.roles.challengeNode)
       const gateOneId = `lock-node-${cycle.id}-1`
       const gateTwoId = `lock-node-${cycle.id}-2`
       if (!mission.nodes.some(candidate => candidate.id === gateOneId)) mission.nodes.push(node(gateOneId, 'lock', `loop-${cycle.id}`, `Lock ${first.lockId}`, { lockId: first.lockId }))
@@ -119,10 +121,13 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
         const routeIndex = cycle.routeEdgeIds.indexOf(final.id)
         if (routeIndex >= 0) cycle.routeEdgeIds.splice(routeIndex, 1, firstGate.id, secondGate.id, objective.id)
       }
-      cycle.routeB = [cycle.roles.anchorNode, first.keyNodeId, cycle.roles.challengeNode, secondKeyNodeId, cycle.roles.anchorNode]
-      const returnEdge = edge(`cycle-return-${cycle.id}`, secondKeyNodeId, cycle.roles.anchorNode, 'return')
-      mission.edges.push(returnEdge)
-      cycle.routeEdgeIds.push(`key-access-${cycle.id}-${first.keyId}`, `key-access-${cycle.id}-${secondKeyId}`, returnEdge.id)
+      // Both approaches merge before the two serial gates. Neither entrance
+      // may reach the objective without collecting both keys.
+      for (const entry of mission.edges.filter(e => e.to === cycle.roles.objectiveNode && e.from !== gateTwoId)) entry.to = gateOneId
+      const detour = cycle.routeB[1]!
+      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.challengeNode, gateOneId, gateTwoId, cycle.roles.objectiveNode]
+      cycle.routeB = [cycle.roles.anchorNode, detour, gateOneId, gateTwoId, cycle.roles.objectiveNode]
+
     } },
   }
   return contracts[challenge]
@@ -151,7 +156,7 @@ function addBranches(mission: Mission, spine: string[], count: number, style: Mi
     // Keep the first progression anchor open for a Loop Challenge shortcut.
     // Branches still attach to the spine, but do not consume every aperture
     // around the node where the first explicit cycle originates.
-    const branchOffset = style === 'spine-shortcuts' ? 4 : 1
+    const branchOffset = style === 'spine-shortcuts' ? 4 : style === 'orbit-gates' ? 0 : 1
     const from = spine[Math.min(spine.length - 2, index + branchOffset)]!
     const to = spine[Math.min(spine.length - 1, index + branchOffset + 1)]!
     mission.nodes.push(node(id, 'branch', 'progression', `Branch ${index + 1}`))
@@ -192,7 +197,7 @@ export function createMission(request: GenerationRequest, budget = createComplex
       if (lock && lockedSpineEdge) lockedSpineEdge.lockId = lock.id
       continue
     }
-    const anchor = spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
+    const anchor = request.style === 'orbit-gates' ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
     const challengeNode = `loop-${index + 1}-challenge`
     const detourNode = `loop-${index + 1}-detour`
     const objectiveNode = `loop-${index + 1}-objective`

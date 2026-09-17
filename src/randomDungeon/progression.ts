@@ -22,12 +22,9 @@ export function validateProgression(mission: Mission): ProgressionResult {
     for (const route of mission.edges) {
       if (route.blocked) continue
       const edgeLock = route.lockId ? mission.locks.find(lock => lock.id === route.lockId) : undefined
-      // Optional locks gate optional content only. They must not turn a
-      // missing optional dependency into a false Goal-unreachable result.
-      if (route.lockId && (!edgeLock || (!edgeLock.optional && !locks.has(route.lockId)))) continue
+      if (route.lockId && (!edgeLock || !locks.has(route.lockId))) continue
       if (reachable.has(route.from) && !reachable.has(route.to)) { reachable.add(route.to); changed = true }
-      // Static one-way metadata describes the forward relationship only. The
-      // graph is not mutated to simulate a door opening or a player action.
+      if (!route.oneWay && reachable.has(route.to) && !reachable.has(route.from)) { reachable.add(route.from); changed = true }
     }
   }
   const goalReachable = reachable.has(mission.goalNodeId)

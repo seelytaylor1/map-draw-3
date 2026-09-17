@@ -91,7 +91,7 @@ describe('mission-first dungeon generation', () => {
     expect(result.summary.mission.pairings).toHaveLength(0)
   })
 
-  it('does not let an optional lock block the Goal path', () => {
+  it('rejects an optional lock that incorrectly blocks the only Goal path', () => {
     const mission: Mission = {
       id: 'optional-lock-fixture',
       seed: 1,
@@ -106,8 +106,8 @@ describe('mission-first dungeon generation', () => {
       diagnostics: [],
     }
     const progression = validateProgression(mission)
-    expect(progression.goalReachable).toBe(true)
-    expect(progression.diagnostics).toHaveLength(0)
+    expect(progression.goalReachable).toBe(false)
+    expect(progression.diagnostics.map(d => d.code)).toContain('goal-unreachable')
   })
 
   it('covers the complete loop challenge vocabulary', () => {
