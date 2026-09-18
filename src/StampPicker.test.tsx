@@ -16,17 +16,25 @@ afterEach(cleanup)
 describe('StampPicker', () => {
   it('renders the icons and iso objects groups', () => {
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
-    expect(screen.getByText('Icons')).toBeInTheDocument()
-    expect(screen.getByText('Iso Objects')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /map icons/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /objects/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/search map icons/i)).toBeInTheDocument()
   })
 
-  it('renders a split iso object button', () => {
+  it('searches object assets without rendering the whole library', async () => {
+    const user = userEvent.setup()
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
+    expect(screen.getAllByRole('button').length).toBeLessThan(40)
+    await user.click(screen.getByRole('tab', { name: /objects/i }))
+    await user.type(screen.getByLabelText(/search objects/i), 'g 1002')
     expect(screen.getByTitle('G 1002')).toBeInTheDocument()
   })
 
-  it('split iso object button is enabled', () => {
+  it('split iso object button is enabled', async () => {
+    const user = userEvent.setup()
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
+    await user.click(screen.getByRole('tab', { name: /objects/i }))
+    await user.type(screen.getByLabelText(/search objects/i), 'g 1002')
     expect(screen.getByTitle('G 1002')).not.toBeDisabled()
   })
 
@@ -34,6 +42,8 @@ describe('StampPicker', () => {
     const user = userEvent.setup()
     const onModeChange = vi.fn()
     render(<StampPicker mode="paint" onModeChange={onModeChange} />)
+    await user.click(screen.getByRole('tab', { name: /objects/i }))
+    await user.type(screen.getByLabelText(/search objects/i), 'g 1002')
     await user.click(screen.getByTitle('G 1002'))
     expect(onModeChange).toHaveBeenCalledWith('g1002')
   })

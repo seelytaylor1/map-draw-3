@@ -1,6 +1,9 @@
+import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_ICON_TYPES, STAMP_TYPES, OBJECT_STAMP_TYPES, STAMP_ASSET_MAP, OBJECT_ASSET_MAP, type StampType, type ObjectStampType } from './stamps'
 
 export type Mode = 'paint' | 'rough' | 'steps' | 'ramps' | StampType | ObjectStampType
+
+const PAGE_SIZE = 24
 
 const toLabel = (type: string): string => type
   .replace(/(\d+)x(\d+)(?:_\d+)?$/, '')
@@ -26,45 +29,90 @@ interface Props {
 }
 
 export function StampPicker({ mode, onModeChange }: Props) {
-  const isStampMode = mode !== 'paint' && mode !== 'rough' && mode !== 'steps'
-  const isFloorMode = isStampMode && (STAMP_TYPES as string[]).includes(mode)
-  const isObjectMode = isStampMode && (OBJECT_STAMP_TYPES as string[]).includes(mode)
+  const isFloorMode = (STAMP_TYPES as string[]).includes(mode)
+  const isObjectMode = (OBJECT_STAMP_TYPES as string[]).includes(mode)
+  const isStampMode = isFloorMode || isObjectMode
+  const [category, setCategory] = useState<'icons' | 'objects'>(() => isObjectMode ? 'objects' : 'icons')
+  const [query, setQuery] = useState('')
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+  useEffect(() => {
+    if (isObjectMode) setCategory('objects')
+    if (isFloorMode) setCategory('icons')
+  }, [isFloorMode, isObjectMode])
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [category, query])
+
+  const assets = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    const source = category === 'icons'
+      ? DEFAULT_ICON_TYPES.map(type => ({ type, label: ICON_LABELS[type], src: STAMP_ASSET_MAP[type] }))
+      : OBJECT_STAMP_TYPES.map(type => ({ type, label: ISO_OBJECT_LABELS[type], src: OBJECT_ASSET_MAP[type] }))
+    return normalized
+      ? source.filter(asset => asset.label.toLowerCase().includes(normalized) || asset.type.toLowerCase().includes(normalized))
+      : source
+  }, [category, query])
+
+  const selectedLabel = isFloorMode
+    ? ICON_LABELS[mode as StampType] ?? toLabel(mode)
+    : isObjectMode ? ISO_OBJECT_LABELS[mode as ObjectStampType] : null
 
   return (
-    <>
-      <div className="label-dim" style={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.08em' }}>Icons</div>
-      <div className="row" style={{ flexWrap: 'wrap' }}>
-        {DEFAULT_ICON_TYPES.map(type => (
-          <button
-            key={type}
-            title={ICON_LABELS[type]}
-            className={`stamp-btn${mode === type ? ' active' : ''}`}
-            onClick={() => onModeChange(mode === type ? 'paint' : type)}
-          >
-            <img src={STAMP_ASSET_MAP[type]} alt={ICON_LABELS[type]} />
-          </button>
-        ))}
+    <div className="asset-browser">
+      <div className="asset-category-tabs" role="tablist" aria-label="Asset category">
+        <button role="tab" aria-selected={category === 'icons'} className={category === 'icons' ? 'active' : ''} onClick={() => setCategory('icons')}>
+          Map icons <span>{DEFAULT_ICON_TYPES.length}</span>
+        </button>
+        <button role="tab" aria-selected={category === 'objects'} className={category === 'objects' ? 'active' : ''} onClick={() => setCategory('objects')}>
+          Objects <span>{OBJECT_STAMP_TYPES.length}</span>
+        </button>
       </div>
 
-      <div className="label-dim" style={{ textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.08em' }}>Iso Objects</div>
-      <div className="row" style={{ flexWrap: 'wrap' }}>
-        {OBJECT_STAMP_TYPES.map(type => (
-          <button
-            key={type}
-            title={ISO_OBJECT_LABELS[type]}
-            className={`stamp-btn${mode === type ? ' active' : ''}`}
-            onClick={() => onModeChange(mode === type ? 'paint' : type)}
-          >
-            <img src={OBJECT_ASSET_MAP[type]} alt={ISO_OBJECT_LABELS[type]} />
-          </button>
-        ))}
+      <label className="asset-search">
+        <span aria-hidden="true">⌕</span>
+        <input
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          onKeyDown={event => { if (event.key === 'Escape') setQuery('') }}
+          placeholder={`Search ${category === 'icons' ? 'map icons' : 'objects'}…`}
+          aria-label={`Search ${category === 'icons' ? 'map icons' : 'objects'}`}
+        />
+        {query && <button aria-label="Clear asset search" onClick={() => setQuery('')}>×</button>}
+      </label>
+
+      <div className="asset-results-meta">
+        <span>{assets.length} {assets.length === 1 ? 'result' : 'results'}</span>
+        {selectedLabel && <span className="asset-selection">Selected: {selectedLabel}</span>}
       </div>
 
-      {isStampMode && (
-        <div className="hint">
-          Placing: {isFloorMode ? ICON_LABELS[mode as StampType] ?? toLabel(mode) : isObjectMode ? ISO_OBJECT_LABELS[mode as ObjectStampType] : ''} — click map to place
+      {assets.length > 0 ? (
+        <div className="asset-grid">
+          {assets.slice(0, visibleCount).map(asset => (
+            <button
+              key={asset.type}
+              title={asset.label}
+              aria-label={asset.label}
+              className={`stamp-btn${mode === asset.type ? ' active' : ''}`}
+              onClick={() => onModeChange(mode === asset.type ? 'paint' : asset.type)}
+            >
+              <img src={asset.src} alt="" />
+              <span>{asset.label}</span>
+            </button>
+          ))}
         </div>
+      ) : (
+        <div className="asset-empty">No assets match “{query}”.</div>
       )}
-    </>
+
+      {assets.length > visibleCount && (
+        <button className="asset-more" onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>
+          Show {Math.min(PAGE_SIZE, assets.length - visibleCount)} more
+        </button>
+      )}
+
+      {isStampMode && selectedLabel && (
+        <div className="hint">Click the map to place {selectedLabel}. Click the selected asset again to return to painting.</div>
+      )}
+    </div>
   )
 }

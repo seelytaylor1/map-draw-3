@@ -52,6 +52,10 @@ vi.mock('react-konva', () => ({
 
 import App from './App'
 
+const openWorkspace = (name: 'Assets' | 'Generate' | 'File') => {
+  fireEvent.click(screen.getByRole('tab', { name }))
+}
+
 describe('App load lifecycle', () => {
   beforeEach(() => {
     cleanup()
@@ -79,9 +83,25 @@ describe('App load lifecycle', () => {
     expect(onMenuEventMock.mock.calls.length).toBe(initialCount)
   })
 
+  it('separates the workspace into focused tabs and resizes the inspector by keyboard', () => {
+    render(<App />)
+
+    expect(screen.getByRole('tab', { name: 'Draw' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Generate' })).toHaveAttribute('aria-selected', 'false')
+    openWorkspace('Generate')
+    expect(screen.getByRole('tab', { name: 'Generate' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText(/generate a dungeon/i)).toBeVisible()
+
+    const resizeHandle = screen.getByRole('separator', { name: /resize inspector/i })
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '328')
+    fireEvent.keyDown(resizeHandle, { key: 'ArrowRight' })
+    expect(resizeHandle).toHaveAttribute('aria-valuenow', '344')
+  })
+
   it('opens the asset folder from the file toolbar', async () => {
     const { openAssetFolder } = await import('./tauri')
     render(<App />)
+    openWorkspace('Assets')
 
     const buttons = screen.getAllByRole('button', { name: /asset folder/i })
     expect(buttons.length).toBeGreaterThan(0)
@@ -92,6 +112,7 @@ describe('App load lifecycle', () => {
 
   it('launches with one-eighth-inch squares and uses that as the canvas dimension step', () => {
     render(<App />)
+    openWorkspace('File')
 
     const widthInput = screen.getByLabelText(/canvas width in inches/i)
     const heightInput = screen.getByLabelText(/canvas height in inches/i)
@@ -111,6 +132,7 @@ describe('App load lifecycle', () => {
 
   it('adds explicit step controls for canvas size adjustments', () => {
     render(<App />)
+    openWorkspace('File')
 
     const sizeButtons = screen.getAllByRole('button', { name: /increase|decrease/i })
     expect(sizeButtons.length).toBeGreaterThanOrEqual(2)
@@ -118,6 +140,7 @@ describe('App load lifecycle', () => {
 
   it('supports keyboard step adjustments for canvas size fields', () => {
     render(<App />)
+    openWorkspace('File')
 
     const widthInput = screen.getAllByRole('spinbutton')[0] as HTMLInputElement
     const before = Number(widthInput.value)
@@ -129,6 +152,7 @@ describe('App load lifecycle', () => {
 
   it('changes width by one-eighth-inch squares and supports decrement buttons', () => {
     render(<App />)
+    openWorkspace('File')
 
     const [widthInput] = screen.getAllByRole('spinbutton') as HTMLInputElement[]
     const increaseButton = screen.getByRole('button', { name: /increase width/i })
@@ -146,6 +170,7 @@ describe('App load lifecycle', () => {
 
   it('keeps canvas page dimensions fixed when square scale changes', () => {
     render(<App />)
+    openWorkspace('File')
 
     const widthInput = screen.getByLabelText(/canvas width in inches/i) as HTMLInputElement
     const heightInput = screen.getByLabelText(/canvas height in inches/i) as HTMLInputElement
@@ -162,6 +187,7 @@ describe('App load lifecycle', () => {
 
   it('exposes a square scale setting and supports swapping width and length', () => {
     render(<App />)
+    openWorkspace('File')
 
     const widthInput = screen.getByLabelText(/canvas width in inches/i) as HTMLInputElement
     const heightInput = screen.getByLabelText(/canvas height in inches/i) as HTMLInputElement
@@ -182,11 +208,13 @@ describe('App load lifecycle', () => {
 
   it('keeps the current map when the starting room cannot fit', async () => {
     render(<App />)
+    openWorkspace('File')
 
     fireEvent.change(screen.getByLabelText(/canvas width in inches/i), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText(/canvas height in inches/i), { target: { value: '1' } })
+    openWorkspace('Generate')
 
-    expect(screen.getByText(/generation preflight: impossible/i)).toBeInTheDocument()
+    expect(screen.getByText(/cannot fit/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /generate dungeon/i })).toBeDisabled()
     expect(screen.queryByText(/generated .* dungeon/i)).not.toBeInTheDocument()
   })
@@ -194,6 +222,7 @@ describe('App load lifecycle', () => {
   it('reports a successful generation without fabricated rejected attempts', async () => {
     randomSeed.value = 160
     render(<App />)
+    openWorkspace('Generate')
 
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
     await Promise.resolve()
@@ -204,6 +233,7 @@ describe('App load lifecycle', () => {
   it('stores random seeds and keeps user-edited seeds frozen', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<App />)
+    openWorkspace('Generate')
 
     randomSeed.value = 111
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
@@ -234,6 +264,7 @@ describe('App load lifecycle', () => {
   it('generates from an explicitly entered seed', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<App />)
+    openWorkspace('Generate')
 
     fireEvent.change(screen.getByLabelText(/dungeon seed/i), { target: { value: '3278230271' } })
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
@@ -245,6 +276,7 @@ describe('App load lifecycle', () => {
   it('generates a new dungeon from a fresh seed', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<App />)
+    openWorkspace('Generate')
 
     randomSeed.value = 111
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
@@ -260,6 +292,7 @@ describe('App load lifecycle', () => {
   it('replaces a generated map without a confirmation popup', async () => {
     const confirm = vi.spyOn(window, 'confirm')
     render(<App />)
+    openWorkspace('Generate')
 
     randomSeed.value = 111
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
@@ -274,6 +307,7 @@ describe('App load lifecycle', () => {
 
   it('exposes the shared mission-first request and live preflight controls', () => {
     render(<App />)
+    openWorkspace('Generate')
 
     expect(screen.getByLabelText(/generation style/i)).toHaveValue('spine-shortcuts')
     expect(screen.getByRole('option', { name: /central hub/i })).toHaveValue('orbit-gates')
@@ -283,12 +317,13 @@ describe('App load lifecycle', () => {
     expect(screen.getByLabelText(/loop count/i)).toHaveValue(1)
     expect(screen.getByLabelText(/loop 1 challenge/i)).toHaveValue('varied')
     expect(screen.getAllByRole('option', { name: /unknown return/i }).length).toBeGreaterThan(0)
-    expect(screen.getByText(/generation preflight: fit|generation preflight: warning/i)).toBeInTheDocument()
+    expect(screen.getByText(/ready to generate|tight fit/i)).toBeInTheDocument()
     expect(screen.getByText(/mission nodes/i)).toBeInTheDocument()
   })
 
   it('inherits the global challenge for unspecified loops while preserving explicit overrides', () => {
     render(<App />)
+    openWorkspace('Generate')
 
     const globalPreference = screen.getByLabelText(/loop preference/i) as HTMLSelectElement
     const loopOne = screen.getByLabelText(/loop 1 challenge/i) as HTMLSelectElement
@@ -304,6 +339,7 @@ describe('App load lifecycle', () => {
 
   it('preserves loop choices by index and defaults newly added loops to the inherited value', () => {
     render(<App />)
+    openWorkspace('Generate')
 
     const count = screen.getByLabelText(/loop count/i) as HTMLInputElement
     const loopOne = screen.getByLabelText(/loop 1 challenge/i) as HTMLSelectElement

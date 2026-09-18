@@ -179,17 +179,21 @@ export default function App() {
     setGenerationLoopChallenges(previous => Array.from({ length: next }, (_, index) => previous[index]))
   }
 
+  const documentName = currentFilePath
+    ? currentFilePath.split(/[\\/]/).pop() ?? 'Untitled'
+    : 'Untitled'
+
   useEffect(() => {
     if (!isTauri()) return
-    const name = currentFilePath
-      ? currentFilePath.split(/[\\/]/).pop() ?? 'Untitled'
-      : 'Untitled'
     const marker = isDirty ? '● ' : ''
-    setWindowTitle(`${marker}Map Draw — ${name}`)
-  }, [currentFilePath, isDirty])
+    setWindowTitle(`${marker}Map Draw — ${documentName}`)
+  }, [documentName, isDirty])
 
   const [paintTab, setPaintTab] = useState<'basic' | 'environments'>('basic')
   const [colorPickerOpen, setColorPickerOpen] = useState<number | null>(null)
+  const [workspaceTab, setWorkspaceTab] = useState<'draw' | 'assets' | 'generate' | 'document'>('draw')
+  const [toolbarWidth, setToolbarWidth] = useState(328)
+  const resizingToolbarRef = useRef(false)
 
   const stageRef = useRef<Konva.Stage>(null)
   const pendingFitRef = useRef(false)
@@ -208,6 +212,7 @@ export default function App() {
   useEffect(() => {
     const obs = new ResizeObserver(() => {
       setSize({ w: window.innerWidth, h: window.innerHeight })
+      setToolbarWidth(width => Math.min(width, Math.max(280, window.innerWidth - 48)))
     })
     obs.observe(document.body)
     return () => obs.disconnect()
@@ -1350,6 +1355,24 @@ export default function App() {
     setFitRequest(value => value + 1)
   }, [])
 
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!resizingToolbarRef.current) return
+      setToolbarWidth(Math.min(520, Math.max(280, event.clientX - 12)))
+    }
+    const stopResizing = () => {
+      resizingToolbarRef.current = false
+      document.body.classList.remove('resizing-panel')
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResizing)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResizing)
+      document.body.classList.remove('resizing-panel')
+    }
+  }, [])
+
   const generateRandomDungeonWithSeed = useCallback(async (seed: number) => {
     try {
       const result = generateMissionDungeon({ ...generationRequest, seed })
@@ -1523,25 +1546,35 @@ export default function App() {
         if (file) handleFileLoad(file)
       }}
     >
-      {/* Toolbar */}
-      <div className="toolbar" style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, userSelect: 'none' }}>
-        <div className="toolbar-title"><IconCompass size={15} /> Map Draw</div>
+      {/* Workspace inspector */}
+      <aside className="toolbar" style={{ width: toolbarWidth, position: 'absolute', top: 12, left: 12, zIndex: 10, userSelect: 'none' }}>
+        <header className="toolbar-title">
+          <span className="brand-mark"><IconCompass size={16} /></span>
+          <span className="brand-copy"><strong>Map Draw</strong><small>{isDirty ? 'Unsaved changes' : documentName}</small></span>
+          <span className="map-size-badge">{+(cols / tilesPerInch).toFixed(2)} × {+(rows / tilesPerInch).toFixed(2)} in</span>
+        </header>
+        <nav className="workspace-tabs" role="tablist" aria-label="Workspace">
+          {([
+            ['draw', 'Draw'],
+            ['assets', 'Assets'],
+            ['generate', 'Generate'],
+            ['document', 'File'],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={workspaceTab === value}
+              className={workspaceTab === value ? 'active' : ''}
+              onClick={() => setWorkspaceTab(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
-          <div className="stepper">
-            <button onClick={() => setActiveZ(z => z - 1)}><IconMinus size={13} /></button>
-            <span className="z-value">Z{activeZ}</span>
-            <button onClick={() => setActiveZ(z => z + 1)}><IconPlus size={13} /></button>
-          </div>
-          <div className="row">
-            <div style={{ flex: 1 }}>
-              <ToolButton icon={<IconHash size={14} />} label="Grid" active={showGrid} onClick={() => setShowGrid(v => !v)} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
-            </div>
-          </div>
-        </Section>
+        <div className="toolbar-content">
+        <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
+          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click always erases.</span></div>
 
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
           <Segmented
@@ -1643,6 +1676,22 @@ export default function App() {
           )}
         </Section>
 
+        <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
+          <div className="stepper">
+            <button aria-label="Previous level" onClick={() => setActiveZ(z => z - 1)}><IconMinus size={13} /></button>
+            <span className="z-value">Z{activeZ}</span>
+            <button aria-label="Next level" onClick={() => setActiveZ(z => z + 1)}><IconPlus size={13} /></button>
+          </div>
+          <div className="row">
+            <div style={{ flex: 1 }}>
+              <ToolButton icon={<IconHash size={14} />} label="Grid" active={showGrid} onClick={() => setShowGrid(v => !v)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
+            </div>
+          </div>
+        </Section>
+
         <Section title="Structures" icon={<IconStairs size={14} />}>
           <ToolButton
             icon={<IconStairs size={14} />}
@@ -1702,6 +1751,11 @@ export default function App() {
           })()}
         </Section>
 
+        </div>
+
+        <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'assets'}>
+          <div className="panel-intro"><strong>Place an asset</strong><span>Search the library, select an icon, then click the map.</span></div>
+
         <Section title="Stamps" icon={<IconStampFloor size={14} />} defaultOpen>
           <div className="row" style={{ marginBottom: 8 }}>
             <Btn onClick={handleOpenAssetFolder} title="Open the folder with floor and object assets"><IconFolder size={13} /> Open Asset Folder</Btn>
@@ -1745,6 +1799,10 @@ export default function App() {
             )
           })()}
         </Section>
+
+        </div>
+
+        <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
 
         <Section title="Labels" icon={<IconTag size={14} />}>
           <ToolButton
@@ -1848,7 +1906,114 @@ export default function App() {
           </div>
         </Section>
 
-        <Section title="Canvas & File" icon={<IconImage size={14} />} defaultOpen>
+        </div>
+
+        <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'generate'}>
+          <div className="panel-intro"><strong>Generate a dungeon</strong><span>Set the structure and complexity, review the fit, then replace the canvas in one step.</span></div>
+
+          <Section title="Dungeon setup" icon={<IconCave size={14} />} defaultOpen>
+            <div className="field-stack">
+              <label className="field-row" htmlFor="generation-style">
+                <span>Layout</span>
+                <select id="generation-style" className="num-field" value={generationStyle} onChange={e => setGenerationStyle(e.target.value as GenerationStyle)} aria-label="Generation style">
+                  <option value="spine-shortcuts">Critical Spine</option>
+                  <option value="orbit-gates">Central Hub</option>
+                  <option value="cavern-pressure">Branch-and-merge</option>
+                </select>
+              </label>
+              <label className="field-row" htmlFor="generation-complexity">
+                <span>Complexity</span>
+                <select id="generation-complexity" className="num-field" value={generationComplexity} onChange={e => setGenerationComplexity(e.target.value as ComplexityPreset)} aria-label="Complexity preset">
+                  <option value="compact">Compact</option>
+                  <option value="standard">Standard</option>
+                  <option value="dense">Dense</option>
+                </select>
+              </label>
+            </div>
+          </Section>
+
+          <Section title="Loops & challenges" icon={<IconRotate size={14} />} defaultOpen>
+            <div className="field-stack">
+              <label className="field-row" htmlFor="generation-loop-count">
+                <span>Loops</span>
+                <input id="generation-loop-count" className="num-field" type="number" min={0} max={20} value={generationLoopCount} onChange={e => setRequestedLoopCount(Number(e.target.value))} aria-label="Loop count" />
+              </label>
+              <label className="field-row">
+                <span>Default challenge</span>
+                <select className="num-field" value={generationLoopPreference} onChange={e => setGenerationLoopPreference(e.target.value as LoopPreference)} aria-label="Loop preference">
+                  <option value="varied">Varied</option>
+                  {ALL_LOOP_CHALLENGES.map(challenge => <option key={challenge} value={challenge}>{challenge.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
+                </select>
+              </label>
+              {generationLoopChallenges.slice(0, generationLoopCount).map((challenge, index) => (
+                <label className="field-row" htmlFor={`generation-loop-challenge-${index}`} key={`loop-challenge-${index}`}>
+                  <span>Loop {index + 1}</span>
+                  <select id={`generation-loop-challenge-${index}`} className="num-field" value={challenge ?? generationLoopPreference} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
+                    <option value="varied">Varied</option>
+                    {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{option.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Review & generate" icon={<IconCompass size={14} />} defaultOpen>
+            <div className={`preflight-summary status-${generationPreflight.status}`}>
+              <div><strong>{generationPreflight.status === 'fit' ? 'Ready to generate' : generationPreflight.status === 'warning' ? 'Tight fit' : 'Cannot fit'}</strong><span>{generationPreflight.estimatedRooms} room anchors · {generationPreflight.budget.requestedLoops} loop{generationPreflight.budget.requestedLoops === 1 ? '' : 's'}</span></div>
+              <span className="preflight-status">{generationPreflight.status}</span>
+            </div>
+            <details className="generation-details">
+              <summary>Capacity details</summary>
+              <div>{generationPreflight.budget.missionNodes} mission nodes · {generationPreflight.budget.branches} branches · {generationPreflight.budget.challengeDensity} challenge density</div>
+              <div>{generationPreflight.capacity.usableCols}×{generationPreflight.capacity.usableRows} usable cells · {generationPreflight.capacity.roomSlots} buffered room slots</div>
+              <div>Derived dependencies: {generationPreflight.budget.derivedKeys} key{generationPreflight.budget.derivedKeys === 1 ? '' : 's'} · {generationPreflight.budget.derivedLocks} lock{generationPreflight.budget.derivedLocks === 1 ? '' : 's'}</div>
+              {generationPreflight.diagnostics.slice(0, 3).map(diagnostic => <div key={`${diagnostic.code}-${diagnostic.message}`} className="diagnostic-line">{diagnostic.message}</div>)}
+            </details>
+            <label className="field-row seed-row" htmlFor="generation-seed">
+              <span>Seed</span>
+              <input
+                id="generation-seed"
+                className="text-field"
+                inputMode="numeric"
+                placeholder="Random on generate"
+                value={generationSeedInput}
+                onChange={e => {
+                  generationSeedLockedRef.current = true
+                  setGenerationSeedInput(e.target.value)
+                }}
+                aria-label="Dungeon seed"
+              />
+            </label>
+            <div className="generation-actions">
+              <button className="btn btn-primary" onClick={handleGenerateRandomDungeon} disabled={generationPreflight.status === 'impossible'}>
+                <IconCave size={13} /> Generate Dungeon
+              </button>
+              <button className="btn" onClick={handleNewSeed}>New Seed</button>
+            </div>
+            {generationResult && (
+              <div className={`generation-result ${generationResult.ok ? 'success' : 'failure'}`}>
+                <strong>{generationResult.ok ? `Generated ${generationResult.summary.style}` : 'Generation request failed'}</strong>
+                <span>Seed {generationResult.summary.seed}</span>
+                <span>{generationResult.summary.mission.nodes} nodes · {generationResult.summary.mission.cycles} cycles · {generationResult.summary.space.modules} modules · {generationResult.summary.rejectedAttempts} rejected attempts</span>
+                {generationResult.failedAttempts.length > 0 && (
+                  <details><summary>Rejected attempts</summary>{generationResult.failedAttempts.map((attempt, index) => <div key={`${attempt.code}-${index}`}>{attempt.message}</div>)}</details>
+                )}
+                <details>
+                  <summary>Mission &amp; space inspector</summary>
+                  <div>{generationResult.summary.mission.patterns} patterns → {generationResult.summary.mission.nodes} primitive nodes</div>
+                  {generationResult.summary.mission.pairings.map(pairing => <div key={pairing.keyId}>{pairing.keyId} → {pairing.lockIds.length ? pairing.lockIds.join(', ') : 'optional'}</div>)}
+                  {generationResult.summary.mission.loopChallenges.map(loop => <div key={loop.cycleId}>{loop.cycleId}: {loop.challenge} · {loop.realization}</div>)}
+                  <div>{generationResult.summary.space.realization}</div>
+                </details>
+              </div>
+            )}
+          </Section>
+        </div>
+
+        <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'document'}>
+          <div className="panel-intro"><strong>Canvas & file</strong><span>Set the printed page, save your work, or export a high-resolution PNG.</span></div>
+
+        <Section title="Canvas size" icon={<IconImage size={14} />} defaultOpen>
           <div className="canvas-size-stack">
             <div className="row" style={{ marginTop: 4 }}>
               <Btn onClick={handleSwapDimensions}>Swap Width/Length</Btn>
@@ -1913,106 +2078,13 @@ export default function App() {
               <span className="label-dim" style={{ fontSize: 10, flexShrink: 0 }}>in</span>
             </div>
 
-            <div className="canvas-size-row" style={{ marginTop: 8 }}>
-              <label className="label-dim" style={{ width: 80, flexShrink: 0 }} htmlFor="generation-style">Generation style</label>
-              <select id="generation-style" className="num-field canvas-size-input" value={generationStyle} onChange={e => setGenerationStyle(e.target.value as GenerationStyle)} aria-label="Generation style">
-                <option value="spine-shortcuts">Critical Spine</option>
-                <option value="orbit-gates">Central Hub</option>
-                <option value="cavern-pressure">Branch-and-merge</option>
-              </select>
-            </div>
-            <div className="canvas-size-row">
-              <label className="label-dim" style={{ width: 80, flexShrink: 0 }} htmlFor="generation-complexity">Complexity</label>
-              <select id="generation-complexity" className="num-field canvas-size-input" value={generationComplexity} onChange={e => setGenerationComplexity(e.target.value as ComplexityPreset)} aria-label="Complexity preset">
-                <option value="compact">Compact</option>
-                <option value="standard">Standard</option>
-                <option value="dense">Dense</option>
-              </select>
-            </div>
-            <div className="row" style={{ marginTop: 4 }}>
-              <label className="label-dim" htmlFor="generation-loop-count">Loops</label>
-              <input id="generation-loop-count" className="num-field" type="number" min={0} max={20} value={generationLoopCount} onChange={e => setRequestedLoopCount(Number(e.target.value))} aria-label="Loop count" />
-              <select className="num-field" style={{ flex: 1 }} value={generationLoopPreference} onChange={e => setGenerationLoopPreference(e.target.value as LoopPreference)} aria-label="Loop preference">
-                <option value="varied">Varied loop challenges</option>
-                {ALL_LOOP_CHALLENGES.map(challenge => <option key={challenge} value={challenge}>{challenge.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
-              </select>
-            </div>
-            {generationLoopChallenges.slice(0, generationLoopCount).map((challenge, index) => (
-              <div className="row" style={{ marginTop: 4 }} key={`loop-challenge-${index}`}>
-                <label className="label-dim" htmlFor={`generation-loop-challenge-${index}`}>Loop {index + 1}</label>
-                <select id={`generation-loop-challenge-${index}`} className="num-field" style={{ flex: 1 }} value={challenge ?? generationLoopPreference} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
-                  <option value="varied">Varied</option>
-                  {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{option.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
-                </select>
-              </div>
-            ))}
           </div>
 
-          <details className="hint" style={{ marginTop: 8 }} open>
-            <summary>Generation preflight: {generationPreflight.status}</summary>
-            <div>{generationPreflight.budget.missionNodes} mission nodes · {generationPreflight.budget.branches} branches · {generationPreflight.budget.challengeDensity} challenge density · {generationPreflight.budget.supportingSpace} supporting cells</div>
-            <div>Preset loop target {generationPreflight.budget.presetLoopTarget} · minimum rooms {generationPreflight.budget.minimumRooms} · corridors {generationPreflight.budget.corridorWidths.join(', ')}</div>
-            <div>Derived dependencies: {generationPreflight.budget.derivedKeys} key{generationPreflight.budget.derivedKeys === 1 ? '' : 's'} · {generationPreflight.budget.derivedLocks} lock{generationPreflight.budget.derivedLocks === 1 ? '' : 's'}</div>
-            <div>Exactly {generationPreflight.budget.requestedLoops} loop{generationPreflight.budget.requestedLoops === 1 ? '' : 's'} · {generationPreflight.estimatedRooms} estimated room anchors</div>
-            <div>{generationPreflight.capacity.usableCols}×{generationPreflight.capacity.usableRows} usable cells · {generationPreflight.capacity.roomSlots} buffered room slots</div>
-            {generationPreflight.diagnostics.slice(0, 3).map(diagnostic => <div key={`${diagnostic.code}-${diagnostic.message}`} style={{ color: diagnostic.stage === 'input' || generationPreflight.status === 'impossible' ? '#e08b71' : 'var(--text)' }}>{diagnostic.message}</div>)}
-          </details>
-
+          <div className="subsection-label">File actions</div>
           <div className="row">
             <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
             <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
           </div>
-          <div className="row" style={{ marginTop: 6 }}>
-            <label className="label-dim" htmlFor="generation-seed">Seed</label>
-            <input
-              id="generation-seed"
-              className="text-field"
-              style={{ flex: 1, minWidth: 0 }}
-              inputMode="numeric"
-              placeholder="Random"
-              value={generationSeedInput}
-              onChange={e => {
-                generationSeedLockedRef.current = true
-                setGenerationSeedInput(e.target.value)
-              }}
-              aria-label="Dungeon seed"
-            />
-          </div>
-          <div className="generation-actions" style={{ marginTop: 6 }}>
-            <button className="btn btn-primary" onClick={handleGenerateRandomDungeon} disabled={generationPreflight.status === 'impossible'}>
-              <IconCave size={13} /> Generate Dungeon
-            </button>
-            <button className="btn" onClick={handleNewSeed}>
-              New Seed
-            </button>
-          </div>
-          {generationResult && (
-            <div className="hint" style={{ marginTop: 8 }}>
-              <div style={{ color: 'var(--text)', marginBottom: 3 }}>{generationResult.ok ? `Generated ${generationResult.summary.style}` : 'Generation request failed'}</div>
-              <div>Seed {generationResult.summary.seed}</div>
-              <div>{generationResult.summary.mission.nodes} mission nodes · {generationResult.summary.mission.cycles} cycles · {generationResult.summary.space.modules} spatial modules</div>
-              <div>{generationResult.summary.mission.keys} keys · {generationResult.summary.mission.locks} locks · {generationResult.summary.rejectedAttempts} rejected attempts</div>
-              {generationResult.failedAttempts.length > 0 && (
-                <details style={{ marginTop: 4 }}>
-                  <summary>Why attempts were rejected</summary>
-                  {generationResult.failedAttempts.map((attempt, index) => <div key={`${attempt.code}-${index}`}>{attempt.message}</div>)}
-                </details>
-              )}
-              <details style={{ marginTop: 4 }}>
-                <summary>Mission &amp; Space inspector</summary>
-                <div>{generationResult.summary.mission.patterns} patterns → {generationResult.summary.mission.nodes} primitive nodes</div>
-                {generationResult.summary.mission.pairings.map(pairing => <div key={pairing.keyId}>{pairing.keyId} → {pairing.lockIds.length ? pairing.lockIds.join(', ') : 'optional'}</div>)}
-                {generationResult.summary.mission.loopChallenges.map(loop => <div key={loop.cycleId}>{loop.cycleId}: {loop.challenge} · {loop.realization}</div>)}
-                <div>{generationResult.summary.space.realization}</div>
-              </details>
-              {generationResult.diagnostics.length > 0 && (
-                <details style={{ marginTop: 4 }}>
-                  <summary>Generation diagnostic trace</summary>
-                  {generationResult.diagnostics.slice(0, 12).map((diagnostic, index) => <div key={`${diagnostic.stage}-${diagnostic.code}-${index}`}>{diagnostic.stage}: {diagnostic.message}</div>)}
-                </details>
-              )}
-            </div>
-          )}
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export PNG
           </button>
@@ -2033,11 +2105,40 @@ export default function App() {
             }}
           />
         </Section>
+        </div>
+
         <UpdateNotification
           state={updaterState}
           onInstall={downloadAndInstall}
           onRelaunch={relaunch}
         />
+        </div>
+        <div
+          className="toolbar-resizer"
+          role="separator"
+          aria-label="Resize inspector"
+          aria-orientation="vertical"
+          aria-valuemin={280}
+          aria-valuemax={520}
+          aria-valuenow={toolbarWidth}
+          tabIndex={0}
+          onPointerDown={event => {
+            event.preventDefault()
+            resizingToolbarRef.current = true
+            document.body.classList.add('resizing-panel')
+          }}
+          onKeyDown={event => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            setToolbarWidth(width => Math.min(520, Math.max(280, width + (event.key === 'ArrowRight' ? 16 : -16))))
+          }}
+        />
+      </aside>
+
+      <div className="canvas-status" aria-live="polite">
+        <strong>{drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label'}</strong>
+        <span>Z{activeZ}</span>
+        <span>{showIso ? 'Isometric preview' : 'Top-down editing'}</span>
       </div>
 
       <Stage
