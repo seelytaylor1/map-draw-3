@@ -38,6 +38,8 @@ describe('stampSize', () => {
 describe('default dungeon icon palette', () => {
   it('uses the supplied PNG symbol set as the default icon list', () => {
     expect(DEFAULT_ICON_TYPES).toContain('Door1x1')
+    expect(DEFAULT_ICON_TYPES).toContain('DoorTrapped1x1')
+    expect(DEFAULT_ICON_TYPES).toContain('DoorTrappedLocked1x1')
     expect(DEFAULT_ICON_TYPES).toContain('TableSetTwo3x1')
     expect(DEFAULT_ICON_TYPES).not.toContain('door')
   })

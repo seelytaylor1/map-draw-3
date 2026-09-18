@@ -35,6 +35,7 @@ export type StampType =
   | 'DoorRevolve1way1x1'
   | 'DoorRevolving1x1'
   | 'DoorSecret1x1'
+  | 'DoorTrapped1x1'
   | 'DoorSlides1x1'
   | 'Fire1x1'
   | 'FireCamp1x1'

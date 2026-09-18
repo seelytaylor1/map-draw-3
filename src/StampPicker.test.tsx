@@ -30,6 +30,14 @@ describe('StampPicker', () => {
     expect(screen.getByTitle('G 1002')).toBeInTheDocument()
   })
 
+  it('shows both trapped door icons in the searchable map icon palette', async () => {
+    const user = userEvent.setup()
+    render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
+    await user.type(screen.getByLabelText(/search map icons/i), 'trapped')
+    expect(screen.getByTitle('Door Trapped')).toBeInTheDocument()
+    expect(screen.getByTitle('Door Trapped Locked')).toBeInTheDocument()
+  })
+
   it('split iso object button is enabled', async () => {
     const user = userEvent.setup()
     render(<StampPicker mode="paint" onModeChange={vi.fn()} />)
