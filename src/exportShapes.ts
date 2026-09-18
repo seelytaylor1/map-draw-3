@@ -29,6 +29,7 @@ export type ImageSpec = {
   x: number; y: number; w: number; h: number
   offsetX: number; offsetY: number
   rotation: number
+  color?: string
   scaleX?: number
   scaleY?: number
   skewX?: number
@@ -199,6 +200,7 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
       offsetY: h / 2,
       rotation: stamp.rotation,
       mirrored: stamp.mirrored,
+      ...(stamp.color ? { color: stamp.color } : {}),
     })
   }
 
@@ -261,6 +263,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
         offsetY: h,
         rotation: 0,
         mirrored: stamp.mirrored,
+        ...(stamp.color ? { color: stamp.color } : {}),
       })
     } else {
       const t = isoStampTransform(stamp.rotation)
@@ -276,6 +279,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
         scaleX: stamp.mirrored ? -t.scaleX : t.scaleX,
         scaleY: t.scaleY,
         skewX: t.skewX,
+        ...(stamp.color ? { color: stamp.color } : {}),
       })
     }
   }

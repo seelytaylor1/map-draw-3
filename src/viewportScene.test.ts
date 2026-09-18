@@ -65,6 +65,20 @@ describe('buildStampScene — top-down view of object stamps', () => {
     expect(items[0].selected).toBe(true)
     expect(items[0].selectionRect).not.toBeNull()
   })
+
+  it('keeps a stamp color override attached to that stamp in top-down and iso views', () => {
+    const coloredFloorStamp: Stamp = { id: 'color-floor', type: 'door', col: 0, row: 0, rotation: 0, z: 0, color: '#e04b61' }
+    const coloredObjectStamp: Stamp = { id: 'color-object', type: 'g1002', col: 0, row: 0, rotation: 0, z: 0, color: '#4b83e0' }
+    const images = new Map([['door', fakeImage()], ['g1002', fakeImage()]])
+
+    const topDown = buildStampScene({ stamps: [coloredFloorStamp, coloredObjectStamp], selectedStampId: null, stampImages: images, activeZ: 0, tilePx: TILE_PX, showIso: false })
+    const iso = buildStampScene({ stamps: [coloredFloorStamp, coloredObjectStamp], selectedStampId: null, stampImages: images, activeZ: 0, tilePx: TILE_PX, showIso: true })
+
+    expect(topDown.find(item => item.id === 'color-floor')?.variant.color).toBe('#e04b61')
+    expect(topDown.find(item => item.id === 'color-object')?.variant.color).toBe('#4b83e0')
+    expect(iso.find(item => item.id === 'color-floor')?.variant.color).toBe('#e04b61')
+    expect(iso.find(item => item.id === 'color-object')?.variant.color).toBe('#4b83e0')
+  })
 })
 
 describe('buildLabelScene', () => {

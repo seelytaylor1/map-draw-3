@@ -65,6 +65,15 @@ describe('serialize', () => {
     expect(save.stamps[0]).toMatchObject({ id: 'abc', type: 'door' })
   })
 
+  it('round-trips a color override on an individual stamp', () => {
+    const colored = { ...STAMP, color: '#e04b61' }
+    const save = serialize({ ...BASE, stamps: [colored, { ...STAMP, id: 'other' }] })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.stamps[0].color).toBe('#e04b61')
+    expect(restored.stamps[1].color).toBeUndefined()
+  })
+
   it('omits z from stamp when z === 0', () => {
     const save = serialize({ ...BASE, stamps: [STAMP] })
     expect(save.stamps[0]).not.toHaveProperty('z')

@@ -281,9 +281,9 @@ export function buildTileScene(state: TileSceneState): TileScene {
 // ---------------------------------------------------------------------------
 
 export type StampVariant =
-  | { kind: 'topdown'; x: number; y: number; w: number; h: number; rotation: number; mirrored: boolean; opacity: number; draggable: boolean; listening: boolean }
-  | { kind: 'isoBillboard'; x: number; y: number; w: number; h: number; rotation: number; mirrored: boolean }
-  | { kind: 'isoFloor'; x: number; y: number; w: number; h: number; rotation: number; scaleX: number; scaleY: number; skewX: number }
+  | { kind: 'topdown'; x: number; y: number; w: number; h: number; rotation: number; mirrored: boolean; color?: string; opacity: number; draggable: boolean; listening: boolean }
+  | { kind: 'isoBillboard'; x: number; y: number; w: number; h: number; rotation: number; mirrored: boolean; color?: string }
+  | { kind: 'isoFloor'; x: number; y: number; w: number; h: number; rotation: number; scaleX: number; scaleY: number; skewX: number; color?: string }
 
 export interface StampSceneItem {
   id: string
@@ -327,7 +327,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
         const pivotY = isoBottom.y - billboardH / 2 + zOffsetY
         items.push({
           id: stamp.id, stampType: stamp.type, selected, interactive: true,
-          variant: { kind: 'isoBillboard', x: pivotX, y: pivotY, w: bw, h: billboardH, rotation: stamp.rotation, mirrored: !!stamp.mirrored },
+          variant: { kind: 'isoBillboard', x: pivotX, y: pivotY, w: bw, h: billboardH, rotation: stamp.rotation, mirrored: !!stamp.mirrored, color: stamp.color },
           selectionRect: selected ? { x: pivotX - (bw + 2) / 2, y: pivotY - (billboardH + 2) / 2, w: bw + 2, h: billboardH + 2 } : null,
         })
       } else {
@@ -339,7 +339,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
         items.push({
           id: stamp.id, stampType: stamp.type, selected, interactive: true,
           variant: {
-            kind: 'isoFloor', x: isoCenter.x, y: isoCenter.y + zOffsetY, w: effectiveW, h: effectiveH,
+            kind: 'isoFloor', x: isoCenter.x, y: isoCenter.y + zOffsetY, w: effectiveW, h: effectiveH, color: stamp.color,
             rotation: t.rotation, scaleX: stamp.mirrored ? -t.scaleX : t.scaleX, scaleY: t.scaleY, skewX: t.skewX,
           },
           selectionRect: null, // drawn relative to the iso group itself by the adapter
@@ -361,7 +361,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
     items.push({
       id: stamp.id, stampType: stamp.type, selected: interactive && selected, interactive,
       variant: {
-        kind: 'topdown', x, y, w: effectiveW, h: effectiveH, rotation: stamp.rotation, mirrored: !!stamp.mirrored,
+        kind: 'topdown', x, y, w: effectiveW, h: effectiveH, rotation: stamp.rotation, mirrored: !!stamp.mirrored, color: stamp.color,
         opacity: stampOpacity,
         draggable: !isAbove,
         listening: !isAbove,

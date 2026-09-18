@@ -364,6 +364,26 @@ describe('buildExportShapes – stamp scale', () => {
   })
 })
 
+// ── Stamp color ───────────────────────────────────────────────────────────────
+
+describe('buildExportShapes – stamp color', () => {
+  it('carries per-stamp color overrides into top-down and iso exports', () => {
+    const stamps: Stamp[] = [
+      { id: 'colored', type: 'door', col: 0, row: 0, rotation: 0, z: 0, color: '#e04b61' },
+      { id: 'plain', type: 'door', col: 1, row: 0, rotation: 0, z: 0 },
+      { id: 'colored-object', type: 'g1002', col: 2, row: 0, rotation: 0, z: 0, color: '#4b83e0' },
+    ]
+    const topDown = buildExportShapes({ ...baseParams(3, 3), stamps }).shapes.filter(shape => shape.kind === 'image')
+    const iso = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps }).shapes.filter(shape => shape.kind === 'image')
+
+    expect(topDown[0]).toMatchObject({ color: '#e04b61' })
+    expect(topDown[1]).not.toHaveProperty('color')
+    expect(iso[0]).toMatchObject({ color: '#e04b61' })
+    expect(iso[1]).not.toHaveProperty('color')
+    expect(iso[2]).toMatchObject({ color: '#4b83e0' })
+  })
+})
+
 // ── Stamp mirrored ────────────────────────────────────────────────────────────
 
 describe('buildExportShapes – stamp mirrored', () => {

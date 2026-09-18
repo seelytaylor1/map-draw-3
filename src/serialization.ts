@@ -111,11 +111,12 @@ export function serialize(params: {
     lavaColor: params.lavaColor,
     darknessColor: params.darknessColor,
     stamps: params.stamps.map(s => {
-      const { scale, mirrored, z, ...rest } = s
+      const { scale, mirrored, color, z, ...rest } = s
       const out: Partial<Stamp> = { ...rest }
       if (z !== 0) out.z = z
       if (scale !== undefined && scale !== 1) out.scale = scale
       if (mirrored) out.mirrored = mirrored
+      if (color !== undefined) out.color = color
       return out as Stamp
     }),
     steps: params.steps.map(s => {
@@ -181,6 +182,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     const scale = typeof rawScale === 'number' && Number.isFinite(rawScale) && rawScale > 0
       ? rawScale
       : undefined
+    const color = isHexColor(o['color']) ? o['color'] : undefined
     const z = typeof o['z'] === 'number' && Number.isFinite(o['z']) ? o['z'] : 0
 
     const stamp: Stamp = {
@@ -193,6 +195,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     }
     if (scale !== undefined && scale !== 1) stamp.scale = scale
     if (o['mirrored'] === true) stamp.mirrored = true
+    if (color !== undefined) stamp.color = color
     return stamp
   })
 

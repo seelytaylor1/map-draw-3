@@ -105,6 +105,7 @@ export interface Stamp {
   z: number
   scale?: number
   mirrored?: boolean
+  color?: string
 }
 
 const toAssetName = (assetPath: string): string => assetPath.split('/').pop()!.replace(/\.[^.]+$/, '')
@@ -177,6 +178,14 @@ export function moveStamp(stamps: Stamp[], id: string, col: number, row: number)
 
 export function scaleStamp(stamps: Stamp[], id: string, scale: number): Stamp[] {
   return stamps.map(s => s.id === id ? { ...s, scale } : s)
+}
+
+export function colorStamp(stamps: Stamp[], id: string, color: string | null): Stamp[] {
+  return stamps.map(s => {
+    if (s.id !== id) return s
+    const { color: _, ...rest } = s
+    return color === null ? rest : { ...rest, color }
+  })
 }
 
 export function mirrorStamp(stamps: Stamp[], id: string): Stamp[] {

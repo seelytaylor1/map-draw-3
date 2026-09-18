@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addStamp, DEFAULT_ICON_TYPES, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, OBJECT_STAMP_TYPES, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
+import { addStamp, colorStamp, DEFAULT_ICON_TYPES, isFloorStamp, isObjectStamp, mirrorStamp, moveStamp, OBJECT_STAMP_TYPES, removeStamp, rotateStamp, scaleStamp, stampSize, type Stamp } from './stamps'
 
 const stamp = (overrides: Partial<Stamp> = {}): Stamp => ({
   id: 'a',
@@ -163,6 +163,25 @@ describe('scaleStamp', () => {
     const list = [stamp({ id: 'a' })]
     scaleStamp(list, 'a', 2)
     expect(list[0].scale).toBeUndefined()
+  })
+})
+
+describe('colorStamp', () => {
+  it('sets a color on only the target stamp', () => {
+    const list = [stamp({ id: 'a' }), stamp({ id: 'b' })]
+    expect(colorStamp(list, 'a', '#ff0000')).toEqual([
+      stamp({ id: 'a', color: '#ff0000' }),
+      stamp({ id: 'b' }),
+    ])
+    expect(list[0].color).toBeUndefined()
+  })
+
+  it('clears only the target stamp color when reset', () => {
+    const list = [stamp({ id: 'a', color: '#ff0000' }), stamp({ id: 'b', color: '#0000ff' })]
+    expect(colorStamp(list, 'a', null)).toEqual([
+      stamp({ id: 'a' }),
+      stamp({ id: 'b', color: '#0000ff' }),
+    ])
   })
 })
 

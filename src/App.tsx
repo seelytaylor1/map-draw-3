@@ -9,7 +9,7 @@ import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTile
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
-  addStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
+  addStamp, colorStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
 import { addStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
@@ -18,6 +18,7 @@ import { addLabel, removeLabel, updateLabel, type Label } from './labels'
 import { drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
 import { buildExportShapes } from './exportShapes'
+import { colorizeStampImage } from './stampColor'
 import { applyTileLevelNoise, type TileFlip } from './noise'
 import { StampPicker, type Mode } from './StampPicker'
 import {
@@ -793,6 +794,7 @@ export default function App() {
     for (const item of items) {
       const stamp = stamps.find(s => s.id === item.id)!
       const imgEl = stampImages.get(stamp.type)!
+      const stampImage = colorizeStampImage(imgEl, stamp.color)
       const v = item.variant
 
       const attachDelete = (node: Konva.Node) => {
@@ -809,7 +811,7 @@ export default function App() {
 
       if (v.kind === 'isoBillboard') {
         const imgNode = new Konva.Image({
-          image: imgEl,
+          image: stampImage,
           x: v.x, y: v.y,
           width: v.w, height: v.h,
           offsetX: v.w / 2, offsetY: v.h / 2,
@@ -834,7 +836,7 @@ export default function App() {
           rotation: v.rotation,
           scaleX: v.scaleX, scaleY: v.scaleY, skewX: v.skewX,
         })
-        group.add(new Konva.Image({ image: imgEl, x: -v.w / 2, y: -v.h / 2, width: v.w, height: v.h }))
+        group.add(new Konva.Image({ image: stampImage, x: -v.w / 2, y: -v.h / 2, width: v.w, height: v.h }))
         attachDelete(group)
         if (item.selected) {
           group.add(new Konva.Rect({
@@ -846,7 +848,7 @@ export default function App() {
         layer.add(group)
       } else {
         const node = new Konva.Image({
-          image: imgEl,
+          image: stampImage,
           x: v.x, y: v.y,
           width: v.w, height: v.h,
           offsetX: v.w / 2, offsetY: v.h / 2,
@@ -1249,11 +1251,11 @@ export default function App() {
               scaleX: shape.scaleX, scaleY: shape.scaleY,
               skewX: shape.skewX,
             })
-            group.add(new Konva.Image({ image: imgEl, x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h }))
+            group.add(new Konva.Image({ image: colorizeStampImage(imgEl, shape.color), x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h }))
             offLayer.add(group)
           } else {
             offLayer.add(new Konva.Image({
-              image: imgEl,
+              image: colorizeStampImage(imgEl, shape.color),
               x: shape.x, y: shape.y,
               width: shape.w, height: shape.h,
               offsetX: shape.offsetX, offsetY: shape.offsetY,
@@ -1783,6 +1785,18 @@ export default function App() {
                   <Btn onClick={() => setHistory(h => push(h, { ...h.present, stamps: mirrorStamp(h.present.stamps, selectedStampId) }))}>
                     <IconMirror size={13} /> Mirror
                   </Btn>
+                </div>
+                <div className="row">
+                  <ColorField
+                    label="Color"
+                    value={sel?.color ?? '#ffffff'}
+                    onChange={color => setHistory(h => push(h, { ...h.present, stamps: colorStamp(h.present.stamps, selectedStampId, color) }))}
+                  />
+                  {sel?.color && (
+                    <Btn onClick={() => setHistory(h => push(h, { ...h.present, stamps: colorStamp(h.present.stamps, selectedStampId, null) }))}>
+                      Reset
+                    </Btn>
+                  )}
                 </div>
                 <div className="row">
                   <label className="label-dim" style={{ width: 40 }}>Scale</label>
