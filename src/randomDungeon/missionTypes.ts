@@ -166,6 +166,16 @@ export interface Port {
 }
 
 export type SpatialModuleType = 'room' | 'corridor' | 'branch' | 'junction' | 'cycle' | 'hub' | 'gate' | 'secret-connection' | 'blocked-return' | 'terminal-challenge'
+export type RoomEncounter = 'empty' | 'monster' | 'trap'
+export type CorridorCondition = 'open' | 'flooded' | 'trap' | 'hazard'
+export type DoorwayStyle = 'single' | 'double' | 'locked' | 'trapdoor' | 'portcullis'
+
+export interface GeneratedDoorway {
+  point: Point
+  direction: Direction
+  style: DoorwayStyle
+  location: 'room-aperture' | 'hallway'
+}
 
 export interface SpatialModule {
   id: string
@@ -178,6 +188,8 @@ export interface SpatialModule {
   height: number
   footprint: Point[]
   ports: Port[]
+  encounter?: RoomEncounter
+  hasTreasure?: boolean
 }
 
 export type SpatialConnectionSemantic = 'corridor' | 'spoke' | 'secret' | 'locked' | 'dangerous' | 'blocked-return' | 'one-way' | 'junction'
@@ -195,6 +207,8 @@ export interface SpatialConnection {
   traversable: 'both' | 'one-way' | 'blocked'
   apertureFrom: Point
   apertureTo: Point
+  condition?: CorridorCondition
+  doorways?: GeneratedDoorway[]
 }
 
 export interface SpacePlan {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { FLOOR } from './constants'
+import { FLOOR, WATER } from './constants'
 import { ALL_LOOP_CHALLENGES, generateMissionDungeon, validateSpacePlan, connectionFootprint } from './randomDungeon/missionFirst'
 import type { GenerationRequest, MissionGenerationResult } from './randomDungeon/missionFirst'
 
 const request: GenerationRequest = { style: 'spine-shortcuts', seed: 42, cols: 88, rows: 68, tilesPerInch: 8, complexity: 'standard', loopCount: 1, loopPreference: 'lock-and-key' }
 
-// Independent flood fill over committed tiles. Closing a stamped door must
-// actually cut the route, irrespective of what the abstract graph claims.
+// Independent flood fill over traversable Floor and Water tiles. Closing a
+// stamped door must cut the route, irrespective of the abstract graph.
 function reachable(result: MissionGenerationResult, missingKey?: string): Set<number> {
   const { cols, rows } = result.request
   const grid = result.snapshot!.grids.get(0)!
@@ -35,7 +35,7 @@ function reachable(result: MissionGenerationResult, missingKey?: string): Set<nu
       const at = queue[head]!
       for (const next of [at - cols, at + cols, at - 1, at + 1]) {
         if (next < 0 || next >= cols * rows || Math.abs(next % cols - at % cols) + Math.abs(Math.floor(next / cols) - Math.floor(at / cols)) !== 1) continue
-        if (grid[next] !== FLOOR || closed.has(next) || reached.has(next) || reverse.has(`${at}/${next}`)) continue
+        if ((grid[next] !== FLOOR && grid[next] !== WATER) || closed.has(next) || reached.has(next) || reverse.has(`${at}/${next}`)) continue
         reached.add(next); queue.push(next)
       }
     }

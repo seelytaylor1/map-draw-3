@@ -1,12 +1,12 @@
-import { FLOOR } from '../constants'
+import { FLOOR, WATER } from '../constants'
 import { createGrid } from '../grid'
 import type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
-import { normalizeSeed } from './random'
+import { createD6Random, normalizeSeed } from './random'
 import { arrangeRooms } from './layout'
 import { getGenerationStyle } from './styles'
 import { validateProgression } from './progression'
-import type { GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
-import { STAMP_TYPES, type Stamp } from '../stamps'
+import type { DoorwayStyle, GeneratedDoorway, GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
+import { STAMP_TYPES, type Stamp, type StampType } from '../stamps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 
@@ -147,7 +147,54 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     if (!addConnection(connections, lookup, edge, request, cycleByEdge.get(edge.originalId), edge.originalId)) diagnostics.push({ stage: 'space', code: 'unroutable-relationship', message: `Could not route ${edge.from} to ${edge.to} without an unintended connection.`, style: request.style, seed: normalizeSeed(request.seed), nodeId: edge.from, constraint: 'separated corridor routing' })
   }
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
-  return { style: request.style, modules, connections, anchors: Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id])), diagnostics }
+  const plan = { style: request.style, modules, connections, anchors: Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id])), diagnostics }
+  rollGeneratedContent(request, mission, plan)
+  return plan
+}
+
+function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
+  const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
+  const hasMissionReward = mission.nodes.some(node => node.kind === 'reward')
+  for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
+    const roll = random.nextD6()
+    module.encounter = roll <= 3 ? 'empty' : roll <= 5 ? 'monster' : 'trap'
+    module.hasTreasure = random.nextD6() <= 2
+  }
+  for (const connection of plan.connections) {
+    const roll = random.nextD6()
+    connection.condition = roll <= 3 ? 'open' : roll === 4 ? 'flooded' : roll === 5 ? 'trap' : 'hazard'
+    const missionEdge = mission.edges.find(edge => edge.id === connection.missionEdgeId)
+    const doorways: GeneratedDoorway[] = []
+    const hallwayStart = connection.path[1]!
+    const hallwayEnd = connection.path[connection.path.length - 2]!
+    if (missionEdge?.lockId) doorways.push({ point: hallwayEnd, direction: directionForPath(connection.path.slice(-2)), style: 'locked', location: 'room-aperture' })
+    const apertures = [
+      { point: hallwayStart, direction: directionForPath(connection.path.slice(0, 2)), locked: false },
+      { point: hallwayEnd, direction: directionForPath(connection.path.slice(-2)), locked: Boolean(missionEdge?.lockId) },
+    ]
+    for (const aperture of apertures) {
+      if (aperture.locked || random.nextD6() > 3) continue
+      if (doorways.some(doorway => keyOf(doorway.point) === keyOf(aperture.point))) continue
+      doorways.push({ point: aperture.point, direction: aperture.direction, style: rollDoorwayStyle(random), location: 'room-aperture' })
+    }
+    const hallwayLength = connection.path.length - 2
+    if (hallwayLength >= 5 && random.nextD6() <= (hallwayLength >= 10 ? 5 : 3)) {
+      let index = Math.floor(connection.path.length / 2)
+      if (connection.condition === 'trap' || connection.condition === 'hazard' || ['secret', 'dangerous', 'blocked-return', 'one-way'].includes(connection.semantic)) index = Math.min(connection.path.length - 2, index + 1)
+      const point = connection.path[index]!
+      doorways.push({ point, direction: directionForPath([connection.path[index - 1]!, point]), style: rollDoorwayStyle(random), location: 'hallway' })
+    }
+    connection.doorways = doorways
+  }
+  if (hasMissionReward) {
+    const goal = plan.modules.find(module => module.missionNodeId === mission.goalNodeId)
+    if (goal) goal.hasTreasure = true
+  }
+}
+
+function rollDoorwayStyle(random: ReturnType<typeof createD6Random>): Exclude<DoorwayStyle, 'locked'> {
+  const roll = random.nextD6()
+  return roll <= 3 ? 'single' : roll === 4 ? 'double' : roll === 5 ? 'portcullis' : 'trapdoor'
 }
 
 function pointInModule(point: Point, module: SpatialModule): boolean { return module.footprint.some(candidate => candidate.col === point.col && candidate.row === point.row) }
@@ -270,6 +317,9 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   const grid = createGrid(request.cols, request.rows)
   for (const module of plan.modules) for (const point of module.footprint) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
   for (const connection of plan.connections) for (const point of connectionFootprint(connection)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
+  for (const connection of plan.connections) if (connection.condition === 'flooded') {
+    for (const point of connection.path.slice(1, -1)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = WATER
+  }
   const available = request.availableStampTypes ?? STAMP_TYPES
   const stamps: Stamp[] = []
   const labels: Label[] = []
@@ -281,8 +331,6 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   const moduleByNode = new Map(plan.modules.filter(module => module.missionNodeId).map(module => [module.missionNodeId!, module]))
   for (const module of plan.modules) {
     const position = center(module)
-    const missionNode = mission.nodes.find(node => node.id === module.missionNodeId)
-    if (missionNode?.kind === 'reward' && available.includes('Chest1x1')) stamps.push({ id: `generated-reward-${module.id}`, type: 'Chest1x1', ...position, rotation: 0, z: 0 })
     if (module.type === 'hub') addRequired('hub', `generated-${module.id}`, position, 'E')
     if (module.missionNodeId === 'start' || module.missionNodeId === mission.goalNodeId) labels.push({ id: `label-${module.id}`, col: position.col, row: position.row, text: module.missionNodeId === 'start' && module.type === 'hub' ? 'Hub / Start' : module.missionNodeId === 'start' ? 'Start' : 'Goal' })
   }
@@ -301,6 +349,58 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   for (const connection of plan.connections) {
     const semantic = connection.semantic
     if (semantic === 'secret' || semantic === 'dangerous' || semantic === 'blocked-return' || semantic === 'one-way') addRequired(semantic === 'dangerous' ? 'danger' : semantic, `generated-${connection.id}`, midpoint(connection.path), directionForPath(connection.path.slice(Math.floor(connection.path.length / 2))))
+  }
+  const occupied = new Set([...stamps.map(stamp => `${stamp.col},${stamp.row}`), ...labels.map(label => `${label.col},${label.row}`)])
+  const roomDecorationPoint = (module: SpatialModule): Point | undefined => {
+    const preferred = center(module)
+    const distance = (point: Point) => Math.abs(point.col - preferred.col) + Math.abs(point.row - preferred.row)
+    return [...module.footprint]
+      .sort((a, b) => distance(a) - distance(b) || a.row - b.row || a.col - b.col)
+      .find(point => !occupied.has(`${point.col},${point.row}`))
+  }
+  const addOptional = (types: readonly StampType[], id: string, point: Point, direction: Direction = 'E') => {
+    const type = types.find(candidate => available.includes(candidate))
+    if (!type) return
+    const rotation = direction === 'N' ? 0 : direction === 'E' ? 90 : direction === 'S' ? 180 : 270
+    stamps.push({ id, type: type as Stamp['type'], ...point, rotation, z: 0 })
+    occupied.add(`${point.col},${point.row}`)
+  }
+  for (const connection of plan.connections) {
+    if (connection.condition !== 'trap' && connection.condition !== 'hazard') continue
+    const preferred = midpoint(connection.path)
+    const distance = (point: Point) => Math.abs(point.col - preferred.col) + Math.abs(point.row - preferred.row)
+    const candidates = connection.path.slice(1, -1).sort((a, b) => distance(a) - distance(b))
+    const point = candidates.find(candidate => !occupied.has(`${candidate.col},${candidate.row}`))
+    if (point) addOptional(connection.condition === 'trap' ? ['Trap1x1', 'trap', 'Danger1x1'] : ['Danger1x1', 'Trap1x1', 'trap'], `generated-hallway-${connection.condition}-${connection.id}`, point)
+  }
+  const doorStampTypes = {
+    single: ['Door1x1', 'door'],
+    double: ['DoorDouble1x1'],
+    locked: ['DoorLocked1x1'],
+    trapdoor: ['TrapdoorFloor1x1'],
+    portcullis: ['DoorPortcullis1x1'],
+  } as const
+  for (const connection of plan.connections) for (const doorway of connection.doorways ?? []) {
+    if (doorway.style === 'locked' || occupied.has(`${doorway.point.col},${doorway.point.row}`)) continue
+    addOptional(doorStampTypes[doorway.style], `generated-${doorway.style}-door-${connection.id}-${doorway.point.col}-${doorway.point.row}`, doorway.point, doorway.direction)
+  }
+  for (const module of plan.modules) {
+    if (module.encounter === 'monster' || module.encounter === 'trap') {
+      const point = roomDecorationPoint(module)
+      if (point) {
+        if (module.encounter === 'monster') {
+          addOptional(['Danger1x1'], `generated-monster-${module.id}`, point)
+          labels.push({ id: `label-monster-${module.id}`, col: point.col, row: point.row, text: 'Monster' })
+          occupied.add(`${point.col},${point.row}`)
+        } else {
+          addOptional(['Trap1x1', 'trap', 'Danger1x1'], `generated-room-trap-${module.id}`, point)
+        }
+      }
+    }
+    if (module.hasTreasure) {
+      const point = roomDecorationPoint(module)
+      if (point) addOptional(['Chest1x1'], `generated-room-treasure-${module.id}`, point)
+    }
   }
   if (diagnostics.length > 0) return { diagnostics }
   return { snapshot: { grids: new Map([[0, grid]]), stamps, steps: [], ramps: [], labels, environmentalColors: new Map() }, diagnostics }

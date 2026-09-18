@@ -132,6 +132,15 @@ A Spatial Module's size and shape expressed in Map grid cells. The new generator
 ## Room Connection Aperture
 An explicit opening in a room's one-cell Wall buffer for a planned corridor or other connection. Its width matches the designated connection—typically 1, 2, or 4 cells—so wide hallways can enter rooms normally without allowing incidental crossings or accidental merges. The aperture must fit the room's wall span; if it does not, placement must backtrack or fail rather than tapering the corridor automatically.
 
+## Generated Door
+A seeded decorative door marker rolled at a room aperture or along a long corridor. An aperture door is placed on the first hallway tile outside the room. Each unguarded room aperture has a 3-in-6 chance of a door. Corridors with 5–9 interior tiles have a 3-in-6 chance of a mid-door; corridors with 10 or more have a 5-in-6 chance. Door rolls may produce single, double, portcullis, or trapdoor stamps. A locked door is generated only for an existing Key/Lock relationship, so optional door decoration cannot introduce an unpaired lock or block progression.
+
+## Room Encounter
+A seeded room-content roll produces an empty room on 1–3, monsters on 4–5, and a trap on 6. Independently, each room has a 2-in-6 chance of a Chest, which may coexist with any encounter. Monsters are marked with a Danger stamp and a Monster label; traps use a Trap stamp. A Loop Challenge reward also places a Chest in the Goal room.
+
+## Corridor Condition
+A seeded connection-content roll whose result is open, flooded, trap, or hazard. Flooded corridor interiors use Water tiles, which remain traversable. Trap and hazard conditions use their corresponding floor stamps.
+
 ## Semantic Stamp Realization
 The rasterization step that maps a generated floor or connection type recorded in metadata to its corresponding implemented stamp, such as a secret door, locked door, concealed door, or key marker. Semantic types remain explicit until the map is written. The build validates that required types have implemented stamps; a missing asset is a build failure, not a reason to silently replace the type with a generic icon during generation. Key and Lock identifiers remain in metadata and summary by default; printed text labels are optional.
 

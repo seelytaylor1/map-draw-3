@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { WATER } from './constants'
 import { ALL_LOOP_CHALLENGES, createComplexityBudget, generateMissionDungeon, preflightGeneration, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
 import { deserialize, serialize } from './serialization'
@@ -89,6 +90,152 @@ describe('mission-first dungeon generation', () => {
     expect(result.mission.cycles.every(cycle => cycle.nonTrivial && new Set(cycle.routeA).size >= 3 && new Set(cycle.routeB).size >= 3)).toBe(true)
     expect(validateProgression(result.mission).goalReachable).toBe(true)
     expect(result.summary.mission.pairings).toHaveLength(0)
+  })
+
+  it('places loop reward treasure in the Goal room', () => {
+    const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['alternate-paths'] }))
+    const goal = result.space!.modules.find(module => module.missionNodeId === result.mission.goalNodeId)!
+    const chests = result.snapshot!.stamps.filter(stamp => stamp.type === 'Chest1x1')
+
+    expect(result.ok).toBe(true)
+    expect(goal.hasTreasure).toBe(true)
+    expect(chests.some(chest => goal.footprint.some(point => point.col === chest.col && point.row === chest.row))).toBe(true)
+  })
+
+  it('rolls room encounters and independent treasure by seed', () => {
+    const encounterKinds = new Set<string>()
+    const encounterCounts = { empty: 0, monster: 0, trap: 0 }
+    const encounterTreasurePairs = new Set<string>()
+    let roomCount = 0
+    let treasureCount = 0
+
+    for (let seed = 1; seed <= 80; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      expect(result.ok, `seed ${seed}`).toBe(true)
+      const rooms = result.space!.modules.filter(module => module.footprint.length > 0)
+      const chest = result.snapshot!.stamps.filter(stamp => stamp.type === 'Chest1x1')
+
+      for (const room of rooms) {
+        expect(['empty', 'monster', 'trap']).toContain(room.encounter)
+        encounterKinds.add(room.encounter!)
+        encounterCounts[room.encounter as keyof typeof encounterCounts]++
+        const hasTreasure = Boolean(room.hasTreasure)
+        const chestInRoom = chest.some(stamp => room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))
+        expect(chestInRoom).toBe(hasTreasure)
+        encounterTreasurePairs.add(`${room.encounter}/${hasTreasure}`)
+        roomCount++
+        if (hasTreasure) treasureCount++
+        if (room.encounter === 'monster') {
+          expect(result.snapshot!.labels.some(label => label.text === 'Monster' && room.footprint.some(point => point.col === label.col && point.row === label.row))).toBe(true)
+        }
+        if (room.encounter === 'trap') {
+          expect(result.snapshot!.stamps.some(stamp => ['Trap1x1', 'trap', 'Danger1x1'].includes(stamp.type) && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+        }
+      }
+      expect(chest).toHaveLength(rooms.filter(room => room.hasTreasure).length)
+    }
+
+    expect([...encounterKinds].sort()).toEqual(['empty', 'monster', 'trap'])
+    expect(encounterCounts.empty / roomCount).toBeGreaterThan(0.42)
+    expect(encounterCounts.empty / roomCount).toBeLessThan(0.58)
+    expect(encounterCounts.monster / roomCount).toBeGreaterThan(0.27)
+    expect(encounterCounts.monster / roomCount).toBeLessThan(0.40)
+    expect(encounterCounts.trap / roomCount).toBeGreaterThan(0.10)
+    expect(encounterCounts.trap / roomCount).toBeLessThan(0.24)
+    expect(treasureCount / roomCount).toBeGreaterThan(0.27)
+    expect(treasureCount / roomCount).toBeLessThan(0.40)
+    expect([...encounterTreasurePairs]).toEqual(expect.arrayContaining(['empty/false', 'empty/true', 'monster/false', 'monster/true', 'trap/false', 'trap/true']))
+  })
+
+  it('rolls hallway conditions and marks flooded, trapped, and hazardous passages', () => {
+    const conditions = new Set<string>()
+
+    for (let seed = 1; seed <= 40; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      const grid = result.snapshot!.grids.get(0)!
+      for (const connection of result.space!.connections) {
+        expect(['open', 'flooded', 'trap', 'hazard']).toContain(connection.condition)
+        conditions.add(connection.condition!)
+        const interior = connection.path.slice(1, -1)
+        if (connection.condition === 'flooded') {
+          expect(interior.every(point => grid[point.row * result.request.cols + point.col] === WATER)).toBe(true)
+        }
+        if (connection.condition === 'trap') {
+          expect(result.snapshot!.stamps.some(stamp => ['Trap1x1', 'trap'].includes(stamp.type) && interior.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+        }
+        if (connection.condition === 'hazard') {
+          expect(result.snapshot!.stamps.some(stamp => stamp.type === 'Danger1x1' && interior.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+        }
+      }
+    }
+
+    expect([...conditions].sort()).toEqual(['flooded', 'hazard', 'open', 'trap'])
+  })
+
+  it('rolls doors at some room apertures and along longer corridors', () => {
+    const doorStyles = new Set<string>()
+    let apertureDoors = 0
+    let shortHallwayTrials = 0
+    let shortHallwayDoors = 0
+    let longHallwayTrials = 0
+    let longHallwayDoors = 0
+    let apertureCount = 0
+    const stampForStyle = { single: 'Door1x1', double: 'DoorDouble1x1', portcullis: 'DoorPortcullis1x1', trapdoor: 'TrapdoorFloor1x1', locked: 'DoorLocked1x1' }
+
+    for (let seed = 1; seed <= 80; seed++) {
+      const result = generateMissionDungeon(request({ seed, loopCount: 0 }))
+      expect(result.ok, `seed ${seed}`).toBe(true)
+      for (const connection of result.space!.connections) {
+        apertureCount += 2
+        const hallwayLength = connection.path.length - 2
+        if (hallwayLength >= 5 && hallwayLength < 10) shortHallwayTrials++
+        if (hallwayLength >= 10) longHallwayTrials++
+        for (const doorway of connection.doorways ?? []) {
+          doorStyles.add(doorway.style)
+          const matchingStamp = result.snapshot!.stamps.find(stamp => stamp.col === doorway.point.col && stamp.row === doorway.point.row)
+          expect(matchingStamp?.type).toBe(stampForStyle[doorway.style])
+          if (doorway.location === 'room-aperture') {
+            apertureDoors++
+            const firstHallwayTiles = [connection.path[1], connection.path[connection.path.length - 2]]
+            expect(firstHallwayTiles).toContainEqual(doorway.point)
+            expect([connection.path[0], connection.path[connection.path.length - 1]]).not.toContainEqual(doorway.point)
+          } else {
+            if (hallwayLength < 10) shortHallwayDoors++
+            else longHallwayDoors++
+            expect(connection.path.length - 2).toBeGreaterThanOrEqual(5)
+            expect(connection.path.slice(1, -1)).toContainEqual(doorway.point)
+          }
+        }
+      }
+    }
+
+    expect(apertureDoors).toBeGreaterThan(0)
+    expect(apertureDoors / apertureCount).toBeGreaterThan(0.42)
+    expect(apertureDoors / apertureCount).toBeLessThan(0.58)
+    expect(shortHallwayTrials).toBeGreaterThan(0)
+    expect(longHallwayTrials).toBeGreaterThan(0)
+    expect(shortHallwayDoors / shortHallwayTrials).toBeGreaterThan(0.40)
+    expect(shortHallwayDoors / shortHallwayTrials).toBeLessThan(0.60)
+    expect(longHallwayDoors / longHallwayTrials).toBeGreaterThan(0.70)
+    expect(longHallwayDoors / longHallwayTrials).toBeLessThan(0.97)
+    expect([...doorStyles]).toEqual(expect.arrayContaining(['single', 'double', 'portcullis', 'trapdoor']))
+  })
+
+  it('places locked door markers on the apertures governed by real Key/Lock relationships', () => {
+    for (const challenge of ['lock-and-key', 'double-lock', 'unknown-return'] as const) {
+      const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: [challenge] }))
+      expect(result.ok, challenge).toBe(true)
+      const lockedConnections = result.space!.connections.filter(connection => result.mission.edges.some(edge => edge.id === connection.missionEdgeId && edge.lockId))
+      const expected = lockedConnections.map(connection => connection.path[connection.path.length - 2]!)
+      const lockedStamps = result.snapshot!.stamps.filter(stamp => stamp.type === 'DoorLocked1x1')
+
+      expect(lockedConnections.length, challenge).toBeGreaterThan(0)
+      expect(lockedConnections.every(connection => {
+        const lockPoint = connection.path[connection.path.length - 2]!
+        return connection.doorways?.some(doorway => doorway.style === 'locked' && doorway.point.col === lockPoint.col && doorway.point.row === lockPoint.row)
+      })).toBe(true)
+      expect(lockedStamps.map(({ col, row }) => ({ col, row }))).toEqual(expected)
+    }
   })
 
   it('rejects an optional lock that incorrectly blocks the only Goal path', () => {

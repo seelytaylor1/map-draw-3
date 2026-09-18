@@ -35,7 +35,17 @@ rooms. Neither loop membership nor junction metadata permits an incidental
 crossing or contact. The validator rejects those contacts independently of the
 router. Every spatial segment, including support-room segments, must route
 successfully. Lock markers appear at every guarded entrance, oriented to the
-local corridor segment. Reward rooms receive treasure markers when available.
+local corridor segment. Seeded room encounter rolls produce empty rooms on
+1–3, monsters on 4–5, and traps on 6. Every room independently has a 2-in-6
+chance of a Chest, which can coexist with any encounter. Loop Challenge rewards
+also place a Chest in the Goal room. Seeded corridor condition rolls produce
+open, flooded, trapped, or hazardous passages; floods use traversable Water
+tiles. Each unguarded room aperture has a 3-in-6 chance of a decorative door
+on the first hallway tile outside the room, while corridors with 5–9 interior
+tiles have a 3-in-6 chance of a mid-door and corridors with 10 or more have a
+5-in-6 chance. Door styles include single,
+double, portcullis, and trapdoor stamps. Locked doors remain tied to explicit
+Key/Lock relationships.
 
 Double Lock merges both approaches before two serial gates. Hub & Spoke retains
 all former loop rooms as spokes. Static progression honors both directions of
@@ -55,6 +65,6 @@ page-size sweep and writes an HTML review sheet under `.scratch/dungeon-review/`
 Placement remains a bounded heuristic, not a proof that every planar mission
 fits a given page. Crowded requests may fail explicitly. Corridors currently use
 one-cell widths; wider footprint support is not a weighted production policy.
-Tiny pages can only support small chambers. The generator does not author
-encounter content or simulate play, and semantic stamps are map notation rather
-than runtime door mechanics.
+Tiny pages can only support small chambers. The generator records encounter and
+door rolls as static map content; it does not simulate play, and semantic stamps
+are map notation rather than runtime door mechanics.
