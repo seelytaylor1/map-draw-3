@@ -98,16 +98,12 @@ export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopolog
     const hasDistinctRouteGeometry = routeAIds.size > 0 && routeBIds.size > 0 && [...routeAIds].some(id => !routeBIds.has(id)) && [...routeBIds].some(id => !routeAIds.has(id))
     const usableRoutes = [routeA, routeB].filter(route => route.length > 0 && route.every(connection => connection.traversable !== 'blocked')).length
 
-    if (cycle.challenge === 'hub-and-spoke') {
-      findings.push({ code: 'intentional-hub-rewrite', cycleId: cycle.id, message: `${cycle.id} intentionally rewrites its base loop into a hub-and-spoke.` })
-    } else {
-      if (!hasDistinctRouteGeometry) findings.push({ code: 'missing-route-geometry', cycleId: cycle.id, message: `${cycle.id} does not retain private realized corridor geometry for both routes.` })
-      if (usableRoutes < 2) {
-        const code: TopologyFindingCode = cycle.challenge === 'dramatic-arc' ? 'intentional-route-closure' : 'no-usable-alternate-route'
-        findings.push({ code, cycleId: cycle.id, message: cycle.challenge === 'dramatic-arc' ? `${cycle.id} intentionally closes one route with its visible obstacle.` : `${cycle.id} has only ${usableRoutes} usable route${usableRoutes === 1 ? '' : 's'} after realization.` })
-      }
-      if (choicePosition !== null && choicePosition > 0.5) findings.push({ code: 'late-cycle-choice', cycleId: cycle.id, message: `${cycle.id}'s anchor occurs ${(choicePosition * 100).toFixed(0)}% of the way from Start to its objective, so the map reads as a long linear prefix followed by a late fork.` })
+    if (!hasDistinctRouteGeometry) findings.push({ code: 'missing-route-geometry', cycleId: cycle.id, message: `${cycle.id} does not retain private realized corridor geometry for both routes.` })
+    if (usableRoutes < 2) {
+      const code: TopologyFindingCode = cycle.challenge === 'dramatic-arc' ? 'intentional-route-closure' : 'no-usable-alternate-route'
+      findings.push({ code, cycleId: cycle.id, message: cycle.challenge === 'dramatic-arc' ? `${cycle.id} intentionally closes one route with its visible obstacle.` : `${cycle.id} has only ${usableRoutes} usable route${usableRoutes === 1 ? '' : 's'} after realization.` })
     }
+    if (choicePosition !== null && choicePosition > 0.5) findings.push({ code: 'late-cycle-choice', cycleId: cycle.id, message: `${cycle.id}'s anchor occurs ${(choicePosition * 100).toFixed(0)}% of the way from Start to its objective, so the map reads as a long linear prefix followed by a late fork.` })
     const addMissingRealization = (message: string) => findings.push({ code: 'missing-mission-realization', cycleId: cycle.id, message })
     const routeAApproach = cycle.routeA[cycle.routeA.length - 2]
     const objectiveConnections = plan.connections.filter(connection => connection.toModuleId === objective)

@@ -26,11 +26,6 @@ function routeEdges(mission: Mission, cycle: MissionCycle, route: readonly strin
   })
 }
 
-function removeEdges(mission: Mission, ids: readonly string[]): void {
-  const remove = new Set(ids)
-  mission.edges = mission.edges.filter(candidate => !remove.has(candidate.id))
-}
-
 function addKey(mission: Mission, cycle: MissionCycle, keyId: string, holder: string, optional = false, includeAccess = true): string {
   const nodeId = `key-node-${keyId}`
   if (!mission.nodes.some(candidate => candidate.id === nodeId)) mission.nodes.push(node(nodeId, 'key', `loop-${cycle.id}`, `Key ${keyId}`, { keyId, optional }))
@@ -73,7 +68,10 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'dramatic-arc': { ...base, realization: 'visible obstacle before the objective on one route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
     'dangerous-route': { ...base, realization: 'one dangerous route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].dangerous = true } },
     'lock-and-key': { ...base, realization: 'locked objective and Goal with matching key', rewrite: (mission, cycle) => {
-      const dependency = addRequiredKeyLock(mission, cycle, cycle.roles.anchorNode)
+      // Keep Central Hub's key within its own radial region. A key spoke
+      // from the hub would add a non-loop return route and consume another
+      // hub aperture.
+      const dependency = addRequiredKeyLock(mission, cycle, mission.style === 'orbit-gates' ? cycle.roles.routeANode : cycle.roles.anchorNode)
       const route = cycleEdges(mission, cycle)
       // Both routes approach the same objective room, so both objective
       // apertures carry the required lock. The key is available from the
@@ -121,20 +119,14 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'hub-and-spoke': { ...base, realization: 'explicit hub and spoke connections', rewrite: (mission, cycle) => {
       const hub = mission.nodes.find(candidate => candidate.id === cycle.roles.anchorNode)
       if (hub) hub.kind = 'hub'
-      removeEdges(mission, cycle.routeEdgeIds)
-      const destinations = [...new Set([...cycle.routeA, ...cycle.routeB])].filter(id => id !== cycle.roles.anchorNode)
-      const spokes = destinations.map(target => edge(`spoke-${cycle.id}-${target}`, cycle.roles.anchorNode, target, 'cycle-route'))
-      mission.edges.push(...spokes)
-      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.routeANode]
-      cycle.routeB = [cycle.roles.anchorNode, cycle.roles.objectiveNode]
-      cycle.routeEdgeIds = spokes.map(candidate => candidate.id)
-      // Hub-and-Spoke is a deliberate hub realization rather than a pair of
-      // corridor alternatives. It remains a valid selected Loop Challenge;
-      // its contract is checked by the explicit spoke set below.
+      // Preserve the two return routes. Turning them into unrelated spokes
+      // erased the requested loop, especially in Critical Spine and
+      // Branch-and-merge. The hub typed anchor makes the two departures
+      // declared spokes when space is realized.
       cycle.nonTrivial = true
     } },
     'double-lock': { ...base, realization: 'two distinct locks on one objective', rewrite: (mission, cycle) => {
-      const first = addRequiredKeyLock(mission, cycle, cycle.roles.anchorNode, '')
+      const first = addRequiredKeyLock(mission, cycle, mission.style === 'orbit-gates' ? cycle.roles.routeANode : cycle.roles.anchorNode, '')
       const secondKeyId = `key-${cycle.id}-2`
       addKey(mission, cycle, secondKeyId, cycle.roles.routeANode)
       const gateOneId = `lock-node-${cycle.id}-1`
@@ -181,25 +173,6 @@ export function validateLoopChallengeContract(mission: Mission, cycle: MissionCy
   return diagnostics
 }
 
-function addBranches(mission: Mission, spine: string[], count: number, style: Mission['style'], keepGoalAsLoopObjective = false): void {
-  for (let index = 0; index < count; index++) {
-    const id = `branch-${index + 1}`
-    // Keep the first progression anchor open for a Loop Challenge shortcut.
-    // Branches still attach to the spine, but do not consume every aperture
-    // around the node where the first explicit cycle originates.
-    const branchOffset = style === 'spine-shortcuts' ? 4 : style === 'orbit-gates' ? 0 : 1
-    // When the one loop converges on Goal, keep optional branches from adding
-    // a third route that bypasses both loop routes.
-    const lastBranchSpineIndex = spine.length - (keepGoalAsLoopObjective ? 3 : 2)
-    const branchSpineIndex = Math.min(lastBranchSpineIndex, index + branchOffset)
-    const from = spine[branchSpineIndex]!
-    const to = spine[branchSpineIndex + 1]!
-    mission.nodes.push(node(id, 'branch', 'progression', `Branch ${index + 1}`))
-    mission.patterns[1]!.expandsTo.push(id)
-    mission.edges.push(edge(`branch-${index + 1}-out`, from, id, 'optional'), edge(`branch-${index + 1}-return`, id, to, 'optional'))
-  }
-}
-
 export function createMission(request: GenerationRequest, budget = createComplexityBudget(request)): Mission {
   const seed = budget.seed
   const diagnostics: GenerationDiagnostic[] = []
@@ -208,7 +181,10 @@ export function createMission(request: GenerationRequest, budget = createComplex
   mission.patterns.push({ id: 'progression', kind: 'progression', expandsTo: [] })
   mission.patterns.push({ id: 'goal-pattern', kind: 'goal', expandsTo: ['goal'] })
   mission.nodes.push(node('start', 'start', 'opening', 'Start'))
-  const taskCount = Math.max(1, budget.missionNodes - 2 - budget.branches)
+  // The styles describe the connection grammar, not a bonus set of bypasses.
+  // Keep every budgeted mission node in the base graph so that zero-loop
+  // Critical Spine maps remain a literal linear sequence of rooms.
+  const taskCount = Math.max(1, budget.missionNodes - 2)
   const tasks = Array.from({ length: taskCount }, (_, index) => `task-${index + 1}`)
   for (const [index, id] of tasks.entries()) {
     mission.nodes.push(node(id, 'task', 'progression', `Task ${index + 1}`))
@@ -216,29 +192,50 @@ export function createMission(request: GenerationRequest, budget = createComplex
   }
   mission.nodes.push(node('goal', 'goal', 'goal-pattern', 'Goal'))
   const spine = ['start', ...tasks, 'goal']
-  for (let index = 0; index < spine.length - 1; index++) mission.edges.push(edge(`progression-${index + 1}`, spine[index]!, spine[index + 1]!))
-  const singleLoop = budget.requestedLoops === 1
-  addBranches(mission, spine, budget.branches, request.style, singleLoop)
+  if (request.style === 'orbit-gates') {
+    // Central Hub starts with a set of spokes. Loops are added below as
+    // independent routes that leave the hub and return to it. Once loops
+    // exist, their rooms form the radial regions; keeping every task as an
+    // extra direct spoke would exhaust the hub's readable apertures.
+    const targets = budget.requestedLoops === 0 ? [...tasks, mission.goalNodeId] : [mission.goalNodeId]
+    for (const target of targets) mission.edges.push(edge(`spoke-${target}`, 'start', target))
+  } else {
+    for (let index = 0; index < spine.length - 1; index++) mission.edges.push(edge(`progression-${index + 1}`, spine[index]!, spine[index + 1]!))
+  }
+  const singleSpineLoop = request.style === 'spine-shortcuts' && budget.requestedLoops === 1
 
   for (let index = 0; index < budget.requestedLoops; index++) {
     const selected = budget.loopChallenges[index]!
-    // A central Orbit hub remains the Start landmark, but multi-loop maps
-    // distribute their cycle anchors along progression windows.  Attaching
-    // every cycle to the hub exhausts its apertures and makes dense requests
-    // impossible to route despite passing preflight.
-    const anchor = singleLoop ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
+    const isSpineReturn = request.style === 'spine-shortcuts' && budget.requestedLoops > 1
+    // A Spine loop returns to a later non-Goal spine room. Central Hub loops
+    // always leave and return to Start. Cavern loops remain independent but
+    // take their anchors in order along the backbone.
+    const anchor = request.style === 'orbit-gates' || singleSpineLoop
+      ? 'start'
+      : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
     const routeANode = `loop-${index + 1}-route-a`
     const routeBNode = `loop-${index + 1}-route-b`
-    const objectiveNode = singleLoop ? mission.goalNodeId : `loop-${index + 1}-objective`
+    const objectiveNode = singleSpineLoop
+      ? mission.goalNodeId
+      : isSpineReturn
+        ? spine[2 + (index % Math.max(1, tasks.length - 1))]!
+        : `loop-${index + 1}-objective`
     mission.nodes.push(node(routeANode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Route A`), node(routeBNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Route B`))
-    if (!singleLoop) mission.nodes.push(node(objectiveNode, 'reward', `loop-${index + 1}`, `Loop ${index + 1} Objective`))
-    const routeA = singleLoop
+    if (!singleSpineLoop && !isSpineReturn) mission.nodes.push(node(objectiveNode, 'reward', `loop-${index + 1}`, `Loop ${index + 1} Objective`))
+    const orbitTasks = request.style === 'orbit-gates'
+      ? tasks.slice(Math.floor(index * tasks.length / budget.requestedLoops), Math.floor((index + 1) * tasks.length / budget.requestedLoops))
+      : []
+    const routeA = singleSpineLoop
       ? [anchor, routeANode, ...tasks.slice(0, Math.ceil(tasks.length / 2)), objectiveNode]
-      : [anchor, routeANode, objectiveNode]
-    const routeB = singleLoop
+      : request.style === 'orbit-gates'
+        ? [anchor, routeANode, ...orbitTasks.slice(0, Math.ceil(orbitTasks.length / 2)), objectiveNode]
+        : [anchor, routeANode, objectiveNode]
+    const routeB = singleSpineLoop
       ? [anchor, routeBNode, ...tasks.slice(Math.ceil(tasks.length / 2)), objectiveNode]
-      : [anchor, routeBNode, objectiveNode]
-    if (singleLoop) mission.edges = mission.edges.filter(candidate => candidate.kind !== 'progression')
+      : request.style === 'orbit-gates'
+        ? [anchor, routeBNode, ...orbitTasks.slice(Math.ceil(orbitTasks.length / 2)), objectiveNode]
+        : [anchor, routeBNode, objectiveNode]
+    if (singleSpineLoop) mission.edges = mission.edges.filter(candidate => candidate.kind !== 'progression')
     const addRoute = (route: string[], prefix: 'a' | 'b') => route.slice(0, -1).map((from, routeIndex) => edge(`cycle-${index + 1}-${prefix}${routeIndex + 1}`, from, route[routeIndex + 1]!, 'cycle-route'))
     const routeAEdges = addRoute(routeA, 'a')
     const routeBEdges = addRoute(routeB, 'b')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FLOOR, WALL, WATER } from './constants'
-import { ALL_LOOP_CHALLENGES, assessMapTopology, createComplexityBudget, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression, validateSpacePlan } from './randomDungeon/missionFirst'
+import { ALL_LOOP_CHALLENGES, assessMapTopology, createComplexityBudget, createMission, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression, validateSpacePlan } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
 import { runTiles } from './directionalRun'
 import { deserialize, serialize } from './serialization'
@@ -93,6 +93,44 @@ describe('mission-first dungeon generation', () => {
     expect(result.mission.cycles.every(cycle => cycle.nonTrivial && new Set(cycle.routeA).size >= 3 && new Set(cycle.routeB).size >= 3)).toBe(true)
     expect(validateProgression(result.mission).goalReachable).toBe(true)
     expect(result.summary.mission.pairings).toHaveLength(0)
+  })
+
+  it('builds Central Hub loops as independent returns to the Start hub', () => {
+    const mission = createMission(request({ style: 'orbit-gates', loopCount: 2, loopChallenges: ['alternate-paths', 'alternate-paths'] }))
+
+    expect(mission.edges.filter(edge => edge.from === 'start' && edge.to === 'goal')).toHaveLength(1)
+    expect(mission.cycles.map(cycle => cycle.roles.anchorNode)).toEqual(['start', 'start'])
+    expect(mission.cycles.map(cycle => cycle.roles.objectiveNode)).not.toContain('goal')
+    expect(new Set(mission.cycles.map(cycle => cycle.roles.objectiveNode)).size).toBe(2)
+  })
+
+  it('uses the requested Critical Spine, Central Hub, and Branch-and-merge loop grammars', () => {
+    const spineWithoutLoops = createMission(request({ style: 'spine-shortcuts', loopCount: 0 }))
+    expect(spineWithoutLoops.edges.every(edge => edge.kind === 'progression')).toBe(true)
+    expect(spineWithoutLoops.edges).toHaveLength(spineWithoutLoops.nodes.length - 1)
+
+    const oneSpineLoop = createMission(request({ style: 'spine-shortcuts', loopCount: 1, loopChallenges: ['alternate-paths'] }))
+    expect(oneSpineLoop.cycles[0]?.roles.objectiveNode).toBe('goal')
+    expect(oneSpineLoop.edges.some(edge => edge.kind === 'progression')).toBe(false)
+
+    const multipleSpineLoops = createMission(request({ style: 'spine-shortcuts', loopCount: 2, loopChallenges: ['alternate-paths', 'alternate-paths'] }))
+    expect(multipleSpineLoops.cycles.every(cycle =>
+      cycle.roles.objectiveNode !== 'goal'
+      && multipleSpineLoops.edges.some(edge => edge.kind === 'progression' && edge.from === cycle.roles.anchorNode && edge.to === cycle.roles.objectiveNode),
+    )).toBe(true)
+
+    const hubWithoutLoops = createMission(request({ style: 'orbit-gates', loopCount: 0 }))
+    expect(hubWithoutLoops.nodes.filter(node => node.id !== 'start').every(node => hubWithoutLoops.edges.some(edge => edge.from === 'start' && edge.to === node.id))).toBe(true)
+
+    const hubWithLoops = createMission(request({ style: 'orbit-gates', loopCount: 2, loopChallenges: ['alternate-paths', 'alternate-paths'] }))
+    expect(hubWithLoops.cycles.every(cycle => cycle.roles.anchorNode === 'start' && cycle.roles.objectiveNode !== 'goal')).toBe(true)
+    expect(hubWithLoops.edges.some(edge => edge.from === 'start' && edge.to === 'goal')).toBe(true)
+
+    const cavern = generateMissionDungeon(request({ style: 'cavern-pressure', loopCount: 2, loopChallenges: ['alternate-paths', 'alternate-paths'] }))
+    expect(cavern.ok).toBe(true)
+    expect(cavern.mission.cycles.every(cycle => cycle.roles.objectiveNode !== 'goal')).toBe(true)
+    expect(cavern.mission.cycles.slice(1).every((cycle, index) => cavern.mission.edges.some(edge => edge.kind === 'progression' && edge.from === cavern.mission.cycles[index]!.roles.anchorNode && edge.to === cycle.roles.anchorNode))).toBe(true)
+    expect(cavern.space!.modules.filter(module => cavern.mission.cycles.some(cycle => cycle.roles.objectiveNode === module.missionNodeId)).every(module => module.type === 'junction')).toBe(true)
   })
 
   it('places loop reward treasure in the Goal room', () => {

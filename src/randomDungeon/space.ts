@@ -33,8 +33,12 @@ function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationR
     const result: Array<{ door: Point; outside: Point }> = []
     const own = new Set(module.footprint.map(keyOf))
     const used = module.ports.map(port => port.point)
+    // A Central Hub deliberately supports many independent spokes. Its wall
+    // may use adjacent apertures (with separate exterior corridors), while
+    // ordinary rooms retain the wider separation that improves readability.
+    const portSpacing = module.type === 'hub' ? 2 : 3
     for (const door of module.footprint) {
-      if (used.some(p => Math.abs(p.col - door.col) + Math.abs(p.row - door.row) < 3)) continue
+      if (used.some(p => Math.abs(p.col - door.col) + Math.abs(p.row - door.row) < portSpacing)) continue
       for (const outside of adjacent(door)) {
         if (own.has(keyOf(outside))) continue
         // An aperture touches exactly one room tile: no corner wrapping.
@@ -133,11 +137,13 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     edge.to = id
   }
   if (request.style === 'cavern-pressure') {
-    // The existing convergence room is the junction, not an unrelated extra
-    // room attached by an undeclared relationship.
-    const merge = edges.find(e => e.id.startsWith('branch-') && e.id.endsWith('-return'))
-    const junction = modules.find(m => m.missionNodeId === merge?.to)
-    if (junction) junction.type = 'junction'
+    // Each independent cavern loop has its own declared merge room. Marking
+    // those actual objectives as junctions prevents a visual merge from being
+    // implied by incidental corridor contact.
+    for (const cycle of mission.cycles) {
+      const junction = modules.find(module => module.missionNodeId === cycle.roles.objectiveNode)
+      if (junction) junction.type = 'junction'
+    }
   }
   arrangeRooms(request, mission, modules, edges, attempt)
   const lookup = new Map(modules.map(m => [m.missionNodeId ?? m.id, m]))
@@ -228,7 +234,7 @@ function addDiagnostic(diagnostics: GenerationDiagnostic[], request: GenerationR
 
 export function validateSpacePlan(request: GenerationRequest, plan: SpacePlan, mission: Mission): SpaceValidationResult {
   const diagnostics = [...plan.diagnostics]
-  for (const issue of getGenerationStyle(request.style).validatePlan(plan)) addDiagnostic(diagnostics, request, issue.code, issue.message, issue.constraint)
+  for (const issue of getGenerationStyle(request.style).validatePlan(plan, mission)) addDiagnostic(diagnostics, request, issue.code, issue.message, issue.constraint)
   const moduleById = new Map(plan.modules.map(module => [module.id, module]))
   const missionEdgeConnections = new Map<string, SpatialConnection[]>()
   const occupiedModules = new Map<string, SpatialModule>()

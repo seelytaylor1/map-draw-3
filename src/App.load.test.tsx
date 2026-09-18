@@ -229,7 +229,7 @@ describe('App load lifecycle', () => {
 
     const attemptSummary = screen.getByText(/\d+ rejected attempts/i)
     const reportedCount = Number(attemptSummary.textContent?.match(/(\d+) rejected attempts/i)?.[1])
-    const placementDiagnostics = screen.getAllByText(/Placement \d+:/i)
+    const placementDiagnostics = screen.queryAllByText(/Placement \d+:/i)
     expect(reportedCount).toBe(placementDiagnostics.length)
   })
 
