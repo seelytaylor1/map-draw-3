@@ -19,6 +19,13 @@ function cycleEdges(mission: Mission, cycle: MissionCycle): MissionEdge[] {
   return cycle.routeEdgeIds.map(id => mission.edges.find(candidate => candidate.id === id)).filter((candidate): candidate is MissionEdge => Boolean(candidate))
 }
 
+function routeEdges(mission: Mission, cycle: MissionCycle, route: readonly string[]): MissionEdge[] {
+  return cycle.routeEdgeIds.flatMap(id => {
+    const candidate = mission.edges.find(edge => edge.id === id)
+    return candidate && route.some((nodeId, index) => index < route.length - 1 && candidate.from === nodeId && candidate.to === route[index + 1]) ? [candidate] : []
+  })
+}
+
 function removeEdges(mission: Mission, ids: readonly string[]): void {
   const remove = new Set(ids)
   mission.edges = mission.edges.filter(candidate => !remove.has(candidate.id))
@@ -58,19 +65,19 @@ function replaceEdge(mission: Mission, id: string, replacements: MissionEdge[]):
 function makeContract(challenge: LoopChallenge): LoopChallengeContract {
   const base = {
     challenge,
-    requiredRoles: ['anchorNode', 'challengeNode', 'objectiveNode'] as Array<keyof CycleRoles>,
+    requiredRoles: ['anchorNode', 'routeANode', 'routeBNode', 'objectiveNode'] as Array<keyof CycleRoles>,
   }
   const contracts: Record<LoopChallenge, LoopChallengeContract> = {
     'alternate-paths': { ...base, realization: 'two readable traversable routes', rewrite: () => {} },
-    'hidden-shortcut': { ...base, realization: 'secret connection', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); if (route[0]) route[0].secret = true } },
-    'dramatic-arc': { ...base, realization: 'visible obstacle before the objective', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
-    'dangerous-route': { ...base, realization: 'dangerous challenge route', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); if (route[0]) route[0].dangerous = true } },
+    'hidden-shortcut': { ...base, realization: 'one secret route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].secret = true } },
+    'dramatic-arc': { ...base, realization: 'visible obstacle before the objective on one route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
+    'dangerous-route': { ...base, realization: 'one dangerous route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].dangerous = true } },
     'lock-and-key': { ...base, realization: 'locked objective and Goal with matching key', rewrite: (mission, cycle) => {
       const dependency = addRequiredKeyLock(mission, cycle, cycle.roles.anchorNode)
       const route = cycleEdges(mission, cycle)
       // Both routes approach the same objective room, so both objective
       // apertures carry the required lock. The key is available from the
-      // anchor before either route is attempted; removing the detour would
+      // anchor before either route is attempted; removing one route would
       // turn the challenge into a dead end rather than a loop.
       for (const candidate of route.filter(edgeCandidate => edgeCandidate.to === cycle.roles.objectiveNode)) candidate.lockId = dependency.lockId
       // The selected Key & Lock challenge also marks the main Goal entrance.
@@ -80,18 +87,37 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       if (!goalEntries.some(candidate => candidate.lockId)) for (const entry of goalEntries) entry.lockId = dependency.lockId
     } },
     'unknown-return': { ...base, realization: 'required locked goal, one-way valve, key room, and return route', rewrite: (mission, cycle) => {
-      const dependency = addRequiredKeyLock(mission, cycle, cycle.roles.challengeNode, '', false)
-      const lockEdge = mission.edges.find(candidate => candidate.from === cycle.roles.challengeNode && candidate.to === cycle.roles.objectiveNode)
+      const routeAApproach = cycle.routeA[cycle.routeA.length - 2]!
+      const dependency = addRequiredKeyLock(mission, cycle, routeAApproach, '', false)
+      const lockEdge = mission.edges.find(candidate => candidate.from === routeAApproach && candidate.to === cycle.roles.objectiveNode)
       if (lockEdge) lockEdge.lockId = dependency.lockId
       for (const entry of mission.edges.filter(e => e.to === cycle.roles.objectiveNode)) entry.lockId = dependency.lockId
-      const valve = edge(`unknown-return-valve-${cycle.id}`, cycle.roles.challengeNode, dependency.keyNodeId, 'return', { oneWay: true })
+      const valve = edge(`unknown-return-valve-${cycle.id}`, routeAApproach, dependency.keyNodeId, 'return', { oneWay: true })
       const returnEdge = edge(`unknown-return-back-${cycle.id}`, dependency.keyNodeId, cycle.roles.anchorNode, 'return')
       mission.edges.push(valve, returnEdge)
-      cycle.routeB = [cycle.roles.anchorNode, cycle.roles.challengeNode, dependency.keyNodeId, cycle.roles.anchorNode]
       cycle.routeEdgeIds = [...cycle.routeEdgeIds, valve.id, returnEdge.id]
     } },
     'patrolled-cycle': { ...base, realization: 'danger metadata on both routes', rewrite: (mission, cycle) => { for (const route of cycleEdges(mission, cycle)) route.dangerous = true } },
-    'gambit': { ...base, realization: 'dangerous short route and safer return route', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); if (route[0]) route[0].dangerous = true } },
+    'gambit': { ...base, realization: 'dangerous short route and longer safer route', rewrite: (mission, cycle) => {
+      const shortRoute = routeEdges(mission, cycle, cycle.routeA)
+      if (shortRoute[0]) shortRoute[0].dangerous = true
+      const safeRoute = routeEdges(mission, cycle, cycle.routeB)
+      const safeFinal = safeRoute[safeRoute.length - 1]
+      if (!safeFinal) return
+      const additionalNodeCount = Math.max(1, cycle.routeA.length - cycle.routeB.length + 1)
+      const safeNodeIds = Array.from({ length: additionalNodeCount }, (_, nodeIndex) => {
+        const suffix = nodeIndex === 0 ? '' : `-${nodeIndex + 1}`
+        const id = `gambit-${cycle.id}-safe-route${suffix}`
+        mission.nodes.push(node(id, 'challenge', `loop-${cycle.id}`, `Loop ${cycle.id} Safe Route ${nodeIndex + 1}`))
+        return id
+      })
+      const safeRouteNodes = [safeFinal.from, ...safeNodeIds, safeFinal.to]
+      const replacements = safeRouteNodes.slice(0, -1).map((from, nodeIndex) => edge(`${safeFinal.id}-safe-${nodeIndex + 1}`, from, safeRouteNodes[nodeIndex + 1]!, safeFinal.kind, { coupling: safeFinal.coupling }))
+      replaceEdge(mission, safeFinal.id, replacements)
+      const routeIndex = cycle.routeEdgeIds.indexOf(safeFinal.id)
+      if (routeIndex >= 0) cycle.routeEdgeIds.splice(routeIndex, 1, ...replacements.map(candidate => candidate.id))
+      cycle.routeB = [...cycle.routeB.slice(0, -1), ...safeNodeIds, cycle.roles.objectiveNode]
+    } },
     'hub-and-spoke': { ...base, realization: 'explicit hub and spoke connections', rewrite: (mission, cycle) => {
       const hub = mission.nodes.find(candidate => candidate.id === cycle.roles.anchorNode)
       if (hub) hub.kind = 'hub'
@@ -99,7 +125,7 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       const destinations = [...new Set([...cycle.routeA, ...cycle.routeB])].filter(id => id !== cycle.roles.anchorNode)
       const spokes = destinations.map(target => edge(`spoke-${cycle.id}-${target}`, cycle.roles.anchorNode, target, 'cycle-route'))
       mission.edges.push(...spokes)
-      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.challengeNode]
+      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.routeANode]
       cycle.routeB = [cycle.roles.anchorNode, cycle.roles.objectiveNode]
       cycle.routeEdgeIds = spokes.map(candidate => candidate.id)
       // Hub-and-Spoke is a deliberate hub realization rather than a pair of
@@ -110,7 +136,7 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'double-lock': { ...base, realization: 'two distinct locks on one objective', rewrite: (mission, cycle) => {
       const first = addRequiredKeyLock(mission, cycle, cycle.roles.anchorNode, '')
       const secondKeyId = `key-${cycle.id}-2`
-      addKey(mission, cycle, secondKeyId, cycle.roles.challengeNode)
+      addKey(mission, cycle, secondKeyId, cycle.roles.routeANode)
       const gateOneId = `lock-node-${cycle.id}-1`
       const gateTwoId = `lock-node-${cycle.id}-2`
       if (!mission.nodes.some(candidate => candidate.id === gateOneId)) mission.nodes.push(node(gateOneId, 'lock', `loop-${cycle.id}`, `Lock ${first.lockId}`, { lockId: first.lockId }))
@@ -129,9 +155,9 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       // Both approaches merge before the two serial gates. Neither entrance
       // may reach the objective without collecting both keys.
       for (const entry of mission.edges.filter(e => e.to === cycle.roles.objectiveNode && e.from !== gateTwoId)) entry.to = gateOneId
-      const detour = cycle.routeB[1]!
-      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.challengeNode, gateOneId, gateTwoId, cycle.roles.objectiveNode]
-      cycle.routeB = [cycle.roles.anchorNode, detour, gateOneId, gateTwoId, cycle.roles.objectiveNode]
+      const routeBNode = cycle.routeB[1]!
+      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.routeANode, gateOneId, gateTwoId, cycle.roles.objectiveNode]
+      cycle.routeB = [cycle.roles.anchorNode, routeBNode, gateOneId, gateTwoId, cycle.roles.objectiveNode]
 
     } },
   }
@@ -163,7 +189,7 @@ function addBranches(mission: Mission, spine: string[], count: number, style: Mi
     // around the node where the first explicit cycle originates.
     const branchOffset = style === 'spine-shortcuts' ? 4 : style === 'orbit-gates' ? 0 : 1
     // When the one loop converges on Goal, keep optional branches from adding
-    // a third route that bypasses the loop's challenge and detour.
+    // a third route that bypasses both loop routes.
     const lastBranchSpineIndex = spine.length - (keepGoalAsLoopObjective ? 3 : 2)
     const branchSpineIndex = Math.min(lastBranchSpineIndex, index + branchOffset)
     const from = spine[branchSpineIndex]!
@@ -196,30 +222,24 @@ export function createMission(request: GenerationRequest, budget = createComplex
 
   for (let index = 0; index < budget.requestedLoops; index++) {
     const selected = budget.loopChallenges[index]!
-    if (selected === 'unknown-return' && index === 0) {
-      const approach = tasks[tasks.length - 1]!
-      const routeEdges = spine.slice(0, -1).map((_, edgeIndex) => mission.edges.find(candidate => candidate.id === `progression-${edgeIndex + 1}`)!).filter(Boolean)
-      const cycle: MissionCycle = { id: `cycle-${index + 1}`, routeA: [...spine], routeB: ['start', approach], roles: { anchorNode: 'start', challengeNode: approach, objectiveNode: 'goal' }, challenge: selected, routeEdgeIds: routeEdges.map(candidate => candidate.id), nonTrivial: true }
-      mission.cycles.push(cycle)
-      applyLoopChallenge(mission, cycle)
-      const lock = mission.locks.find(candidate => candidate.nodeId === 'goal')
-      const lockedSpineEdge = mission.edges.find(candidate => candidate.from === approach && candidate.to === 'goal')
-      if (lock && lockedSpineEdge) lockedSpineEdge.lockId = lock.id
-      continue
-    }
-    const anchor = singleLoop ? tasks[tasks.length - 1]! : request.style === 'orbit-gates' ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
-    const challengeNode = `loop-${index + 1}-challenge`
-    const detourNode = `loop-${index + 1}-detour`
+    const anchor = singleLoop ? 'start' : request.style === 'orbit-gates' ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
+    const routeANode = `loop-${index + 1}-route-a`
+    const routeBNode = `loop-${index + 1}-route-b`
     const objectiveNode = singleLoop ? mission.goalNodeId : `loop-${index + 1}-objective`
-    mission.nodes.push(node(challengeNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Challenge`), node(detourNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Detour`))
+    mission.nodes.push(node(routeANode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Route A`), node(routeBNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Route B`))
     if (!singleLoop) mission.nodes.push(node(objectiveNode, 'reward', `loop-${index + 1}`, `Loop ${index + 1} Objective`))
-    else mission.edges = mission.edges.filter(candidate => !(candidate.from === anchor && candidate.to === mission.goalNodeId && candidate.kind === 'progression'))
-    const a1 = edge(`cycle-${index + 1}-a1`, anchor, challengeNode, 'cycle-route')
-    const a2 = edge(`cycle-${index + 1}-a2`, challengeNode, objectiveNode, 'cycle-route')
-    const b1 = edge(`cycle-${index + 1}-b1`, anchor, detourNode, 'cycle-route')
-    const b2 = edge(`cycle-${index + 1}-b2`, detourNode, objectiveNode, 'cycle-route')
-    mission.edges.push(a1, a2, b1, b2)
-    const cycle: MissionCycle = { id: `cycle-${index + 1}`, routeA: [anchor, challengeNode, objectiveNode], routeB: [anchor, detourNode, objectiveNode], roles: { anchorNode: anchor, challengeNode, objectiveNode }, challenge: selected, routeEdgeIds: [a1.id, a2.id, b1.id, b2.id], nonTrivial: true }
+    const routeA = singleLoop
+      ? [anchor, routeANode, ...tasks.slice(0, Math.ceil(tasks.length / 2)), objectiveNode]
+      : [anchor, routeANode, objectiveNode]
+    const routeB = singleLoop
+      ? [anchor, routeBNode, ...tasks.slice(Math.ceil(tasks.length / 2)), objectiveNode]
+      : [anchor, routeBNode, objectiveNode]
+    if (singleLoop) mission.edges = mission.edges.filter(candidate => candidate.kind !== 'progression')
+    const addRoute = (route: string[], prefix: 'a' | 'b') => route.slice(0, -1).map((from, routeIndex) => edge(`cycle-${index + 1}-${prefix}${routeIndex + 1}`, from, route[routeIndex + 1]!, 'cycle-route'))
+    const routeAEdges = addRoute(routeA, 'a')
+    const routeBEdges = addRoute(routeB, 'b')
+    mission.edges.push(...routeAEdges, ...routeBEdges)
+    const cycle: MissionCycle = { id: `cycle-${index + 1}`, routeA, routeB, roles: { anchorNode: anchor, routeANode, routeBNode, objectiveNode }, challenge: selected, routeEdgeIds: [...routeAEdges, ...routeBEdges].map(candidate => candidate.id), nonTrivial: true }
     mission.cycles.push(cycle)
     applyLoopChallenge(mission, cycle)
   }
