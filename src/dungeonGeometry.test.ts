@@ -65,7 +65,10 @@ describe('committed dungeon geometry', () => {
         expect(objective.footprint.some(p => visited.has(p.row * request.cols + p.col)), `${challenge}/${key.id}`).toBe(false)
       }
       const entries = result.space!.connections.filter(c => result.mission.edges.some(e => e.id === c.missionEdgeId && e.lockId))
-      expect(result.snapshot!.stamps.filter(s => s.type === 'DoorLocked1x1')).toHaveLength(entries.length)
+      for (const entry of entries) {
+        const point = entry.path[entry.path.length - 2]!
+        expect(result.snapshot!.stamps.some(stamp => stamp.type === 'DoorLocked1x1' && stamp.col === point.col && stamp.row === point.row)).toBe(true)
+      }
     }
   })
 

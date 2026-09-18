@@ -12,6 +12,24 @@ import { resolveGeneratedStamp } from './generatedContent'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
+const doorStampTypes: Record<DoorwayStyle, readonly StampType[]> = {
+  single: ['Door1x1', 'door'],
+  double: ['DoorDouble1x1'],
+  locked: ['DoorLocked1x1'],
+  trapdoor: ['TrapdoorFloor1x1'],
+  portcullis: ['DoorPortcullis1x1'],
+  revolving: ['DoorRevolving1x1'],
+  secret: ['DoorSecret1x1'],
+  magic: ['DoorMagic1x1'],
+  'ladder-down': ['LadderDown1x1'],
+  'ladder-up': ['LadderUp1x1'],
+  stairs: ['Stairs1x1_01'],
+  'spiral-stairs': ['StairSpiralSquareDown1x1'],
+  window: ['Window1x1'],
+  archway: ['DoorArchway1x1'],
+  curtain: ['Curtain1x1'],
+}
+const rolledDoorwayStyles = Object.keys(doorStampTypes) as DoorwayStyle[]
 
 function center(module: SpatialModule): Point { return { col: module.origin.col + Math.floor(module.width / 2), row: module.origin.row + Math.floor(module.height / 2) } }
 
@@ -192,9 +210,9 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   }
 }
 
-function rollDoorwayStyle(random: ReturnType<typeof createD6Random>): Exclude<DoorwayStyle, 'locked'> {
-  const roll = random.nextD6()
-  return roll <= 3 ? 'single' : roll === 4 ? 'double' : roll === 5 ? 'portcullis' : 'trapdoor'
+function rollDoorwayStyle(random: ReturnType<typeof createD6Random>): DoorwayStyle {
+  const roll = (random.nextD6() - 1) * 6 + random.nextD6() - 1
+  return rolledDoorwayStyles[Math.floor(roll * rolledDoorwayStyles.length / 36)]!
 }
 
 function pointInModule(point: Point, module: SpatialModule): boolean { return module.footprint.some(candidate => candidate.col === point.col && candidate.row === point.row) }
@@ -371,17 +389,10 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     const distance = (point: Point) => Math.abs(point.col - preferred.col) + Math.abs(point.row - preferred.row)
     const candidates = connection.path.slice(1, -1).sort((a, b) => distance(a) - distance(b))
     const point = candidates.find(candidate => !occupied.has(`${candidate.col},${candidate.row}`))
-    if (point) addOptional(connection.condition === 'trap' ? ['Trap1x1', 'trap', 'Danger1x1'] : ['Danger1x1', 'Trap1x1', 'trap'], `generated-hallway-${connection.condition}-${connection.id}`, point)
+    if (point) addOptional(connection.condition === 'trap' ? ['Trap1x1'] : ['Danger1x1'], `generated-hallway-${connection.condition}-${connection.id}`, point)
   }
-  const doorStampTypes = {
-    single: ['Door1x1', 'door'],
-    double: ['DoorDouble1x1'],
-    locked: ['DoorLocked1x1'],
-    trapdoor: ['TrapdoorFloor1x1'],
-    portcullis: ['DoorPortcullis1x1'],
-  } as const
   for (const connection of plan.connections) for (const doorway of connection.doorways ?? []) {
-    if (doorway.style === 'locked' || occupied.has(`${doorway.point.col},${doorway.point.row}`)) continue
+    if (occupied.has(`${doorway.point.col},${doorway.point.row}`)) continue
     addOptional(doorStampTypes[doorway.style], `generated-${doorway.style}-door-${connection.id}-${doorway.point.col}-${doorway.point.row}`, doorway.point, doorway.direction)
   }
   for (const module of plan.modules) {
@@ -389,11 +400,9 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       const point = roomDecorationPoint(module)
       if (point) {
         if (module.encounter === 'monster') {
-          addOptional(['Danger1x1'], `generated-monster-${module.id}`, point)
-          labels.push({ id: `label-monster-${module.id}`, col: point.col, row: point.row, text: 'Monster' })
-          occupied.add(`${point.col},${point.row}`)
+          addOptional(['TriangleArrowhead1x1'], `generated-monster-${module.id}`, point)
         } else {
-          addOptional(['Trap1x1', 'trap', 'Danger1x1'], `generated-room-trap-${module.id}`, point)
+          addOptional(['Trap1x1'], `generated-room-trap-${module.id}`, point)
         }
       }
     }

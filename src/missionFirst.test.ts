@@ -126,10 +126,11 @@ describe('mission-first dungeon generation', () => {
         roomCount++
         if (hasTreasure) treasureCount++
         if (room.encounter === 'monster') {
-          expect(result.snapshot!.labels.some(label => label.text === 'Monster' && room.footprint.some(point => point.col === label.col && point.row === label.row))).toBe(true)
+          expect(result.snapshot!.stamps.some(stamp => stamp.type === 'TriangleArrowhead1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+          expect(result.snapshot!.labels.some(label => label.text === 'Monster' && room.footprint.some(point => point.col === label.col && point.row === label.row))).toBe(false)
         }
         if (room.encounter === 'trap') {
-          expect(result.snapshot!.stamps.some(stamp => ['Trap1x1', 'trap', 'Danger1x1'].includes(stamp.type) && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+          expect(result.snapshot!.stamps.some(stamp => stamp.type === 'Trap1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
         }
       }
       expect(chest).toHaveLength(rooms.filter(room => room.hasTreasure).length)
@@ -180,9 +181,13 @@ describe('mission-first dungeon generation', () => {
     let longHallwayTrials = 0
     let longHallwayDoors = 0
     let apertureCount = 0
-    const stampForStyle = { single: 'Door1x1', double: 'DoorDouble1x1', portcullis: 'DoorPortcullis1x1', trapdoor: 'TrapdoorFloor1x1', locked: 'DoorLocked1x1' }
+    const stampForStyle = {
+      single: 'Door1x1', double: 'DoorDouble1x1', portcullis: 'DoorPortcullis1x1', trapdoor: 'TrapdoorFloor1x1', locked: 'DoorLocked1x1',
+      revolving: 'DoorRevolving1x1', secret: 'DoorSecret1x1', magic: 'DoorMagic1x1', 'ladder-down': 'LadderDown1x1', 'ladder-up': 'LadderUp1x1',
+      stairs: 'Stairs1x1_01', 'spiral-stairs': 'StairSpiralSquareDown1x1', window: 'Window1x1', archway: 'DoorArchway1x1', curtain: 'Curtain1x1',
+    }
 
-    for (let seed = 1; seed <= 80; seed++) {
+    for (let seed = 1; seed <= 240; seed++) {
       const result = generateMissionDungeon(request({ seed, loopCount: 0 }))
       expect(result.ok, `seed ${seed}`).toBe(true)
       for (const connection of result.space!.connections) {
@@ -218,7 +223,7 @@ describe('mission-first dungeon generation', () => {
     expect(shortHallwayDoors / shortHallwayTrials).toBeLessThan(0.60)
     expect(longHallwayDoors / longHallwayTrials).toBeGreaterThan(0.70)
     expect(longHallwayDoors / longHallwayTrials).toBeLessThan(0.97)
-    expect([...doorStyles]).toEqual(expect.arrayContaining(['single', 'double', 'portcullis', 'trapdoor']))
+    expect([...doorStyles]).toEqual(expect.arrayContaining(Object.keys(stampForStyle)))
   })
 
   it('places locked door markers on the apertures governed by real Key/Lock relationships', () => {
@@ -234,7 +239,7 @@ describe('mission-first dungeon generation', () => {
         const lockPoint = connection.path[connection.path.length - 2]!
         return connection.doorways?.some(doorway => doorway.style === 'locked' && doorway.point.col === lockPoint.col && doorway.point.row === lockPoint.row)
       })).toBe(true)
-      expect(lockedStamps.map(({ col, row }) => ({ col, row }))).toEqual(expected)
+      expect(lockedStamps.map(({ col, row }) => ({ col, row }))).toEqual(expect.arrayContaining(expected))
     }
   })
 

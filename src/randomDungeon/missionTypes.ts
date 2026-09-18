@@ -168,7 +168,10 @@ export interface Port {
 export type SpatialModuleType = 'room' | 'corridor' | 'branch' | 'junction' | 'cycle' | 'hub' | 'gate' | 'secret-connection' | 'blocked-return' | 'terminal-challenge'
 export type RoomEncounter = 'empty' | 'monster' | 'trap'
 export type CorridorCondition = 'open' | 'flooded' | 'trap' | 'hazard'
-export type DoorwayStyle = 'single' | 'double' | 'locked' | 'trapdoor' | 'portcullis'
+export type DoorwayStyle =
+  | 'single' | 'double' | 'locked' | 'trapdoor' | 'portcullis'
+  | 'revolving' | 'secret' | 'magic' | 'ladder-down' | 'ladder-up'
+  | 'stairs' | 'spiral-stairs' | 'window' | 'archway' | 'curtain'
 
 export interface GeneratedDoorway {
   point: Point

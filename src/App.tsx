@@ -40,6 +40,7 @@ import { ALL_LOOP_CHALLENGES, generateMissionDungeon, preflightGeneration } from
 import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
+import { MapLegend } from './MapLegend'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -2135,6 +2136,7 @@ export default function App() {
         />
       </aside>
 
+      <MapLegend />
       <div className="canvas-status" aria-live="polite">
         <strong>{drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label'}</strong>
         <span>Z{activeZ}</span>
