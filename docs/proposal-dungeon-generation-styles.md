@@ -163,20 +163,20 @@ Loops should be generated and reasoned about as first-class mission structures. 
 Each loop challenge operates on named roles within a loop:
 
 - `anchorNode`: the stable node that begins or organizes the loop;
-- `challengeNode`: the node or route where the main test is introduced;
+- `routeANode` and `routeBNode`: neutral, distinct route nodes that each carry an ordinary challenge before a loop challenge assigns special meaning;
 - `objectiveNode`: the vault, staircase, reward, or other destination of interest;
 - `keyNode`: the node where a corresponding key can be placed when the pattern requires one.
 
 | Pattern | Mission transformation |
 |---|---|
-| Alternate Paths | Both routes through the loop remain valid. Insert an additional challenge node between `challengeNode` and `objectiveNode`. |
-| Hidden Shortcut | Make the route between `anchorNode` and `challengeNode` a secret passage. |
-| Dramatic Arc | Make the route between `challengeNode` and `objectiveNode` visibly impassable while allowing the player to see the destination. Add an impassable obstacle. |
-| Dangerous Route | Mark the `challengeNode` route as the dangerous challenge. The alternate route is safer. |
+| Alternate Paths | Both neutral routes through the loop remain valid. |
+| Hidden Shortcut | Make the Route A connection from `anchorNode` secret. |
+| Dramatic Arc | Make Route A's connection into `objectiveNode` visibly impassable while preserving Route B as the approach. |
+| Dangerous Route | Mark Route A as dangerous. Route B remains the safer alternative. |
 | Lock & Key | Create one matching Key/Lock pair. Put the required Lock on the door into `objectiveNode`, keep a bypass around that room, and leave the Key reachable before the Lock is opened. |
-| Unknown Return | Create the required locked Goal and matching Key room. Represent `Start → locked door into Goal room → bypass around Goal room → one-way valve → Key room → one or more supporting rooms → Start → the same door → Goal room, now open`; the valve only permits travel toward the Key room, and its direction is explicit Space metadata. |
+| Unknown Return | Keep the base loop, lock both objective entrances, and add a one-way valve from Route A to a matching Key room. The Key's supporting return route leads back to the anchor, after which the same objective entrances are open. |
 | Patrolled Cycle | Treat both routes in the loop as dangerous because a powerful encounter patrols the cycle. |
-| Gambit | Move `objectiveNode` to the opposite side of the loop. Make the route from `anchorNode` to `objectiveNode` dangerous; make the other route longer but safer. |
+| Gambit | Keep Route A direct and dangerous; extend Route B with an additional safe-route challenge before it reconverges at `objectiveNode`. |
 | Hub & Spoke | Remove the loop connections and connect the `anchorNode` room to the other loop rooms, making it the hub. |
 | Double Lock | Create two distinct matching Key/Lock pairs, with both required Locks on the objective-room entry and a reachable bypass to each Key. |
 
@@ -191,6 +191,10 @@ The first implementation should represent each pattern as a graph rewrite with e
 The first Mission Grammar implementation should make every foundational pattern and every Loop Challenge executable. Each pattern needs at least one conservative, valid graph rewrite; additional alternative rewrites can be added later for variety. The initial implementation is therefore complete in semantic coverage without requiring a large catalog of mission rules.
 
 The generated Mission and Space graphs are static representations. They may record locks, one-way connections, blocked returns, secrets, and other intended relationships, but they do not simulate runtime state changes or player actions.
+
+## Topology diagnostic
+
+`npm run diagnose:mission-topology -- [count] [firstSeed] [challenge]` evaluates realized room-and-corridor plans across all three styles instead of trusting the requested Mission graph. It reports each cycle's route geometry, usable-route count, and the anchor's position from Start to objective, plus the selected mission's required map elements. A cycle anchor after the halfway point is a `late-cycle-choice` failure: it is a linear approach with a fork at the end, not a meaningful map-shaping choice. The command exits non-zero when any generated map fails this check, so it can serve as a regression gate while layout productions evolve.
 
 The source description for `Unknown Return` is normalized here: it is a real Mission pattern, not metadata alone. The matching Key is placed in the Key room, the Goal lock is required, the one-way valve points toward the Key room, and the separate return route contains one or more supporting spatial rooms. No runtime state simulation is required.
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FLOOR, WALL, WATER } from './constants'
-import { ALL_LOOP_CHALLENGES, createComplexityBudget, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
+import { ALL_LOOP_CHALLENGES, assessMapTopology, createComplexityBudget, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
 import { runTiles } from './directionalRun'
 import { deserialize, serialize } from './serialization'
@@ -116,6 +116,69 @@ describe('mission-first dungeon generation', () => {
     expect(result.mission.nodes.some(node => node.id === 'loop-1-objective')).toBe(false)
     expect(result.space!.modules.filter(module => module.missionNodeId === result.mission.goalNodeId)).toHaveLength(1)
   })
+
+  it('starts an ordinary loop as two neutral routes before a mission modifies it', () => {
+    const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['alternate-paths'] }))
+    const cycle = result.mission.cycles[0]!
+    const routeNodes = [cycle.roles.routeANode, cycle.roles.routeBNode].map(id => result.mission.nodes.find(node => node.id === id)!)
+
+    expect(result.ok).toBe(true)
+    expect(cycle.routeA.slice(0, 2)).toEqual([cycle.roles.anchorNode, cycle.roles.routeANode])
+    expect(cycle.routeB.slice(0, 2)).toEqual([cycle.roles.anchorNode, cycle.roles.routeBNode])
+    expect(cycle.routeA[cycle.routeA.length - 1]).toBe(cycle.roles.objectiveNode)
+    expect(cycle.routeB[cycle.routeB.length - 1]).toBe(cycle.roles.objectiveNode)
+    expect(cycle.routeA.length).toBeGreaterThan(3)
+    expect(cycle.routeB.length).toBeGreaterThan(3)
+    expect(routeNodes.map(node => node.label)).toEqual(['Loop 1 Route A', 'Loop 1 Route B'])
+    expect(result.mission.nodes.some(node => /detour/i.test(node.label))).toBe(false)
+  })
+
+  it('puts the unmodified loop choice before the midpoint of the realized map', () => {
+    for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) {
+      const result = generateMissionDungeon(request({ style, loopCount: 1, loopChallenges: ['alternate-paths'] }))
+      const assessment = assessMapTopology(result.mission, result.space!)
+
+      expect(assessment.cycles[0]?.hasDistinctRouteGeometry, style).toBe(true)
+      expect(assessment.cycles[0]?.choicePosition, style).toBeLessThanOrEqual(0.5)
+      expect(assessment.findings.map(finding => finding.code), style).not.toContain('late-cycle-choice')
+      expect(assessment.supportsMeaningfulChoices, style).toBe(true)
+    }
+  })
+
+  it('applies route-specific missions to the neutral loop', () => {
+    const dramatic = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['dramatic-arc'] }))
+    const dramaticCycle = dramatic.mission.cycles[0]!
+    const dramaticA = dramatic.mission.edges.find(edge => edge.from === dramaticCycle.routeA[dramaticCycle.routeA.length - 2] && edge.to === dramaticCycle.roles.objectiveNode)!
+    const dramaticB = dramatic.mission.edges.find(edge => edge.from === dramaticCycle.routeB[dramaticCycle.routeB.length - 2] && edge.to === dramaticCycle.roles.objectiveNode)!
+    expect(dramaticA).toMatchObject({ blocked: true, visibleObstacle: true })
+    expect(dramaticB.blocked).toBeUndefined()
+
+    const gambit = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['gambit'] }))
+    const gambitCycle = gambit.mission.cycles[0]!
+    const gambitA = gambit.mission.edges.find(edge => edge.from === gambitCycle.roles.anchorNode && edge.to === gambitCycle.roles.routeANode)!
+    expect(gambitA.dangerous).toBe(true)
+    expect(gambitCycle.routeB.length).toBeGreaterThan(gambitCycle.routeA.length)
+    expect(gambit.mission.nodes.some(node => node.id === 'gambit-cycle-1-safe-route')).toBe(true)
+
+    const unknownReturn = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['unknown-return'] }))
+    const unknownCycle = unknownReturn.mission.cycles[0]!
+    expect(unknownCycle.routeA[unknownCycle.routeA.length - 1]).toBe(unknownCycle.roles.objectiveNode)
+    expect(unknownCycle.routeB[unknownCycle.routeB.length - 1]).toBe(unknownCycle.roles.objectiveNode)
+    expect(unknownReturn.mission.edges.some(edge => edge.id === 'unknown-return-valve-cycle-1')).toBe(true)
+  })
+
+  it('realizes every mission modifier on an early, inspectable base loop', () => {
+    for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) {
+      for (const challenge of ALL_LOOP_CHALLENGES) {
+        for (const seed of [1, 42, 123456789]) {
+          const result = generateMissionDungeon(request({ style, seed, loopCount: 1, loopChallenges: [challenge] }))
+          const assessment = assessMapTopology(result.mission, result.space!)
+          expect(result.ok, `${style}/${challenge}/${seed}`).toBe(true)
+          expect(assessment.supportsMeaningfulChoices, `${style}/${challenge}/${seed}: ${assessment.findings.map(finding => finding.message).join(' ')}`).toBe(true)
+        }
+      }
+    }
+  }, 30_000)
 
   it('marks an unused starting-room wall with a seeded exterior descent', () => {
     const runKinds = new Set<string>()

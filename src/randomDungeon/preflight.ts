@@ -125,7 +125,7 @@ export function preflightGeneration(request: GenerationRequest): PreflightResult
   const capacity = derivePageCapacity(request)
   const diagnostics = [...inputIssues]
   const loopCount = Number.isInteger(request.loopCount) && request.loopCount >= 0 ? request.loopCount : 0
-  // Each ordinary cycle expands to challenge, detour, and objective modules;
+  // Each ordinary cycle expands to two neutral route modules and an objective;
   // dependency-bearing challenges add their own key/gate modules. This keeps
   // the preflight estimate aligned with the minimum spatial realization.
   const estimatedRooms = budget.missionNodes + loopCount * 3 + budget.derivedKeys + budget.derivedLocks

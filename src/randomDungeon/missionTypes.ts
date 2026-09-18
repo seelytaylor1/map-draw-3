@@ -128,7 +128,8 @@ export interface LockRecord {
 
 export interface CycleRoles {
   anchorNode: string
-  challengeNode: string
+  routeANode: string
+  routeBNode: string
   objectiveNode: string
   keyNode?: string
 }
