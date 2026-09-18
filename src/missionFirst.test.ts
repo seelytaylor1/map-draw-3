@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { WALL, WATER } from './constants'
-import { ALL_LOOP_CHALLENGES, createComplexityBudget, generateMissionDungeon, preflightGeneration, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
+import { FLOOR, WALL, WATER } from './constants'
+import { ALL_LOOP_CHALLENGES, createComplexityBudget, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
 import { runTiles } from './directionalRun'
 import { deserialize, serialize } from './serialization'
@@ -88,19 +88,33 @@ describe('mission-first dungeon generation', () => {
     expect(result.mission.nodes.some(node => node.kind === 'start')).toBe(true)
     expect(result.mission.nodes.some(node => node.kind === 'goal')).toBe(true)
     expect(result.mission.cycles).toHaveLength(2)
+    expect(result.mission.cycles.map(cycle => cycle.roles.objectiveNode)).not.toContain(result.mission.goalNodeId)
+    expect(new Set(result.mission.cycles.map(cycle => cycle.roles.objectiveNode)).size).toBe(2)
     expect(result.mission.cycles.every(cycle => cycle.nonTrivial && new Set(cycle.routeA).size >= 3 && new Set(cycle.routeB).size >= 3)).toBe(true)
     expect(validateProgression(result.mission).goalReachable).toBe(true)
     expect(result.summary.mission.pairings).toHaveLength(0)
   })
 
   it('places loop reward treasure in the Goal room', () => {
-    const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['alternate-paths'] }))
+    const result = generateMissionDungeon(request({ seed: 1, loopCount: 1, loopChallenges: ['alternate-paths'] }))
     const goal = result.space!.modules.find(module => module.missionNodeId === result.mission.goalNodeId)!
     const chests = result.snapshot!.stamps.filter(stamp => stamp.type === 'Chest1x1')
 
     expect(result.ok).toBe(true)
     expect(goal.hasTreasure).toBe(true)
     expect(chests.some(chest => goal.footprint.some(point => point.col === chest.col && point.row === chest.row))).toBe(true)
+  })
+
+  it('uses the dungeon Goal as the objective room when there is one loop', () => {
+    const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['alternate-paths'] }))
+    const cycle = result.mission.cycles[0]!
+
+    expect(result.ok).toBe(true)
+    expect(cycle.roles.objectiveNode).toBe(result.mission.goalNodeId)
+    expect(cycle.routeA[cycle.routeA.length - 1]).toBe(result.mission.goalNodeId)
+    expect(cycle.routeB[cycle.routeB.length - 1]).toBe(result.mission.goalNodeId)
+    expect(result.mission.nodes.some(node => node.id === 'loop-1-objective')).toBe(false)
+    expect(result.space!.modules.filter(module => module.missionNodeId === result.mission.goalNodeId)).toHaveLength(1)
   })
 
   it('marks an unused starting-room wall with a seeded exterior descent', () => {
@@ -263,14 +277,57 @@ describe('mission-first dungeon generation', () => {
       const lockedConnections = result.space!.connections.filter(connection => result.mission.edges.some(edge => edge.id === connection.missionEdgeId && edge.lockId))
       const expected = lockedConnections.map(connection => connection.path[connection.path.length - 2]!)
       const lockedStamps = result.snapshot!.stamps.filter(stamp => stamp.type === 'DoorLocked1x1')
+      const keyStamps = result.snapshot!.stamps.filter(stamp => result.mission.keys.some(key => stamp.id === `generated-${key.id}`))
 
       expect(lockedConnections.length, challenge).toBeGreaterThan(0)
+      expect(keyStamps).toHaveLength(result.mission.keys.length)
+      expect(keyStamps.every(stamp => stamp.type === 'Key1x1')).toBe(true)
       expect(lockedConnections.every(connection => {
         const lockPoint = connection.path[connection.path.length - 2]!
         return connection.doorways?.some(doorway => doorway.style === 'locked' && doorway.point.col === lockPoint.col && doorway.point.row === lockPoint.row)
       })).toBe(true)
       expect(lockedStamps.map(({ col, row }) => ({ col, row }))).toEqual(expect.arrayContaining(expected))
     }
+  })
+
+  it('places a locked door at the main Goal for a Lock and Key challenge', () => {
+    const result = generateMissionDungeon(request({ seed: 382040039, loopCount: 1, loopChallenges: ['lock-and-key'] }))
+    expect(result.ok).toBe(true)
+
+    const goal = result.space!.modules.find(module => module.missionNodeId === result.mission.goalNodeId)!
+    const goalConnections = result.space!.connections.filter(connection => connection.toModuleId === goal.id)
+    expect(goalConnections.length).toBeGreaterThan(0)
+
+    for (const connection of goalConnections) {
+      const edge = result.mission.edges.find(candidate => candidate.id === connection.missionEdgeId)!
+      expect(edge.lockId).toBe(result.mission.locks[0]!.id)
+      const position = connection.path[connection.path.length - 2]!
+      expect(result.snapshot!.stamps.some(stamp => stamp.type === 'DoorLocked1x1' && stamp.col === position.col && stamp.row === position.row)).toBe(true)
+    }
+  })
+
+  it('places every Key marker visibly and moves a colliding marker beside the room center', () => {
+    const generated = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['double-lock'] }))
+    expect(generated.ok).toBe(true)
+
+    const mission = structuredClone(generated.mission)
+    mission.keys[1]!.nodeId = mission.keys[0]!.nodeId
+    const rasterized = rasterizeSpacePlan(generated.request, mission, generated.space!)
+    expect(rasterized.snapshot).toBeDefined()
+
+    const keyStamps = rasterized.snapshot!.stamps.filter(stamp => mission.keys.some(key => stamp.id === `generated-${key.id}`))
+    expect(keyStamps).toHaveLength(mission.keys.length)
+    expect(new Set(keyStamps.map(stamp => `${stamp.col},${stamp.row}`)).size).toBe(keyStamps.length)
+
+    const keyRoom = generated.space!.modules.find(module => module.missionNodeId === mission.keys[0]!.nodeId)!
+    const center = { col: keyRoom.origin.col + Math.floor(keyRoom.width / 2), row: keyRoom.origin.row + Math.floor(keyRoom.height / 2) }
+    expect(keyStamps.some(stamp => stamp.col === center.col && stamp.row === center.row)).toBe(true)
+    const adjacentKey = keyStamps.find(stamp => Math.abs(stamp.col - center.col) + Math.abs(stamp.row - center.row) === 1)!
+    expect(rasterized.snapshot!.grids.get(0)![adjacentKey.row * generated.request.cols + adjacentKey.col]).toBe(FLOOR)
+    expect(rasterized.snapshot!.labels.every(label => !keyStamps.some(stamp => stamp.col === label.col && stamp.row === label.row))).toBe(true)
+
+    const allStampPositions = rasterized.snapshot!.stamps.map(stamp => `${stamp.col},${stamp.row}`)
+    expect(new Set(allStampPositions).size).toBe(allStampPositions.length)
   })
 
   it('rejects an optional lock that incorrectly blocks the only Goal path', () => {
@@ -357,6 +414,7 @@ describe('mission-first dungeon generation', () => {
       const result = generateMissionDungeon(request({ loopPreference: challenge, loopChallenges: [challenge] }))
       expect(result.ok, challenge).toBe(true)
       expect(result.mission.cycles[0]?.challenge).toBe(challenge)
+      expect(result.mission.cycles[0]?.roles.objectiveNode).toBe(result.mission.goalNodeId)
       expect(result.mission.cycles[0]?.roles.keyNode === undefined || result.mission.nodes.some(node => node.id === result.mission.cycles[0]?.roles.keyNode)).toBe(true)
       expect(result.mission.edges.some(edge => edge.blocked || edge.oneWay || edge.secret || edge.dangerous || edge.lockId) || challenge === 'alternate-paths' || challenge === 'hub-and-spoke').toBe(true)
     }

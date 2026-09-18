@@ -1,28 +1,41 @@
-import { STAMP_ASSET_MAP, type StampType } from './stamps'
+import { STAMP_ASSET_MAP } from './stamps'
+import { GENERATED_STAMP_TYPES, type GeneratedStampType } from './randomDungeon/generatedStampCatalog'
 
-const legendEntries: Array<{ type: StampType; label: string }> = [
-  { type: 'Altar1x1', label: 'Hub' },
-  { type: 'Key1x1', label: 'Key' },
-  { type: 'DoorLocked1x1', label: 'Locked door' },
-  { type: 'TriangleArrowhead1x1', label: 'Monster' },
-  { type: 'Trap1x1', label: 'Trap' },
-  { type: 'Chest1x1', label: 'Treasure' },
-  { type: 'Danger1x1', label: 'Hazard' },
-  { type: 'Door1x1', label: 'Door' },
-  { type: 'DoorDouble1x1', label: 'Double door' },
-  { type: 'DoorPortcullis1x1', label: 'Portcullis' },
-  { type: 'TrapdoorFloor1x1', label: 'Trap door' },
-  { type: 'DoorRevolving1x1', label: 'Revolving door' },
-  { type: 'DoorSecret1x1', label: 'Secret door' },
-  { type: 'DoorMagic1x1', label: 'Magic door' },
-  { type: 'LadderDown1x1', label: 'Ladder down' },
-  { type: 'LadderUp1x1', label: 'Ladder up' },
-  { type: 'Stairs1x1_01', label: 'Stairs' },
-  { type: 'StairSpiralSquareDown1x1', label: 'Spiral stairs' },
-  { type: 'Window1x1', label: 'Window' },
-  { type: 'DoorArchway1x1', label: 'Archway' },
-  { type: 'Curtain1x1', label: 'Curtain' },
-]
+const generatedStampLabels: Record<GeneratedStampType, string> = {
+  Altar1x1: 'Hub (altar)',
+  CircleFilled1x1: 'Hub (filled circle)',
+  Circle1x1: 'Hub (circle)',
+  Key1x1: 'Key',
+  DoorLocked1x1: 'Locked door',
+  DoorSecret1x1: 'Secret door',
+  DoorConcealed1x1: 'Concealed door',
+  'secret-door': 'Secret door symbol',
+  Danger1x1: 'Hazard',
+  Trap1x1: 'Trap',
+  trap: 'Trap symbol',
+  DoorFalse1x1: 'False door',
+  Unknown1x1: 'Unknown feature',
+  SquareFilled1x1: 'Filled square marker',
+  DoorRevolve1way1x1: 'One-way revolving door',
+  DoorRevolving1x1: 'Revolving door',
+  Door1x1: 'Door',
+  door: 'Door symbol',
+  DoorDouble1x1: 'Double door',
+  TrapdoorFloor1x1: 'Trap door',
+  DoorPortcullis1x1: 'Portcullis',
+  DoorMagic1x1: 'Magic door',
+  LadderDown1x1: 'Ladder down',
+  LadderUp1x1: 'Ladder up',
+  Stairs1x1_01: 'Stairs',
+  StairSpiralSquareDown1x1: 'Spiral stairs',
+  Window1x1: 'Window',
+  DoorArchway1x1: 'Archway',
+  Curtain1x1: 'Curtain',
+  TriangleArrowhead1x1: 'Monster',
+  Chest1x1: 'Treasure',
+}
+
+const legendEntries = GENERATED_STAMP_TYPES.map(type => ({ type, label: generatedStampLabels[type] }))
 
 export function MapLegend() {
   return (

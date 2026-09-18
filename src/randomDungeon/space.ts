@@ -12,28 +12,12 @@ import type { StepRun } from '../steps'
 import type { RampRun } from '../ramps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
+import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
 const oppositeDirection: Record<Direction, Direction> = { N: 'S', E: 'W', S: 'N', W: 'E' }
-const doorStampTypes: Record<DoorwayStyle, readonly StampType[]> = {
-  single: ['Door1x1', 'door'],
-  double: ['DoorDouble1x1'],
-  locked: ['DoorLocked1x1'],
-  trapdoor: ['TrapdoorFloor1x1'],
-  portcullis: ['DoorPortcullis1x1'],
-  revolving: ['DoorRevolving1x1'],
-  secret: ['DoorSecret1x1'],
-  magic: ['DoorMagic1x1'],
-  'ladder-down': ['LadderDown1x1'],
-  'ladder-up': ['LadderUp1x1'],
-  stairs: ['Stairs1x1_01'],
-  'spiral-stairs': ['StairSpiralSquareDown1x1'],
-  window: ['Window1x1'],
-  archway: ['DoorArchway1x1'],
-  curtain: ['Curtain1x1'],
-}
-const rolledDoorwayStyles = Object.keys(doorStampTypes) as DoorwayStyle[]
+const rolledDoorwayStyles = Object.keys(GENERATED_DOORWAY_STAMP_TYPES) as DoorwayStyle[]
 
 function center(module: SpatialModule): Point { return { col: module.origin.col + Math.floor(module.width / 2), row: module.origin.row + Math.floor(module.height / 2) } }
 
@@ -176,7 +160,7 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
 
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
-  const hasMissionReward = mission.nodes.some(node => node.kind === 'reward')
+  const hasMissionReward = mission.nodes.some(node => node.kind === 'reward') || mission.cycles.some(cycle => cycle.roles.objectiveNode === mission.goalNodeId)
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
     const roll = random.nextD6()
     module.encounter = roll <= 3 ? 'empty' : roll <= 5 ? 'monster' : 'trap'
@@ -345,21 +329,50 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   const available = request.availableStampTypes ?? STAMP_TYPES
   const stamps: Stamp[] = []
   const labels: Label[] = []
+  const occupied = new Set<string>()
+  const isInBounds = (point: Point) => point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows
+  const isFloor = (point: Point) => isInBounds(point) && grid[point.row * request.cols + point.col] === FLOOR
+  const isWalkable = (point: Point) => isInBounds(point) && (grid[point.row * request.cols + point.col] === FLOOR || grid[point.row * request.cols + point.col] === WATER)
+  const roomDecorationPoint = (module: SpatialModule): Point | undefined => {
+    const preferred = center(module)
+    const distance = (point: Point) => Math.abs(point.col - preferred.col) + Math.abs(point.row - preferred.row)
+    return [...module.footprint]
+      .sort((a, b) => distance(a) - distance(b) || a.row - b.row || a.col - b.col)
+      .find(point => isFloor(point) && !occupied.has(keyOf(point)))
+  }
+  const addRoomLabel = (id: string, text: string, module: SpatialModule) => {
+    const point = roomDecorationPoint(module)
+    if (!point) return
+    labels.push({ id, col: point.col, row: point.row, text })
+    occupied.add(keyOf(point))
+  }
   const addRequired = (semantic: GeneratedMarkerSemantic, id: string, point: Point, direction: Direction) => {
     const stamp = resolveGeneratedStamp(semantic, id, point, available, direction)
-    if (!stamp) diagnostics.push({ stage: 'rasterization', code: 'missing-required-stamp', message: `No implemented stamp can realize required semantic type ${semantic}.`, style: request.style, seed: normalizeSeed(request.seed), constraint: 'semantic stamp catalog', candidate: point })
-    else stamps.push(stamp)
+    if (!stamp) {
+      diagnostics.push({ stage: 'rasterization', code: 'missing-required-stamp', message: `No implemented stamp can realize required semantic type ${semantic}.`, style: request.style, seed: normalizeSeed(request.seed), constraint: 'semantic stamp catalog', candidate: point })
+      return
+    }
+    const placement = [point, ...adjacent(point)].find((candidate, index) =>
+      !occupied.has(keyOf(candidate)) && (index === 0 ? isWalkable(candidate) : isFloor(candidate)))
+    if (!placement) {
+      diagnostics.push({ stage: 'rasterization', code: 'missing-marker-floor', message: `No free adjacent Floor tile can hold required semantic type ${semantic}.`, style: request.style, seed: normalizeSeed(request.seed), constraint: 'unoccupied marker tile', candidate: point })
+      return
+    }
+    stamp.col = placement.col
+    stamp.row = placement.row
+    stamps.push(stamp)
+    occupied.add(keyOf(placement))
   }
   const moduleByNode = new Map(plan.modules.filter(module => module.missionNodeId).map(module => [module.missionNodeId!, module]))
   for (const module of plan.modules) {
     const position = center(module)
     if (module.type === 'hub') addRequired('hub', `generated-${module.id}`, position, 'E')
-    if (module.missionNodeId === mission.goalNodeId) labels.push({ id: `label-${module.id}`, col: position.col, row: position.row, text: 'Goal' })
-    else if (module.missionNodeId === 'start' && module.type === 'hub') labels.push({ id: `label-${module.id}`, col: position.col, row: position.row, text: 'Hub' })
+    if (module.missionNodeId === mission.goalNodeId) addRoomLabel(`label-${module.id}`, 'Goal', module)
+    else if (module.missionNodeId === 'start' && module.type === 'hub') addRoomLabel(`label-${module.id}`, 'Hub', module)
   }
   for (const key of mission.keys) {
     const module = moduleByNode.get(key.nodeId)
-    if (module) { const position = center(module); addRequired('key', `generated-${key.id}`, position, 'E'); labels.push({ id: `label-${key.id}`, col: position.col, row: position.row, text: key.id.replace('key-', 'Key ') }) }
+    if (module) { const position = center(module); addRequired('key', `generated-${key.id}`, position, 'E'); addRoomLabel(`label-${key.id}`, key.id.replace('key-', 'Key '), module) }
   }
   for (const lock of mission.locks) {
     const entries = plan.connections.filter(candidate => mission.edges.some(edge => edge.id === candidate.missionEdgeId && edge.lockId === lock.id))
@@ -373,20 +386,12 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     const semantic = connection.semantic
     if (semantic === 'secret' || semantic === 'dangerous' || semantic === 'blocked-return' || semantic === 'one-way') addRequired(semantic === 'dangerous' ? 'danger' : semantic, `generated-${connection.id}`, midpoint(connection.path), directionForPath(connection.path.slice(Math.floor(connection.path.length / 2))))
   }
-  const occupied = new Set([...stamps.map(stamp => `${stamp.col},${stamp.row}`), ...labels.map(label => `${label.col},${label.row}`)])
-  const roomDecorationPoint = (module: SpatialModule): Point | undefined => {
-    const preferred = center(module)
-    const distance = (point: Point) => Math.abs(point.col - preferred.col) + Math.abs(point.row - preferred.row)
-    return [...module.footprint]
-      .sort((a, b) => distance(a) - distance(b) || a.row - b.row || a.col - b.col)
-      .find(point => !occupied.has(`${point.col},${point.row}`))
-  }
   const addOptional = (types: readonly StampType[], id: string, point: Point, direction: Direction = 'E') => {
     const type = types.find(candidate => available.includes(candidate))
-    if (!type) return
+    if (!type || occupied.has(keyOf(point))) return
     const rotation = direction === 'N' ? 0 : direction === 'E' ? 90 : direction === 'S' ? 180 : 270
     stamps.push({ id, type: type as Stamp['type'], ...point, rotation, z: 0 })
-    occupied.add(`${point.col},${point.row}`)
+    occupied.add(keyOf(point))
   }
   for (const connection of plan.connections) {
     if (connection.condition !== 'trap' && connection.condition !== 'hazard') continue
@@ -394,11 +399,11 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     const distance = (point: Point) => Math.abs(point.col - preferred.col) + Math.abs(point.row - preferred.row)
     const candidates = connection.path.slice(1, -1).sort((a, b) => distance(a) - distance(b))
     const point = candidates.find(candidate => !occupied.has(`${candidate.col},${candidate.row}`))
-    if (point) addOptional(connection.condition === 'trap' ? ['Trap1x1'] : ['Danger1x1'], `generated-hallway-${connection.condition}-${connection.id}`, point)
+    if (point) addOptional(connection.condition === 'trap' ? GENERATED_DECORATION_STAMP_TYPES.hallwayTrap : GENERATED_DECORATION_STAMP_TYPES.hallwayHazard, `generated-hallway-${connection.condition}-${connection.id}`, point)
   }
   for (const connection of plan.connections) for (const doorway of connection.doorways ?? []) {
     if (occupied.has(`${doorway.point.col},${doorway.point.row}`)) continue
-    addOptional(doorStampTypes[doorway.style], `generated-${doorway.style}-door-${connection.id}-${doorway.point.col}-${doorway.point.row}`, doorway.point, doorway.direction)
+    addOptional(GENERATED_DOORWAY_STAMP_TYPES[doorway.style], `generated-${doorway.style}-door-${connection.id}-${doorway.point.col}-${doorway.point.row}`, doorway.point, doorway.direction)
   }
   const steps: StepRun[] = []
   const ramps: RampRun[] = []
@@ -443,15 +448,15 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       const point = roomDecorationPoint(module)
       if (point) {
         if (module.encounter === 'monster') {
-          addOptional(['TriangleArrowhead1x1'], `generated-monster-${module.id}`, point)
+          addOptional(GENERATED_DECORATION_STAMP_TYPES.monster, `generated-monster-${module.id}`, point)
         } else {
-          addOptional(['Trap1x1'], `generated-room-trap-${module.id}`, point)
+          addOptional(GENERATED_DECORATION_STAMP_TYPES.roomTrap, `generated-room-trap-${module.id}`, point)
         }
       }
     }
     if (module.hasTreasure) {
       const point = roomDecorationPoint(module)
-      if (point) addOptional(['Chest1x1'], `generated-room-treasure-${module.id}`, point)
+      if (point) addOptional(GENERATED_DECORATION_STAMP_TYPES.treasure, `generated-room-treasure-${module.id}`, point)
     }
   }
   if (diagnostics.length > 0) return { diagnostics }

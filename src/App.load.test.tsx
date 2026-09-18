@@ -219,7 +219,7 @@ describe('App load lifecycle', () => {
     expect(screen.queryByText(/generated .* dungeon/i)).not.toBeInTheDocument()
   })
 
-  it('reports a successful generation without fabricated rejected attempts', async () => {
+  it('reports successful generation with the actual rejected placement count', async () => {
     randomSeed.value = 160
     render(<App />)
     openWorkspace('Generate')
@@ -227,7 +227,10 @@ describe('App load lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
     await Promise.resolve()
 
-    expect(screen.getByText(/0 rejected attempts/i)).toBeInTheDocument()
+    const attemptSummary = screen.getByText(/\d+ rejected attempts/i)
+    const reportedCount = Number(attemptSummary.textContent?.match(/(\d+) rejected attempts/i)?.[1])
+    const placementDiagnostics = screen.getAllByText(/Placement \d+:/i)
+    expect(reportedCount).toBe(placementDiagnostics.length)
   })
 
   it('stores random seeds and keeps user-edited seeds frozen', async () => {

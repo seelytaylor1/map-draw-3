@@ -65,7 +65,7 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'hidden-shortcut': { ...base, realization: 'secret connection', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); if (route[0]) route[0].secret = true } },
     'dramatic-arc': { ...base, realization: 'visible obstacle before the objective', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
     'dangerous-route': { ...base, realization: 'dangerous challenge route', rewrite: (mission, cycle) => { const route = cycleEdges(mission, cycle); if (route[0]) route[0].dangerous = true } },
-    'lock-and-key': { ...base, realization: 'locked objective and matching key', rewrite: (mission, cycle) => {
+    'lock-and-key': { ...base, realization: 'locked objective and Goal with matching key', rewrite: (mission, cycle) => {
       const dependency = addRequiredKeyLock(mission, cycle, cycle.roles.anchorNode)
       const route = cycleEdges(mission, cycle)
       // Both routes approach the same objective room, so both objective
@@ -73,6 +73,11 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       // anchor before either route is attempted; removing the detour would
       // turn the challenge into a dead end rather than a loop.
       for (const candidate of route.filter(edgeCandidate => edgeCandidate.to === cycle.roles.objectiveNode)) candidate.lockId = dependency.lockId
+      // The selected Key & Lock challenge also marks the main Goal entrance.
+      // Reuse one lock across multiple guarded entrances; when another loop
+      // already guards the Goal, keep its existing dependency instead.
+      const goalEntries = mission.edges.filter(candidate => candidate.to === mission.goalNodeId)
+      if (!goalEntries.some(candidate => candidate.lockId)) for (const entry of goalEntries) entry.lockId = dependency.lockId
     } },
     'unknown-return': { ...base, realization: 'required locked goal, one-way valve, key room, and return route', rewrite: (mission, cycle) => {
       const dependency = addRequiredKeyLock(mission, cycle, cycle.roles.challengeNode, '', false)
@@ -150,15 +155,19 @@ export function validateLoopChallengeContract(mission: Mission, cycle: MissionCy
   return diagnostics
 }
 
-function addBranches(mission: Mission, spine: string[], count: number, style: Mission['style']): void {
+function addBranches(mission: Mission, spine: string[], count: number, style: Mission['style'], keepGoalAsLoopObjective = false): void {
   for (let index = 0; index < count; index++) {
     const id = `branch-${index + 1}`
     // Keep the first progression anchor open for a Loop Challenge shortcut.
     // Branches still attach to the spine, but do not consume every aperture
     // around the node where the first explicit cycle originates.
     const branchOffset = style === 'spine-shortcuts' ? 4 : style === 'orbit-gates' ? 0 : 1
-    const from = spine[Math.min(spine.length - 2, index + branchOffset)]!
-    const to = spine[Math.min(spine.length - 1, index + branchOffset + 1)]!
+    // When the one loop converges on Goal, keep optional branches from adding
+    // a third route that bypasses the loop's challenge and detour.
+    const lastBranchSpineIndex = spine.length - (keepGoalAsLoopObjective ? 3 : 2)
+    const branchSpineIndex = Math.min(lastBranchSpineIndex, index + branchOffset)
+    const from = spine[branchSpineIndex]!
+    const to = spine[branchSpineIndex + 1]!
     mission.nodes.push(node(id, 'branch', 'progression', `Branch ${index + 1}`))
     mission.patterns[1]!.expandsTo.push(id)
     mission.edges.push(edge(`branch-${index + 1}-out`, from, id, 'optional'), edge(`branch-${index + 1}-return`, id, to, 'optional'))
@@ -182,7 +191,8 @@ export function createMission(request: GenerationRequest, budget = createComplex
   mission.nodes.push(node('goal', 'goal', 'goal-pattern', 'Goal'))
   const spine = ['start', ...tasks, 'goal']
   for (let index = 0; index < spine.length - 1; index++) mission.edges.push(edge(`progression-${index + 1}`, spine[index]!, spine[index + 1]!))
-  addBranches(mission, spine, budget.branches, request.style)
+  const singleLoop = budget.requestedLoops === 1
+  addBranches(mission, spine, budget.branches, request.style, singleLoop)
 
   for (let index = 0; index < budget.requestedLoops; index++) {
     const selected = budget.loopChallenges[index]!
@@ -197,11 +207,13 @@ export function createMission(request: GenerationRequest, budget = createComplex
       if (lock && lockedSpineEdge) lockedSpineEdge.lockId = lock.id
       continue
     }
-    const anchor = request.style === 'orbit-gates' ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
+    const anchor = singleLoop ? tasks[tasks.length - 1]! : request.style === 'orbit-gates' ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
     const challengeNode = `loop-${index + 1}-challenge`
     const detourNode = `loop-${index + 1}-detour`
-    const objectiveNode = `loop-${index + 1}-objective`
-    mission.nodes.push(node(challengeNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Challenge`), node(detourNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Detour`), node(objectiveNode, 'reward', `loop-${index + 1}`, `Loop ${index + 1} Objective`))
+    const objectiveNode = singleLoop ? mission.goalNodeId : `loop-${index + 1}-objective`
+    mission.nodes.push(node(challengeNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Challenge`), node(detourNode, 'challenge', `loop-${index + 1}`, `Loop ${index + 1} Detour`))
+    if (!singleLoop) mission.nodes.push(node(objectiveNode, 'reward', `loop-${index + 1}`, `Loop ${index + 1} Objective`))
+    else mission.edges = mission.edges.filter(candidate => !(candidate.from === anchor && candidate.to === mission.goalNodeId && candidate.kind === 'progression'))
     const a1 = edge(`cycle-${index + 1}-a1`, anchor, challengeNode, 'cycle-route')
     const a2 = edge(`cycle-${index + 1}-a2`, challengeNode, objectiveNode, 'cycle-route')
     const b1 = edge(`cycle-${index + 1}-b1`, anchor, detourNode, 'cycle-route')
