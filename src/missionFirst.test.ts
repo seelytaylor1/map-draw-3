@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FLOOR, WALL, WATER } from './constants'
-import { ALL_LOOP_CHALLENGES, assessMapTopology, createComplexityBudget, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
+import { ALL_LOOP_CHALLENGES, assessMapTopology, createComplexityBudget, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression, validateSpacePlan } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
 import { runTiles } from './directionalRun'
 import { deserialize, serialize } from './serialization'
@@ -451,6 +451,32 @@ describe('mission-first dungeon generation', () => {
         const result = generateMissionDungeon(request({ style, loopCount: 1, loopChallenges: [challenge] }))
         expect(result.ok, `${style}/${challenge}`).toBe(true)
       }
+    }
+  }, 30_000)
+
+  it('realizes mixed multi-mission requests across every style and complexity', () => {
+    const scenarios = [
+      { complexity: 'compact' as const, loopChallenges: ['alternate-paths', 'hidden-shortcut', 'dramatic-arc'] as const },
+      { complexity: 'standard' as const, loopChallenges: ['dangerous-route', 'lock-and-key', 'unknown-return'] as const },
+      { complexity: 'dense' as const, loopChallenges: ['patrolled-cycle', 'gambit', 'hub-and-spoke', 'double-lock'] as const },
+    ]
+    const styles = ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const
+
+    for (const style of styles) for (const scenario of scenarios) for (const seed of [1, 42, 123456789, 0xffffffff]) {
+      const result = generateMissionDungeon(request({
+        style,
+        seed,
+        complexity: scenario.complexity,
+        loopCount: scenario.loopChallenges.length,
+        loopPreference: 'varied',
+        loopChallenges: scenario.loopChallenges,
+      }))
+      const label = `${style}/${scenario.complexity}/seed-${seed}`
+
+      expect(result.ok, `${label}: ${JSON.stringify(result.diagnostics)}`).toBe(true)
+      expect(result.mission.cycles.map(cycle => cycle.challenge), label).toEqual(scenario.loopChallenges)
+      expect(validateProgression(result.mission).solvable, label).toBe(true)
+      expect(validateSpacePlan(result.request, result.space!, result.mission).valid, label).toBe(true)
     }
   }, 30_000)
 

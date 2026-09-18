@@ -222,7 +222,11 @@ export function createMission(request: GenerationRequest, budget = createComplex
 
   for (let index = 0; index < budget.requestedLoops; index++) {
     const selected = budget.loopChallenges[index]!
-    const anchor = singleLoop ? 'start' : request.style === 'orbit-gates' ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
+    // A central Orbit hub remains the Start landmark, but multi-loop maps
+    // distribute their cycle anchors along progression windows.  Attaching
+    // every cycle to the hub exhausts its apertures and makes dense requests
+    // impossible to route despite passing preflight.
+    const anchor = singleLoop ? 'start' : spine[1 + (index % Math.max(1, tasks.length - 1))] ?? 'start'
     const routeANode = `loop-${index + 1}-route-a`
     const routeBNode = `loop-${index + 1}-route-b`
     const objectiveNode = singleLoop ? mission.goalNodeId : `loop-${index + 1}-objective`
