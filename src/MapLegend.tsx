@@ -30,6 +30,10 @@ export function MapLegend() {
       <summary>Dungeon legend</summary>
       <div className="map-legend-panel" aria-label="Generated map symbols">
         <ul>
+          <li>
+            <span className="map-legend-descent" role="img" aria-label="Ascending steps or ramp">↑</span>
+            <span>Dungeon entrance</span>
+          </li>
           {legendEntries.map(({ type, label }) => (
             <li key={type}>
               <img src={STAMP_ASSET_MAP[type]} alt={label} />

@@ -115,7 +115,7 @@ A user-selected Space Grammar that gives a generated dungeon its characteristic 
 A typed intermediate structure of dungeon space—such as a room, corridor, branch, junction, cycle, hub, gate, secret connection, or terminal challenge—with a readable footprint and connection ports. Spatial Modules are produced by Space Grammar rules and are realized as Tile geometry after placement; they are not necessarily pre-authored room templates. A module may realize or support a Mission Node's spatial anchor, and may contain multiple Mission Nodes only when an explicit production permits co-location. Junctions must be explicit; ordinary corridor overlap is invalid.
 
 ## Generated Dungeon
-A complete dungeon layout produced from a Mission and a selected Generation Style, then realized on a Map while respecting the Map's physical bounds and readability requirements.
+A complete dungeon layout produced from a Mission and a selected Generation Style, then realized on a Map while respecting the Map's physical bounds and readability requirements. Its starting room has one seeded ascending Step Run or Ramp Run on Z0 facing outward through an unused exterior wall, spanning an outside Wall tile and a room-edge tile away from every hallway aperture. It uses no Start text label.
 
 ## Generation Transaction
 A complete generation operation that either commits one finished Generated Dungeon as one Map replacement or leaves the current Map unchanged. Intermediate placement attempts are not user-visible map artifacts.
@@ -139,7 +139,7 @@ A seeded decorative door marker rolled at a room aperture or along a long corrid
 A seeded room-content roll produces an empty room on 1–3, monsters on 4–5, and a trap on 6. Independently, each room has a 2-in-6 chance of a Chest, which may coexist with any encounter. Monsters use the Triangle Arrowhead stamp; room and hallway traps use the Trap stamp with its T. A Loop Challenge reward also places a Chest in the Goal room.
 
 ## Dungeon Legend
-A collapsed lower-right map control that explains generated map symbols using their actual stamp images. It includes the generated door variants, key, locked door, monster, trap, treasure, hazard, hub, and flooded-hallway markers.
+A collapsed lower-right map control that explains generated map symbols using their actual stamp images. It includes the ascending start-room entrance, generated door variants, key, locked door, monster, trap, treasure, hazard, hub, and flooded-hallway markers.
 
 ## Corridor Condition
 A seeded connection-content roll whose result is open, flooded, trap, or hazard. Flooded corridor interiors use Water tiles, which remain traversable. Trap and hazard conditions use their corresponding floor stamps.

@@ -809,6 +809,7 @@ input[type='range'] {
 .map-legend-panel li { display: flex; align-items: center; gap: 7px; min-width: 0; color: #4b4034; font-size: 10px; }
 .map-legend-panel img, .map-legend-water { width: 22px; height: 22px; flex: 0 0 22px; object-fit: contain; }
 .map-legend-water { box-sizing: border-box; border: 1px solid rgba(28,77,110,0.18); border-radius: 3px; background: #6baed6; }
+.map-legend-descent { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 22px; border: 1px solid rgba(24,20,16,0.16); border-radius: 3px; color: #4b4034; background: repeating-linear-gradient(0deg, #c7b79f 0 3px, #eee6db 3px 5px); font: 600 15px/1 var(--font-body); }
 
 @media (max-width: 720px) {
   .toolbar { top: 8px !important; left: 8px !important; height: calc(100vh - 16px); max-width: calc(100vw - 28px); }

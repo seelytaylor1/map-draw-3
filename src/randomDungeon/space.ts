@@ -7,11 +7,15 @@ import { getGenerationStyle } from './styles'
 import { validateProgression } from './progression'
 import type { DoorwayStyle, GeneratedDoorway, GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
 import { STAMP_TYPES, type Stamp, type StampType } from '../stamps'
+import { DIRECTION_DELTAS, runTiles } from '../directionalRun'
+import type { StepRun } from '../steps'
+import type { RampRun } from '../ramps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
+const oppositeDirection: Record<Direction, Direction> = { N: 'S', E: 'W', S: 'N', W: 'E' }
 const doorStampTypes: Record<DoorwayStyle, readonly StampType[]> = {
   single: ['Door1x1', 'door'],
   double: ['DoorDouble1x1'],
@@ -350,7 +354,8 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   for (const module of plan.modules) {
     const position = center(module)
     if (module.type === 'hub') addRequired('hub', `generated-${module.id}`, position, 'E')
-    if (module.missionNodeId === 'start' || module.missionNodeId === mission.goalNodeId) labels.push({ id: `label-${module.id}`, col: position.col, row: position.row, text: module.missionNodeId === 'start' && module.type === 'hub' ? 'Hub / Start' : module.missionNodeId === 'start' ? 'Start' : 'Goal' })
+    if (module.missionNodeId === mission.goalNodeId) labels.push({ id: `label-${module.id}`, col: position.col, row: position.row, text: 'Goal' })
+    else if (module.missionNodeId === 'start' && module.type === 'hub') labels.push({ id: `label-${module.id}`, col: position.col, row: position.row, text: 'Hub' })
   }
   for (const key of mission.keys) {
     const module = moduleByNode.get(key.nodeId)
@@ -395,6 +400,44 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     if (occupied.has(`${doorway.point.col},${doorway.point.row}`)) continue
     addOptional(doorStampTypes[doorway.style], `generated-${doorway.style}-door-${connection.id}-${doorway.point.col}-${doorway.point.row}`, doorway.point, doorway.direction)
   }
+  const steps: StepRun[] = []
+  const ramps: RampRun[] = []
+  const start = plan.modules.find(module => module.missionNodeId === 'start')
+  const firstConnection = start && plan.connections.find(connection => connection.fromModuleId === start.id)
+  if (!start || !firstConnection) {
+    diagnostics.push({ stage: 'rasterization', code: 'missing-start-descent', message: 'The starting room has no outgoing connection for its descent structure.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'start-room entrance' })
+  } else {
+    const roomTiles = new Set(start.footprint.map(keyOf))
+    const connectedTiles = new Set(plan.connections.flatMap(connection => connectionFootprint(connection).map(keyOf)))
+    const hallwayTiles = plan.connections.flatMap(connection => connection.path.slice(1, -1))
+    const otherRoomTiles = plan.modules.filter(module => module !== start).flatMap(module => module.footprint)
+    const ports = new Set(start.ports.map(port => keyOf(port.point)))
+    const outwardCandidates: Array<{ run: StepRun; outward: Direction; inside: Point }> = []
+    for (const inside of start.footprint) for (const outward of directions) {
+      if (ports.has(keyOf(inside))) continue
+      const delta = DIRECTION_DELTAS[outward]
+      const outside = { col: inside.col + delta.dc, row: inside.row + delta.dr }
+      const outsideKey = keyOf(outside)
+      if (outside.col <= 0 || outside.row <= 0 || outside.col >= request.cols - 1 || outside.row >= request.rows - 1) continue
+      if (roomTiles.has(outsideKey) || adjacent(outside).filter(point => roomTiles.has(keyOf(point))).length !== 1) continue
+      if (connectedTiles.has(outsideKey) || occupied.has(outsideKey) || occupied.has(keyOf(inside))) continue
+      if (hallwayTiles.some(point => Math.abs(point.col - outside.col) + Math.abs(point.row - outside.row) <= 1)) continue
+      if (otherRoomTiles.some(point => Math.abs(point.col - outside.col) + Math.abs(point.row - outside.row) <= 1)) continue
+      outwardCandidates.push({ run: { id: 'generated-start-descent', col: inside.col, row: inside.row, z: 0, direction: outward, ascending: true }, outward, inside })
+    }
+    const preferredOutward = oppositeDirection[directionForPath(firstConnection.path.slice(0, 2))]
+    outwardCandidates.sort((a, b) => Number(b.outward === preferredOutward) - Number(a.outward === preferredOutward)
+      || a.inside.row - b.inside.row || a.inside.col - b.inside.col || directions.indexOf(a.outward) - directions.indexOf(b.outward))
+    const origin = outwardCandidates[0]?.run
+    if (!origin) {
+      diagnostics.push({ stage: 'rasterization', code: 'missing-start-descent', message: 'No unused exterior wall can hold a descent without meeting a hallway.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'unused start-room wall', nodeId: 'start' })
+    } else {
+      const descentRoll = createD6Random(normalizeSeed(request.seed) ^ 0x1a5c3e2d).nextD6()
+      if (descentRoll <= 3) steps.push(origin)
+      else ramps.push(origin)
+      for (const point of runTiles(origin)) occupied.add(keyOf(point))
+    }
+  }
   for (const module of plan.modules) {
     if (module.encounter === 'monster' || module.encounter === 'trap') {
       const point = roomDecorationPoint(module)
@@ -412,7 +455,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     }
   }
   if (diagnostics.length > 0) return { diagnostics }
-  return { snapshot: { grids: new Map([[0, grid]]), stamps, steps: [], ramps: [], labels, environmentalColors: new Map() }, diagnostics }
+  return { snapshot: { grids: new Map([[0, grid]]), stamps, steps, ramps, labels, environmentalColors: new Map() }, diagnostics }
 }
 
 export function describeSpaceRealization(request: GenerationRequest, plan: SpacePlan): string {

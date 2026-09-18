@@ -695,44 +695,6 @@ export default function App() {
         group.add(new Konva.Rect({ x: gl.x, y: gl.y, width: gl.w, height: gl.h, stroke: 'rgba(0,0,0,0.2)', strokeWidth: 0.5 }))
       }
 
-      // Steps/ramps belong to their level's group so they fade with it and
-      // stay under higher-level floors.
-      for (const run of level.runs) {
-        const runGroup = new Konva.Group()
-        if (run.faceRect) {
-          runGroup.add(new Konva.Rect({ x: run.faceRect.x, y: run.faceRect.y, width: run.faceRect.w, height: run.faceRect.h, fill: FACE_COLOR }))
-        }
-        for (const fp of run.footprint) {
-          runGroup.add(new Konva.Rect({
-            x: fp.x, y: fp.y, width: fp.w, height: fp.h,
-            fill: FLOOR_COLOR, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 1,
-          }))
-        }
-        if (run.selectionRect) {
-          const sel = run.selectionRect
-          runGroup.add(new Konva.Rect({
-            x: sel.x, y: sel.y, width: sel.w, height: sel.h,
-            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
-          }))
-        }
-        if (level.interactive) {
-          const isStep = run.runType === 'step'
-          runGroup.on('mousedown', (e) => {
-            e.cancelBubble = true
-            const currentSelectedId = isStep ? selectedStepId : selectedRampId
-            if (e.evt.button === 2 && run.id === currentSelectedId) {
-              setHistory(h => push(h, isStep
-                ? { ...h.present, steps: removeStepRun(h.present.steps, run.id) }
-                : { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
-              dispatch({ type: 'SELECT', id: null })
-            } else {
-              dispatch({ type: 'SET_TOOL', to: isStep ? { tool: 'steps', selectedId: run.id } : { tool: 'ramps', selectedId: run.id } })
-            }
-          })
-        }
-        group.add(runGroup)
-      }
-
       // Crosshatch overlay — Konva.Line nodes so they stay crisp at any zoom
       if (level.hatchPolylines) {
         const hatchGroup = new Konva.Group({
@@ -774,6 +736,44 @@ export default function App() {
           }))
         }
         group.add(outlineGroup)
+      }
+
+      // Runs draw above wall overlays so their footprint stays clear at
+      // exterior entrances and remains selectable over hatch/outline strokes.
+      for (const run of level.runs) {
+        const runGroup = new Konva.Group()
+        if (run.faceRect) {
+          runGroup.add(new Konva.Rect({ x: run.faceRect.x, y: run.faceRect.y, width: run.faceRect.w, height: run.faceRect.h, fill: FACE_COLOR }))
+        }
+        for (const fp of run.footprint) {
+          runGroup.add(new Konva.Rect({
+            x: fp.x, y: fp.y, width: fp.w, height: fp.h,
+            fill: FLOOR_COLOR, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 1,
+          }))
+        }
+        if (run.selectionRect) {
+          const sel = run.selectionRect
+          runGroup.add(new Konva.Rect({
+            x: sel.x, y: sel.y, width: sel.w, height: sel.h,
+            stroke: '#ffff00', strokeWidth: 2, fill: 'transparent', listening: false,
+          }))
+        }
+        if (level.interactive) {
+          const isStep = run.runType === 'step'
+          runGroup.on('mousedown', (e) => {
+            e.cancelBubble = true
+            const currentSelectedId = isStep ? selectedStepId : selectedRampId
+            if (e.evt.button === 2 && run.id === currentSelectedId) {
+              setHistory(h => push(h, isStep
+                ? { ...h.present, steps: removeStepRun(h.present.steps, run.id) }
+                : { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
+              dispatch({ type: 'SELECT', id: null })
+            } else {
+              dispatch({ type: 'SET_TOOL', to: isStep ? { tool: 'steps', selectedId: run.id } : { tool: 'ramps', selectedId: run.id } })
+            }
+          })
+        }
+        group.add(runGroup)
       }
 
       layer.add(group)

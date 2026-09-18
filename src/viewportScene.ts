@@ -121,6 +121,27 @@ function buildOutline(grid: Uint8Array, cols: number, rows: number, tilePx: numb
   return { segments, color }
 }
 
+function buildOutlineGrid(grid: Uint8Array, cols: number, z: number, steps: StepRun[], ramps: RampRun[]): Uint8Array {
+  const outlineGrid = grid.slice()
+  for (const run of steps) {
+    if (run.z !== z) continue
+    for (const { col, row } of stepRunTiles(run)) {
+      if (col >= 0 && row >= 0 && col < cols && row * cols + col < outlineGrid.length) {
+        outlineGrid[row * cols + col] = FLOOR
+      }
+    }
+  }
+  for (const run of ramps) {
+    if (run.z !== z) continue
+    for (const { col, row } of rampRunTiles(run)) {
+      if (col >= 0 && row >= 0 && col < cols && row * cols + col < outlineGrid.length) {
+        outlineGrid[row * cols + col] = FLOOR
+      }
+    }
+  }
+  return outlineGrid
+}
+
 function buildRunShapes(steps: StepRun[], ramps: RampRun[], z: number, tilePx: number, facePx: number, show3D: boolean, selectedStepId: string | null, selectedRampId: string | null): RunShape[] {
   const runs: RunShape[] = []
   for (const run of steps) {
@@ -212,6 +233,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
         }
       }
     }
+    const runs = buildRunShapes(steps, ramps, z, tilePx, facePx, show3D, selectedStepId, selectedRampId)
     levels.push({
       z,
       opacity: Math.pow(0.5, activeZ - z),
@@ -220,10 +242,10 @@ export function buildTileScene(state: TileSceneState): TileScene {
       tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors),
       faces,
       gridLines,
-      runs: buildRunShapes(steps, ramps, z, tilePx, facePx, show3D, selectedStepId, selectedRampId),
+      runs,
       hatchPolylines: showHatching ? buildHatchPolylines(levelGrid, cols, rows, tilePx) : null,
       drawShadow: showWallOutline,
-      outline: showWallOutline ? buildOutline(levelGrid, cols, rows, tilePx, wallOutlineStyle, wallOutlineColor) : null,
+      outline: showWallOutline ? buildOutline(buildOutlineGrid(levelGrid, cols, z, steps, ramps), cols, rows, tilePx, wallOutlineStyle, wallOutlineColor) : null,
     })
   }
 

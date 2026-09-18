@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildLabelScene, buildTileScene, buildStampScene } from './viewportScene'
 import { createGrid, paintTiles } from './grid'
-import { WATER, LAVA, DARKNESS, WATER_COLOR } from './constants'
+import { FLOOR, WALL, WATER, LAVA, DARKNESS, WATER_COLOR } from './constants'
 import type { Stamp } from './stamps'
 
 const TILE_PX = 60
@@ -128,5 +128,28 @@ describe('buildTileScene — fluid tile fill colors', () => {
     const { levels } = buildTileScene(tileSceneParams({ grids, darknessColor: '#220033' }))
     const tile = levels[0].tiles.find(t => t.rect.x === 40 && t.rect.y === 20)
     expect(tile?.fill).toBe('#220033')
+  })
+})
+
+describe('buildTileScene — run wall openings', () => {
+  it('breaks the wall outline where an exterior run enters the room', () => {
+    const grid = paintTiles(createGrid(7, 7), 7, [
+      { col: 3, row: 2 }, { col: 4, row: 2 },
+      { col: 3, row: 3 }, { col: 4, row: 3 },
+    ], FLOOR)
+    const ramps = [{ id: 'outside-entry', col: 2, row: 3, z: 0, direction: 'E' as const }]
+    const { levels } = buildTileScene(tileSceneParams({
+      grids: new Map([[0, grid]]),
+      ramps,
+      showWallOutline: true,
+    }))
+
+    const outline = levels[0].outline!
+    const wallLineAcrossEntry = outline.segments.some(({ points }) =>
+      points[0] === 60 && points[1] === 60 && points[2] === 60 && points[3] === 80,
+    )
+
+    expect(wallLineAcrossEntry).toBe(false)
+    expect(levels[0].grid[3 * 7 + 2]).toBe(WALL)
   })
 })

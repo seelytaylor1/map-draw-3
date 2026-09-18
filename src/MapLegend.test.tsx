@@ -14,6 +14,8 @@ describe('map legend', () => {
 
     expect(disclosure).toHaveAttribute('open')
     expect(screen.getByText('Monster')).toBeInTheDocument()
+    expect(screen.getByText('Dungeon entrance')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Ascending steps or ramp' })).toHaveTextContent('↑')
     expect(screen.getByText('Trap')).toBeInTheDocument()
     expect(screen.getByText('Locked door')).toBeInTheDocument()
     expect(screen.getByText('Spiral stairs')).toBeInTheDocument()

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { WATER } from './constants'
+import { WALL, WATER } from './constants'
 import { ALL_LOOP_CHALLENGES, createComplexityBudget, generateMissionDungeon, preflightGeneration, validateGenerationRequest, validateProgression } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
+import { runTiles } from './directionalRun'
 import { deserialize, serialize } from './serialization'
 
 const request = (overrides: Partial<Parameters<typeof generateMissionDungeon>[0]> = {}) => ({
@@ -100,6 +101,35 @@ describe('mission-first dungeon generation', () => {
     expect(result.ok).toBe(true)
     expect(goal.hasTreasure).toBe(true)
     expect(chests.some(chest => goal.footprint.some(point => point.col === chest.col && point.row === chest.row))).toBe(true)
+  })
+
+  it('marks an unused starting-room wall with a seeded exterior descent', () => {
+    const runKinds = new Set<string>()
+
+    for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const result = generateMissionDungeon(request({ style, seed, loopCount: 0, complexity: 'compact' }))
+      expect(result.ok, `${style}/${seed}`).toBe(true)
+
+      const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
+      const run = result.snapshot!.steps[0] ?? result.snapshot!.ramps[0]
+      expect(result.snapshot!.steps.length + result.snapshot!.ramps.length).toBe(1)
+      expect(run).toMatchObject({ id: 'generated-start-descent', z: 0, ascending: true })
+      const startTiles = new Set(start.footprint.map(point => `${point.col},${point.row}`))
+      const [interior, exterior] = runTiles(run)
+      expect(interior && exterior).toBeDefined()
+      expect(startTiles.has(`${interior!.col},${interior!.row}`)).toBe(true)
+      expect(startTiles.has(`${exterior!.col},${exterior!.row}`)).toBe(false)
+      expect(start.ports.some(port => port.point.col === interior!.col && port.point.row === interior!.row)).toBe(false)
+      const grid = result.snapshot!.grids.get(0)!
+      expect(grid[exterior!.row * result.request.cols + exterior!.col]).toBe(WALL)
+      const hallwayTiles = result.space!.connections.flatMap(connection => connection.path.slice(1, -1))
+      expect(hallwayTiles.every(point => Math.abs(point.col - exterior!.col) + Math.abs(point.row - exterior!.row) > 1)).toBe(true)
+      expect(result.snapshot!.stamps.some(stamp => runTiles(run).some(point => point.col === stamp.col && point.row === stamp.row))).toBe(false)
+      expect(result.snapshot!.labels.some(label => label.text === 'Start' || label.text === 'Hub / Start')).toBe(false)
+      runKinds.add(result.snapshot!.steps.length ? 'steps' : 'ramp')
+    }
+
+    expect(runKinds).toEqual(new Set(['steps', 'ramp']))
   })
 
   it('rolls room encounters and independent treasure by seed', () => {
@@ -289,7 +319,7 @@ describe('mission-first dungeon generation', () => {
     expect(orbit.space?.modules[0]?.type).toBe('hub')
     expect(orbit.space?.connections.some(connection => connection.semantic === 'spoke')).toBe(true)
     expect(orbit.snapshot?.stamps.some(stamp => stamp.type === 'Altar1x1' || stamp.type === 'CircleFilled1x1' || stamp.type === 'Circle1x1')).toBe(true)
-    expect(orbit.snapshot?.labels.some(label => label.text === 'Hub / Start')).toBe(true)
+    expect(orbit.snapshot?.labels.some(label => label.text === 'Hub')).toBe(true)
     const cavern = generateMissionDungeon(request({ style: 'cavern-pressure' }))
     expect(cavern.space?.modules.some(module => module.type === 'branch')).toBe(true)
     expect(cavern.space?.modules.some(module => module.type === 'junction')).toBe(true)
