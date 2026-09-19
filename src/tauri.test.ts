@@ -3,11 +3,12 @@
 declare const require: (id: string) => any
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { closeWindow } from './tauri'
+import { closeWindow, openAssetFolder } from './tauri'
 
-const { mockClose, mockExit } = vi.hoisted(() => ({
+const { mockClose, mockExit, mockOpenPath } = vi.hoisted(() => ({
   mockClose: vi.fn(),
   mockExit: vi.fn(),
+  mockOpenPath: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -21,6 +22,10 @@ vi.mock('@tauri-apps/api/window', () => ({
 vi.mock('@tauri-apps/plugin-process', () => ({
   relaunch: vi.fn(),
   exit: mockExit,
+}))
+
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openPath: mockOpenPath,
 }))
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -48,6 +53,23 @@ describe('closeWindow', () => {
   })
 })
 
+describe('asset folder opening', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    Object.defineProperty(globalThis, 'window', {
+      value: { __TAURI_INTERNALS__: {} },
+      configurable: true,
+      writable: true,
+    })
+  })
+
+  it('opens the asset source folder through Tauri', async () => {
+    await openAssetFolder()
+
+    expect(mockOpenPath).toHaveBeenCalledWith('D:/Taylor Projects/code/map-draw-3/src')
+  })
+})
+
 describe('tauri save permissions', () => {
   it('includes the filesystem permissions needed to open and save map files', () => {
     const { readFileSync } = require('node:fs') as { readFileSync: (path: string | URL, encoding?: string) => string }
@@ -61,6 +83,7 @@ describe('tauri save permissions', () => {
       'fs:allow-read-text-file',
       'fs:allow-write-text-file',
       'fs:allow-write-file',
+      'opener:allow-open-path',
     ]))
   })
 })
