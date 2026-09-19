@@ -429,6 +429,17 @@ describe('mission-first dungeon generation', () => {
     }
   })
 
+  it('accepts later nested loops when the realized five-loop map has an early meaningful choice', () => {
+    for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) {
+      const result = generateMissionDungeon(request({ style, seed: 1, loopCount: 5, loopChallenges: Array(5).fill('alternate-paths') }))
+      const assessment = assessMapTopology(result.mission, result.space!)
+
+      expect(result.ok, style).toBe(true)
+      expect(assessment.cycles).toHaveLength(5)
+      expect(assessment.supportsMeaningfulChoices, `${style}: ${assessment.findings.map(finding => finding.message).join(' ')}`).toBe(true)
+    }
+  }, 30_000)
+
   it('color codes each generated key with its matching locked doors', () => {
     const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['double-lock'] }))
     expect(result.ok).toBe(true)

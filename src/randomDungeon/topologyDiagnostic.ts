@@ -71,8 +71,9 @@ function routeConnections(mission: Mission, plan: SpacePlan, cycle: MissionCycle
 
 /**
  * Judges the realized room/corridor topology, not merely the requested Mission.
- * A late choice is a cycle whose anchor lies beyond half of the actual Start-to-
- * objective route, which is the "linear dungeon with a fork at the end" shape.
+ * A map is late only when none of its cycles offers a choice in the first half
+ * of its Start-to-objective route. Later cycles may be deliberately nested
+ * behind an earlier meaningful choice.
  */
 export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopologyAssessment {
   const moduleFor = (nodeId: string) => plan.modules.find(module => module.missionNodeId === nodeId)?.id
@@ -103,7 +104,6 @@ export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopolog
       const code: TopologyFindingCode = cycle.challenge === 'dramatic-arc' ? 'intentional-route-closure' : 'no-usable-alternate-route'
       findings.push({ code, cycleId: cycle.id, message: cycle.challenge === 'dramatic-arc' ? `${cycle.id} intentionally closes one route with its visible obstacle.` : `${cycle.id} has only ${usableRoutes} usable route${usableRoutes === 1 ? '' : 's'} after realization.` })
     }
-    if (choicePosition !== null && choicePosition > 0.5) findings.push({ code: 'late-cycle-choice', cycleId: cycle.id, message: `${cycle.id}'s anchor occurs ${(choicePosition * 100).toFixed(0)}% of the way from Start to its objective, so the map reads as a long linear prefix followed by a late fork.` })
     const addMissingRealization = (message: string) => findings.push({ code: 'missing-mission-realization', cycleId: cycle.id, message })
     const routeAApproach = cycle.routeA[cycle.routeA.length - 2]
     const objectiveConnections = plan.connections.filter(connection => connection.toModuleId === objective)
@@ -126,6 +126,11 @@ export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopolog
     if (cycle.challenge === 'double-lock' && (mission.keys.filter(key => key.id.includes(cycle.id)).length !== 2 || mission.locks.filter(lock => lock.id.includes(cycle.id)).length !== 2 || new Set(mission.edges.filter(edge => edge.lockId?.includes(cycle.id)).map(edge => edge.lockId)).size !== 2)) addMissingRealization(`${cycle.id} must realize two distinct Key/Lock dependencies.`)
     return { cycleId: cycle.id, challenge: cycle.challenge, anchorDistance, objectiveDistance, choicePosition, routeConnectionCounts: [routeA.length, routeB.length] as [number, number], usableRoutes, hasDistinctRouteGeometry }
   })
+
+  const hasEarlyChoice = cycles.some(cycle => cycle.choicePosition !== null && cycle.choicePosition <= 0.5 && cycle.hasDistinctRouteGeometry)
+  if (!hasEarlyChoice) for (const cycle of cycles) if (cycle.choicePosition !== null && cycle.choicePosition > 0.5) {
+    findings.push({ code: 'late-cycle-choice', cycleId: cycle.cycleId, message: `${cycle.cycleId}'s anchor occurs ${(cycle.choicePosition * 100).toFixed(0)}% of the way from Start to its objective, so the map reads as a long linear prefix followed by a late fork.` })
+  }
 
   const blockingCodes: TopologyFindingCode[] = ['late-cycle-choice', 'missing-route-geometry', 'no-usable-alternate-route', 'missing-mission-realization']
   return { startGoalDistance, firstChoiceDistance, cycles, findings, supportsMeaningfulChoices: !findings.some(finding => blockingCodes.includes(finding.code)) }

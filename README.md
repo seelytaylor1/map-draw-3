@@ -1,8 +1,8 @@
-# Map Draw 3
+# Map Draw 3 v1
 
-A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw floors, place stamps (doors, traps, stairs), toggle 3D effects, and export high-resolution PNG maps.
+Map Draw 3 is a browser and desktop dungeon-map editor for tabletop RPG battle maps. Start from a hand-drawn map, or generate a seeded mission-first dungeon with rooms, routes, loops, challenges, entrances, and goals, then refine it with the editor.
 
-<img width="905" height="589" alt="image" src="https://github.com/user-attachments/assets/9d9b36f1-1395-443c-bde5-322b5a2b9f17" />
+![Map Draw 3 v1 screenshot](docs/v1-screenshot.png)
 
 ## Use It
 
@@ -15,14 +15,13 @@ A browser-based dungeon map editor for creating tabletop RPG battle maps. Draw f
 
 ## Features
 
-- **Draw & Paint**: Brush tool with adjustable size for painting floors and walls
-- **Rough Mode**: Three-click cave generation with noise-based edge deformation
-- **Stamps**: Place doors, traps, stars, stairs, and bars on the map grid
-- **3D Effect**: Toggle extruded side faces for a 3D appearance
-- **Isometric View**: Preview maps in isometric projection
-- **Undo/Redo**: Full history support for all edits
-- **Save/Load**: Export and import maps as JSON files
-- **High-Res Export**: Generate 300dpi PNG output
+- **Mission-first dungeon generation**: Choose Critical Spine, Central Hub, or Branch-and-merge layouts; tune complexity; set a seed; and add loops with challenges such as alternate paths, hidden shortcuts, locks and keys, and dangerous routes.
+- **Generation review**: Preflight checks show capacity, room anchors, branches, challenge density, derived keys and locks, and rejected attempts before a generated dungeon replaces the canvas.
+- **Draw & paint**: Use square or circle brushes for floors, water, lava, darkness, and erasing. Environment painting includes grass, road, sand, mud, stone, mossy stone, and rubble with custom colors.
+- **Caves and structures**: Create rough caves with a three-click workflow, work across Z-levels, and place ascending or descending stairs and ramps.
+- **Assets and annotations**: Search 88 map icons and 137 object assets, then place, move, rotate, mirror, recolor, and scale them. Add numbered or named labels to the map.
+- **Views and styling**: Toggle grid and isometric preview, add 3D side faces, configure hatching and clean or rough wall outlines, and tune wall, water, lava, and darkness colors.
+- **History and files**: Undo and redo edits, save and load JSON maps, resize the canvas from 1/2-inch to 1/8-inch squares, and export 300 DPI PNG maps.
 
 ## Asset Attribution
 
