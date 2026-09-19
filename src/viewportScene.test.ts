@@ -89,6 +89,14 @@ describe('buildLabelScene', () => {
 
     expect(items[0].text).toBe('3 Throne Room')
   })
+
+  it('keeps a label color in the scene for rendering', () => {
+    const items = buildLabelScene([
+      { id: 'key-cycle', col: 1, row: 2, text: 'Key loop-1', color: '#d52b35' },
+    ], null, TILE_PX)
+
+    expect(items[0].color).toBe('#d52b35')
+  })
 })
 
 function tileSceneParams(overrides = {}) {

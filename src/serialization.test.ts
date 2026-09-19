@@ -74,6 +74,14 @@ describe('serialize', () => {
     expect(restored.stamps[1].color).toBeUndefined()
   })
 
+  it('round-trips a color override on an individual label', () => {
+    const label = { id: 'key-cycle', col: 1, row: 2, text: 'Key loop-1', color: '#d52b35' }
+    const save = serialize({ ...BASE, labels: [label] })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.labels[0].color).toBe('#d52b35')
+  })
+
   it('omits z from stamp when z === 0', () => {
     const save = serialize({ ...BASE, stamps: [STAMP] })
     expect(save.stamps[0]).not.toHaveProperty('z')

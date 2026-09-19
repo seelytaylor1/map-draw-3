@@ -6,6 +6,8 @@ import { buildSpacePlan, describeSpaceRealization, rasterizeSpacePlan, validateS
 import { validateGenerationStyle } from './styles'
 import type { GenerationDiagnostic, GenerationRequest, Mission, MissionGenerationResult, MissionGenerationSummary } from './missionTypes'
 
+const MAX_PLACEMENT_ATTEMPTS = 128
+
 function emptyMission(request: GenerationRequest, diagnostics: GenerationDiagnostic[]): Mission {
   const seed = normalizeSeed(request.seed)
   return { id: `mission-${seed}`, seed, style: request.style, patterns: [], nodes: [], edges: [], keys: [], locks: [], cycles: [], goalNodeId: 'goal', diagnostics }
@@ -41,7 +43,7 @@ export function generateMissionDungeon(input: GenerationRequest): MissionGenerat
   let spaceValidation = validateSpacePlan(request, space, mission)
   let attempts = 0
   const rejected: GenerationDiagnostic[] = []
-  while (!spaceValidation.valid && attempts < 31) {
+  while (!spaceValidation.valid && attempts < MAX_PLACEMENT_ATTEMPTS - 1) {
     const reason = spaceValidation.diagnostics[0]!
     rejected.push({ ...reason, message: `Placement ${attempts + 1}: ${reason.message}` })
     space = buildSpacePlan(request, mission, ++attempts)

@@ -18,6 +18,12 @@ const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
 const oppositeDirection: Record<Direction, Direction> = { N: 'S', E: 'W', S: 'N', W: 'E' }
 const rolledDoorwayStyles = Object.keys(GENERATED_DOORWAY_STAMP_TYPES) as DoorwayStyle[]
+const KEY_LOCK_COLORS = [
+  '#d52b35', '#3478f6', '#f2c230', '#43a047', '#9c27b0',
+  '#ff7a00', '#00acc1', '#ec407a', '#795548', '#5c6bc0',
+  '#c0ca33', '#26a69a', '#8e44ad', '#e67e22', '#2980b9',
+  '#c0392b', '#16a085', '#7f8c8d', '#d35400', '#2ecc71',
+] as const
 
 function center(module: SpatialModule): Point { return { col: module.origin.col + Math.floor(module.width / 2), row: module.origin.row + Math.floor(module.height / 2) } }
 
@@ -336,6 +342,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   const stamps: Stamp[] = []
   const labels: Label[] = []
   const occupied = new Set<string>()
+  const keyColors = new Map(mission.keys.map((key, index) => [key.id, KEY_LOCK_COLORS[index % KEY_LOCK_COLORS.length]]))
   const isInBounds = (point: Point) => point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows
   const isFloor = (point: Point) => isInBounds(point) && grid[point.row * request.cols + point.col] === FLOOR
   const isWalkable = (point: Point) => isInBounds(point) && (grid[point.row * request.cols + point.col] === FLOOR || grid[point.row * request.cols + point.col] === WATER)
@@ -346,13 +353,13 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       .sort((a, b) => distance(a) - distance(b) || a.row - b.row || a.col - b.col)
       .find(point => isFloor(point) && !occupied.has(keyOf(point)))
   }
-  const addRoomLabel = (id: string, text: string, module: SpatialModule) => {
+  const addRoomLabel = (id: string, text: string, module: SpatialModule, color?: string) => {
     const point = roomDecorationPoint(module)
     if (!point) return
-    labels.push({ id, col: point.col, row: point.row, text })
+    labels.push({ id, col: point.col, row: point.row, text, ...(color ? { color } : {}) })
     occupied.add(keyOf(point))
   }
-  const addRequired = (semantic: GeneratedMarkerSemantic, id: string, point: Point, direction: Direction) => {
+  const addRequired = (semantic: GeneratedMarkerSemantic, id: string, point: Point, direction: Direction, color?: string) => {
     const stamp = resolveGeneratedStamp(semantic, id, point, available, direction)
     if (!stamp) {
       diagnostics.push({ stage: 'rasterization', code: 'missing-required-stamp', message: `No implemented stamp can realize required semantic type ${semantic}.`, style: request.style, seed: normalizeSeed(request.seed), constraint: 'semantic stamp catalog', candidate: point })
@@ -366,6 +373,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     }
     stamp.col = placement.col
     stamp.row = placement.row
+    if (color) stamp.color = color
     stamps.push(stamp)
     occupied.add(keyOf(placement))
   }
@@ -378,14 +386,14 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   }
   for (const key of mission.keys) {
     const module = moduleByNode.get(key.nodeId)
-    if (module) { const position = center(module); addRequired('key', `generated-${key.id}`, position, 'E'); addRoomLabel(`label-${key.id}`, key.id.replace('key-', 'Key '), module) }
+    if (module) { const position = center(module); const color = keyColors.get(key.id); addRequired('key', `generated-${key.id}`, position, 'E', color); addRoomLabel(`label-${key.id}`, key.id.replace('key-', 'Key '), module, color) }
   }
   for (const lock of mission.locks) {
     const entries = plan.connections.filter(candidate => mission.edges.some(edge => edge.id === candidate.missionEdgeId && edge.lockId === lock.id))
     for (const [index, connection] of entries.entries()) {
       const position = connection.path[connection.path.length - 2]!
       const localPath = connection.path.slice(-2)
-      addRequired('lock', `generated-${lock.id}-${index}`, position, directionForPath(localPath))
+      addRequired('lock', `generated-${lock.id}-${index}`, position, directionForPath(localPath), keyColors.get(lock.keyId))
     }
   }
   for (const connection of plan.connections) {

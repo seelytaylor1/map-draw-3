@@ -55,18 +55,23 @@ describe('committed dungeon geometry', () => {
     }
   }, 30_000)
 
-  it('cannot bypass either required key through floor geometry', () => {
+  it('keeps required locks closed while Lock and Key exploration continues around its loop', () => {
     for (const challenge of ['lock-and-key', 'double-lock', 'unknown-return'] as const) {
       const result = generateMissionDungeon({ ...request, loopPreference: challenge })
       expect(result.ok).toBe(true)
       for (const key of result.mission.keys) {
         const visited = reachable(result, key.id)
         const objective = result.space!.modules.find(m => m.missionNodeId === result.mission.cycles[0]!.roles.objectiveNode)!
-        expect(objective.footprint.some(p => visited.has(p.row * request.cols + p.col)), `${challenge}/${key.id}`).toBe(false)
+        const keyRoom = result.space!.modules.find(m => m.missionNodeId === key.nodeId)!
+        expect(objective.footprint.some(p => visited.has(p.row * request.cols + p.col)), `${challenge}/${key.id}`).toBe(challenge === 'lock-and-key')
+        if (challenge === 'lock-and-key') expect(keyRoom.footprint.some(p => visited.has(p.row * request.cols + p.col))).toBe(true)
       }
       const entries = result.space!.connections.filter(c => result.mission.edges.some(e => e.id === c.missionEdgeId && e.lockId))
       for (const entry of entries) {
         const point = entry.path[entry.path.length - 2]!
+        const edge = result.mission.edges.find(candidate => candidate.id === entry.missionEdgeId)!
+        const lock = result.mission.locks.find(candidate => candidate.id === edge.lockId)!
+        expect(reachable(result, lock.keyId).has(point.row * request.cols + point.col)).toBe(false)
         expect(result.snapshot!.stamps.some(stamp => stamp.type === 'DoorLocked1x1' && stamp.col === point.col && stamp.row === point.row)).toBe(true)
       }
     }

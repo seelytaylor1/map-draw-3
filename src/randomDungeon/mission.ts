@@ -26,13 +26,20 @@ function routeEdges(mission: Mission, cycle: MissionCycle, route: readonly strin
   })
 }
 
+function addKeyAtNode(mission: Mission, cycle: MissionCycle, keyId: string, nodeId: string, optional = false): string {
+  const holder = mission.nodes.find(candidate => candidate.id === nodeId)
+  if (holder) holder.keyId = keyId
+  if (!mission.keys.some(candidate => candidate.id === keyId)) mission.keys.push({ id: keyId, nodeId, lockIds: [], optional })
+  cycle.roles.keyNode = nodeId
+  return nodeId
+}
+
 function addKey(mission: Mission, cycle: MissionCycle, keyId: string, holder: string, optional = false, includeAccess = true): string {
   const nodeId = `key-node-${keyId}`
   if (!mission.nodes.some(candidate => candidate.id === nodeId)) mission.nodes.push(node(nodeId, 'key', `loop-${cycle.id}`, `Key ${keyId}`, { keyId, optional }))
-  if (!mission.keys.some(candidate => candidate.id === keyId)) mission.keys.push({ id: keyId, nodeId, lockIds: [], optional })
+  addKeyAtNode(mission, cycle, keyId, nodeId, optional)
   const edgeId = `key-access-${cycle.id}-${keyId}`
   if (includeAccess && !mission.edges.some(candidate => candidate.id === edgeId)) mission.edges.push(edge(edgeId, holder, nodeId, 'optional', { coupling: 'loose' }))
-  cycle.roles.keyNode = nodeId
   return nodeId
 }
 
@@ -67,22 +74,15 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'hidden-shortcut': { ...base, realization: 'one secret route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].secret = true } },
     'dramatic-arc': { ...base, realization: 'visible obstacle before the objective on one route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
     'dangerous-route': { ...base, realization: 'one dangerous route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].dangerous = true } },
-    'lock-and-key': { ...base, realization: 'locked objective and Goal with matching key', rewrite: (mission, cycle) => {
-      // Keep Central Hub's key within its own radial region. A key spoke
-      // from the hub would add a non-loop return route and consume another
-      // hub aperture.
-      const dependency = addRequiredKeyLock(mission, cycle, mission.style === 'orbit-gates' ? cycle.roles.routeANode : cycle.roles.anchorNode)
-      const route = cycleEdges(mission, cycle)
-      // Both routes approach the same objective room, so both objective
-      // apertures carry the required lock. The key is available from the
-      // anchor before either route is attempted; removing one route would
-      // turn the challenge into a dead end rather than a loop.
-      for (const candidate of route.filter(edgeCandidate => edgeCandidate.to === cycle.roles.objectiveNode)) candidate.lockId = dependency.lockId
-      // The selected Key & Lock challenge also marks the main Goal entrance.
-      // Reuse one lock across multiple guarded entrances; when another loop
-      // already guards the Goal, keep its existing dependency instead.
-      const goalEntries = mission.edges.filter(candidate => candidate.to === mission.goalNodeId)
-      if (!goalEntries.some(candidate => candidate.lockId)) for (const entry of goalEntries) entry.lockId = dependency.lockId
+    'lock-and-key': { ...base, realization: 'locked loop branch with its matching key on the open route', rewrite: (mission, cycle) => {
+      const keyId = `key-${cycle.id}`
+      addKeyAtNode(mission, cycle, keyId, cycle.roles.routeBNode)
+      const lockId = addLock(mission, cycle, keyId, cycle.roles.routeANode)
+      // Present the lock at the loop's choice point. The other departure
+      // remains open and carries the key, so exploration can continue around
+      // the cycle without revisiting any previously entered room.
+      const lockedDeparture = routeEdges(mission, cycle, cycle.routeA)[0]
+      if (lockedDeparture) lockedDeparture.lockId = lockId
     } },
     'unknown-return': { ...base, realization: 'required locked goal, one-way valve, key room, and return route', rewrite: (mission, cycle) => {
       const routeAApproach = cycle.routeA[cycle.routeA.length - 2]!

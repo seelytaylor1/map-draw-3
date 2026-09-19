@@ -5,6 +5,7 @@ export interface Label {
   row: number
   text: string
   number?: number // Optional number for keyed entries (1, 2, 3...)
+  color?: string
 }
 
 export function getLabelDisplayText(label: Label): string {

@@ -1023,7 +1023,7 @@ export default function App() {
         text: item.text,
         fontSize: item.fontSize,
         fontFamily: 'Arial',
-        fill: '#000',
+        fill: item.color ?? '#000',
         align: 'center',
         draggable: true,
       })

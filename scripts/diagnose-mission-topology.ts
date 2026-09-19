@@ -4,19 +4,21 @@ import type { GenerationRequest, LoopChallenge } from '../src/randomDungeon/miss
 const sampleSize = Number(process.argv[2] ?? 20)
 const firstSeed = Number(process.argv[3] ?? 1)
 const challenge = (process.argv[4] ?? 'alternate-paths') as LoopChallenge
-if (!Number.isSafeInteger(sampleSize) || sampleSize < 1 || !Number.isSafeInteger(firstSeed)) throw new Error('Usage: vite-node scripts/diagnose-mission-topology.ts [count] [firstSeed]')
+const loopCount = Number(process.argv[5] ?? 1)
+const complexity = process.argv[6] ?? 'standard'
+if (!Number.isSafeInteger(sampleSize) || sampleSize < 1 || !Number.isSafeInteger(firstSeed) || !Number.isSafeInteger(loopCount) || loopCount < 0 || !['compact', 'standard', 'dense'].includes(complexity)) throw new Error('Usage: vite-node scripts/diagnose-mission-topology.ts [count] [firstSeed] [challenge] [loopCount] [compact|standard|dense]')
 if (!ALL_LOOP_CHALLENGES.includes(challenge)) throw new Error(`Unknown Loop Challenge: ${challenge}`)
 
-const base: GenerationRequest = { style: 'spine-shortcuts', seed: firstSeed, cols: 88, rows: 68, tilesPerInch: 8, complexity: 'standard', loopCount: 1, loopPreference: challenge, loopChallenges: [challenge] }
+const base: GenerationRequest = { style: 'spine-shortcuts', seed: firstSeed, cols: 88, rows: 68, tilesPerInch: 8, complexity: complexity as GenerationRequest['complexity'], loopCount, loopPreference: challenge, loopChallenges: Array.from({ length: loopCount }, () => challenge) }
 const reports = []
 for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) for (let offset = 0; offset < sampleSize; offset++) {
   const result = generateMissionDungeon({ ...base, style, seed: firstSeed + offset })
-  if (!result.ok || !result.space) reports.push({ style, seed: firstSeed + offset, generated: false, diagnostics: result.diagnostics.map(diagnostic => diagnostic.code) })
+  if (!result.ok || !result.space) reports.push({ style, seed: firstSeed + offset, generated: false, rejectedAttempts: result.summary.rejectedAttempts, diagnostics: result.diagnostics.map(diagnostic => diagnostic.code) })
   else {
     const assessment = assessMapTopology(result.mission, result.space)
-    reports.push({ style, seed: firstSeed + offset, generated: true, supportsMeaningfulChoices: assessment.supportsMeaningfulChoices, firstChoiceDistance: assessment.firstChoiceDistance, cycles: assessment.cycles, findings: assessment.findings })
+    reports.push({ style, seed: firstSeed + offset, generated: true, rejectedAttempts: result.summary.rejectedAttempts, supportsMeaningfulChoices: assessment.supportsMeaningfulChoices, firstChoiceDistance: assessment.firstChoiceDistance, cycles: assessment.cycles, findings: assessment.findings })
   }
 }
 const failing = reports.filter(report => !('supportsMeaningfulChoices' in report) || !report.supportsMeaningfulChoices)
-console.log(JSON.stringify({ challenge, sampleSize, firstSeed, generated: reports.length - reports.filter(report => !report.generated).length, meaningfulChoiceRate: `${reports.length - failing.length}/${reports.length}`, failures: failing, reports }, null, 2))
+console.log(JSON.stringify({ challenge, loopCount, complexity, sampleSize, firstSeed, generated: reports.length - reports.filter(report => !report.generated).length, meaningfulChoiceRate: `${reports.length - failing.length}/${reports.length}`, failures: failing, reports }, null, 2))
 process.exitCode = failing.length ? 1 : 0

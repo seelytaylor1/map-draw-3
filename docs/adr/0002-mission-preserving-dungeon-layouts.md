@@ -55,9 +55,10 @@ ordinary passages, explicit one-way valves, and closed optional locks.
 
 `src/dungeonGeometry.test.ts` independently floods committed floor tiles with
 closed doors and directed valves. It checks every challenge/style combination,
-all-room reachability, and the inability to enter locked objectives when either
-required key is withheld. Other checks cover seeded replay, shape/size variation,
-invalid shared-cycle crossings, marker counts, and even-width footprint expansion.
+all-room reachability, that each guarded doorway stays closed when its matching
+key is withheld, and that Lock & Key's open route still reaches its key and
+objective. Other checks cover seeded replay, shape/size variation, invalid
+shared-cycle crossings, marker counts, and even-width footprint expansion.
 
 `npx vite-node scripts/analyze-mission-dungeons.ts` runs a reproducible 36-case
 page-size sweep and writes an HTML review sheet under `.scratch/dungeon-review/`.

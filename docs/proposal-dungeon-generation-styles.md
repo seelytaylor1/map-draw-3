@@ -173,7 +173,7 @@ Each loop challenge operates on named roles within a loop:
 | Hidden Shortcut | Make the Route A connection from `anchorNode` secret. |
 | Dramatic Arc | Make Route A's connection into `objectiveNode` visibly impassable while preserving Route B as the approach. |
 | Dangerous Route | Mark Route A as dangerous. Route B remains the safer alternative. |
-| Lock & Key | Create one matching Key/Lock pair. Put the required Lock on the door into `objectiveNode`, keep a bypass around that room, and leave the Key reachable before the Lock is opened. |
+| Lock & Key | Create one matching Key/Lock pair. Put the Lock on one departure from `anchorNode`, place the Key in an existing room on the other route, and keep that route open so exploration can continue around the loop without room-by-room backtracking. |
 | Unknown Return | Keep the base loop, lock both objective entrances, and add a one-way valve from Route A to a matching Key room. The Key's supporting return route leads back to the anchor, after which the same objective entrances are open. |
 | Patrolled Cycle | Treat both routes in the loop as dangerous because a powerful encounter patrols the cycle. |
 | Gambit | Keep Route A direct and dangerous; extend Route B with an additional safe-route challenge before it reconverges at `objectiveNode`. |

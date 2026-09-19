@@ -382,6 +382,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
 export interface LabelSceneItem {
   id: string
   text: string
+  color?: string
   x: number; y: number; width: number; fontSize: number
   selected: boolean
   selectionRect: PxRect | null
@@ -396,7 +397,7 @@ export function buildLabelScene(labels: Label[], selectedLabelId: string | null,
     const y = label.row * tilePx + tilePx / 2 - 7
     const selected = label.id === selectedLabelId
     return {
-      id: label.id, text: displayText, x, y, width: textWidth, fontSize, selected,
+      id: label.id, text: displayText, color: label.color, x, y, width: textWidth, fontSize, selected,
       selectionRect: selected ? { x: x - 2, y: y - 2, w: textWidth + 4, h: fontSize + 4 } : null,
     }
   })

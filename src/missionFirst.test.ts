@@ -48,6 +48,22 @@ describe('mission-first dungeon generation', () => {
     expect(new Set(doubleLock.mission.locks.map(lock => lock.keyId)).size).toBe(2)
   })
 
+  it('puts a Lock and Key key on the open loop route instead of a side room', () => {
+    const mission = createMission(request({ loopCount: 1, loopChallenges: ['lock-and-key'] }))
+    const cycle = mission.cycles[0]!
+    const key = mission.keys[0]!
+    const lock = mission.locks[0]!
+    const lockedEdges = mission.edges.filter(edge => edge.lockId === lock.id)
+
+    expect(cycle.routeB.slice(1, -1)).toContain(key.nodeId)
+    expect(cycle.roles.keyNode).toBe(key.nodeId)
+    expect(mission.edges.some(edge => edge.id.startsWith('key-access-'))).toBe(false)
+    expect(lockedEdges).toEqual([
+      expect.objectContaining({ from: cycle.roles.anchorNode, to: cycle.roles.routeANode }),
+    ])
+    expect(mission.edges.find(edge => edge.from === cycle.roles.anchorNode && edge.to === cycle.roles.routeBNode)?.lockId).toBeUndefined()
+  })
+
   it('validates exact request inputs and rejects legacy independent counts', () => {
     expect(validateGenerationRequest({ ...request(), seed: 'abc' }).map(diagnostic => diagnostic.code)).toContain('invalid-seed')
     expect(validateGenerationRequest({ ...request(), seed: 1.5 }).map(diagnostic => diagnostic.code)).toContain('invalid-seed')
@@ -94,6 +110,28 @@ describe('mission-first dungeon generation', () => {
     expect(validateProgression(result.mission).goalReachable).toBe(true)
     expect(result.summary.mission.pairings).toHaveLength(0)
   })
+
+  it('realizes a five-loop Lock and Key map for the reported high-loop seed', () => {
+    const result = generateMissionDungeon(request({
+      seed: 3322568453,
+      loopCount: 5,
+      loopPreference: 'lock-and-key',
+      loopChallenges: Array.from({ length: 5 }, () => 'lock-and-key'),
+    }))
+
+    expect(result.ok).toBe(true)
+    expect(result.mission.keys).toHaveLength(5)
+    expect(result.mission.locks).toHaveLength(5)
+    for (const cycle of result.mission.cycles) {
+      const key = result.mission.keys.find(candidate => candidate.id === `key-${cycle.id}`)
+      const lock = result.mission.locks.find(candidate => candidate.id === `lock-${cycle.id}`)
+      const lockedEdges = result.mission.edges.filter(edge => edge.lockId === lock?.id)
+      expect(key).toBeDefined()
+      expect(lock).toBeDefined()
+      expect(cycle.routeB.slice(1, -1)).toContain(key!.nodeId)
+      expect(lockedEdges).toEqual([expect.objectContaining({ from: cycle.roles.anchorNode, to: cycle.roles.routeANode })])
+    }
+  }, 15_000)
 
   it('builds Central Hub loops as independent returns to the Start hub', () => {
     const mission = createMission(request({ style: 'orbit-gates', loopCount: 2, loopChallenges: ['alternate-paths', 'alternate-paths'] }))
@@ -391,20 +429,44 @@ describe('mission-first dungeon generation', () => {
     }
   })
 
-  it('places a locked door at the main Goal for a Lock and Key challenge', () => {
+  it('color codes each generated key with its matching locked doors', () => {
+    const result = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['double-lock'] }))
+    expect(result.ok).toBe(true)
+
+    const stamps = result.snapshot!.stamps
+    const keyColors = result.mission.keys.map(key => {
+      const keyStamp = stamps.find(stamp => stamp.id === `generated-${key.id}`)!
+      expect(keyStamp.color).toBeDefined()
+      expect(result.snapshot!.labels.find(label => label.id === `label-${key.id}`)?.color).toBe(keyStamp.color)
+
+      const matchingLocks = result.mission.locks.filter(lock => lock.keyId === key.id)
+      const matchingDoorStamps = matchingLocks.flatMap(lock => stamps.filter(stamp => {
+        const suffix = stamp.id.slice(`generated-${lock.id}-`.length)
+        return stamp.id.startsWith(`generated-${lock.id}-`) && /^\d+$/.test(suffix)
+      }))
+      expect(matchingDoorStamps.length).toBeGreaterThan(0)
+      expect(matchingDoorStamps.every(stamp => stamp.color === keyStamp.color)).toBe(true)
+      return keyStamp.color
+    })
+
+    expect(new Set(keyColors).size).toBe(result.mission.keys.length)
+  })
+
+  it('places the Lock and Key door at one loop departure and its key on the open route', () => {
     const result = generateMissionDungeon(request({ seed: 382040039, loopCount: 1, loopChallenges: ['lock-and-key'] }))
     expect(result.ok).toBe(true)
 
-    const goal = result.space!.modules.find(module => module.missionNodeId === result.mission.goalNodeId)!
-    const goalConnections = result.space!.connections.filter(connection => connection.toModuleId === goal.id)
-    expect(goalConnections.length).toBeGreaterThan(0)
+    const cycle = result.mission.cycles[0]!
+    const key = result.mission.keys[0]!
+    const lock = result.mission.locks[0]!
+    const lockedEdge = result.mission.edges.find(edge => edge.lockId === lock.id)!
+    const lockedConnection = result.space!.connections.find(connection => connection.missionEdgeId === lockedEdge.id)!
+    const position = lockedConnection.path[lockedConnection.path.length - 2]!
 
-    for (const connection of goalConnections) {
-      const edge = result.mission.edges.find(candidate => candidate.id === connection.missionEdgeId)!
-      expect(edge.lockId).toBe(result.mission.locks[0]!.id)
-      const position = connection.path[connection.path.length - 2]!
-      expect(result.snapshot!.stamps.some(stamp => stamp.type === 'DoorLocked1x1' && stamp.col === position.col && stamp.row === position.row)).toBe(true)
-    }
+    expect(lockedEdge).toMatchObject({ from: cycle.roles.anchorNode, to: cycle.roles.routeANode })
+    expect(cycle.routeB.slice(1, -1)).toContain(key.nodeId)
+    expect(result.snapshot!.stamps.some(stamp => stamp.type === 'DoorLocked1x1' && stamp.col === position.col && stamp.row === position.row)).toBe(true)
+    expect(result.snapshot!.stamps.some(stamp => stamp.id === `generated-${key.id}` && stamp.type === 'Key1x1')).toBe(true)
   })
 
   it('places every Key marker visibly and moves a colliding marker beside the room center', () => {
