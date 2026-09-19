@@ -10,7 +10,7 @@
 // rough-mode preview) is ephemeral cursor feedback, not map content, and stays
 // imperative in App.tsx.
 
-import { FLOOR, LAVA, DARKNESS, WALL, WATER, getTileColor, type TileState, Z_STEP_HEIGHT } from './constants'
+import { FLOOR, FLOOR_COLOR, LAVA, DARKNESS, WALL, WATER, getTileColor, type TileState, Z_STEP_HEIGHT } from './constants'
 import { createGrid, getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
 import {
@@ -75,6 +75,7 @@ export interface TileSceneState {
   wallOpacity: number
   selectedStepId: string | null
   selectedRampId: string | null
+  floorColor?: string
   waterColor: string
   lavaColor: string
   darknessColor: string
@@ -193,11 +194,12 @@ export function buildTileScene(state: TileSceneState): TileScene {
   const {
     grids, steps, ramps, cols, rows, activeZ, tilePx, facePx,
     show3D, showGrid, showHatching, showWallOutline, wallOutlineColor, wallOutlineStyle,
-    wallColor, wallOpacity, selectedStepId, selectedRampId,
+    wallColor, wallOpacity, selectedStepId, selectedRampId, floorColor = FLOOR_COLOR,
     waterColor, lavaColor, darknessColor, environmentalColors,
   } = state
 
   const allCustomColors = new Map(environmentalColors)
+  allCustomColors.set(FLOOR, floorColor)
   allCustomColors.set(WATER, waterColor)
   allCustomColors.set(LAVA, lavaColor)
   allCustomColors.set(DARKNESS, darknessColor)

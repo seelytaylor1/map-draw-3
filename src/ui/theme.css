@@ -328,6 +328,29 @@ body.resizing-panel, body.resizing-panel * { cursor: ew-resize !important; user-
   color: var(--iso);
 }
 
+/* secondary floor-type grid */
+.environment-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.environment-grid .tool-btn {
+  width: auto;
+  min-width: 0;
+  justify-content: center;
+  padding: 6px 4px;
+  font-size: 11px;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+}
+.environment-grid .tool-btn:nth-child(4n) { border-right: none; }
+.environment-grid .tool-btn:nth-child(n + 5) { border-bottom: none; }
+.environment-grid .tool-btn.active { border-left: none; }
+
 /* small square icon toggle */
 .icon-toggle {
   display: flex;

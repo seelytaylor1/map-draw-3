@@ -31,7 +31,8 @@ export const MUD = 8 as const
 export const STONE = 9 as const
 export const MOSSY_STONE = 10 as const
 export const RUBBLE = 11 as const
-export type TileState = typeof WALL | typeof FLOOR | typeof WATER | typeof LAVA | typeof DARKNESS | typeof GRASS | typeof ROAD | typeof SAND | typeof MUD | typeof STONE | typeof MOSSY_STONE | typeof RUBBLE
+export const SNOW = 12 as const
+export type TileState = typeof WALL | typeof FLOOR | typeof WATER | typeof LAVA | typeof DARKNESS | typeof GRASS | typeof ROAD | typeof SAND | typeof MUD | typeof STONE | typeof MOSSY_STONE | typeof RUBBLE | typeof SNOW
 
 export const FLOOR_COLOR = '#f5f0e8'
 export const WATER_COLOR = '#6baed6'
@@ -47,6 +48,7 @@ export const ENVIRONMENTAL_DEFAULTS: Partial<Record<TileState, string>> = {
   [STONE]: '#b8b8b8',
   [MOSSY_STONE]: '#6b8c5a',
   [RUBBLE]: '#6b6b6b',
+  [SNOW]: '#d8ebf2',
 }
 
 export function getTileColor(
@@ -55,7 +57,7 @@ export function getTileColor(
 ): string {
   switch (tileState) {
     case WALL: return 'transparent'
-    case FLOOR: return FLOOR_COLOR
+    case FLOOR: return customColors.get(FLOOR) ?? FLOOR_COLOR
     case WATER: return customColors.get(WATER) ?? WATER_COLOR
     case LAVA: return customColors.get(LAVA) ?? LAVA_COLOR
     case DARKNESS: return customColors.get(DARKNESS) ?? DARKNESS_COLOR
@@ -66,6 +68,7 @@ export function getTileColor(
     case STONE:
     case MOSSY_STONE:
     case RUBBLE:
+    case SNOW:
       return customColors.get(tileState) ?? ENVIRONMENTAL_DEFAULTS[tileState] ?? FLOOR_COLOR
     default: return FLOOR_COLOR
   }

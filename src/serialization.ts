@@ -2,7 +2,7 @@ import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type Objec
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
 import { type Label } from './labels'
-import { WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, normalizeTilesPerInch, TILES_PER_INCH } from './constants'
+import { FLOOR_COLOR, WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, normalizeTilesPerInch, TILES_PER_INCH } from './constants'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
 const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
@@ -24,6 +24,7 @@ export interface MapSave {
   showWallOutline?: boolean
   wallOutlineColor?: string
   wallOutlineStyle?: 'clean' | 'rough'
+  floorColor?: string
   waterColor?: string
   lavaColor?: string
   darknessColor?: string
@@ -51,6 +52,7 @@ export interface DeserializedMap {
   showWallOutline: boolean
   wallOutlineColor: string
   wallOutlineStyle: 'clean' | 'rough'
+  floorColor: string
   waterColor: string
   lavaColor: string
   darknessColor: string
@@ -77,6 +79,7 @@ export function serialize(params: {
   showWallOutline: boolean
   wallOutlineColor: string
   wallOutlineStyle: 'clean' | 'rough'
+  floorColor?: string
   waterColor: string
   lavaColor: string
   darknessColor: string
@@ -107,6 +110,7 @@ export function serialize(params: {
     showWallOutline: params.showWallOutline,
     wallOutlineColor: params.wallOutlineColor,
     wallOutlineStyle: params.wallOutlineStyle,
+    floorColor: params.floorColor ?? FLOOR_COLOR,
     waterColor: params.waterColor,
     lavaColor: params.lavaColor,
     darknessColor: params.darknessColor,
@@ -272,6 +276,7 @@ export function deserialize(raw: unknown): DeserializedMap {
   const waterColor = isHexColor(s['waterColor']) ? s['waterColor'] : WATER_COLOR
   const lavaColor = isHexColor(s['lavaColor']) ? s['lavaColor'] : LAVA_COLOR
   const darknessColor = isHexColor(s['darknessColor']) ? s['darknessColor'] : DARKNESS_COLOR
+  const floorColor = isHexColor(s['floorColor']) ? s['floorColor'] : FLOOR_COLOR
 
   const rawEnvColors = (typeof s['environmentalColors'] === 'object' && s['environmentalColors'] !== null && !Array.isArray(s['environmentalColors']))
     ? s['environmentalColors'] as Record<string, string>
@@ -299,6 +304,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     showWallOutline,
     wallOutlineColor,
     wallOutlineStyle,
+    floorColor,
     waterColor,
     lavaColor,
     darknessColor,

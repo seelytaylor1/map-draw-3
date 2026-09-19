@@ -57,7 +57,7 @@ export function IconToggle({ icon, active, onClick, tone, disabled, title }: {
 }
 
 export function Segmented<T extends string | number>({ options, value, onChange, tones }: {
-  options: { value: T; label: string; icon?: ReactNode }[]
+  options: { value: T; label: string; icon?: ReactNode; style?: CSSProperties }[]
   value: T
   onChange: (v: T) => void
   tones?: Partial<Record<T, 'water' | 'lava' | 'darkness' | 'erase'>>
@@ -69,6 +69,7 @@ export function Segmented<T extends string | number>({ options, value, onChange,
           key={opt.value}
           className={`${value === opt.value ? 'active' : ''}${tones?.[opt.value] ? ` tone-${tones[opt.value]}` : ''}`}
           onClick={() => onChange(opt.value)}
+          style={opt.style}
         >
           {opt.icon}{opt.label}
         </button>
@@ -77,16 +78,18 @@ export function Segmented<T extends string | number>({ options, value, onChange,
   )
 }
 
-export function ColorField({ label, value, onChange }: {
+export function ColorField({ label, value, onChange, onReset }: {
   label?: string
   value: string
   onChange: (v: string) => void
+  onReset?: () => void
 }) {
   return (
     <div className="color-field">
       {label && <label>{label}</label>}
       <input className="swatch" type="color" value={value} onChange={e => onChange(e.target.value)} />
       <span className="hex">{value}</span>
+      {onReset && <Btn onClick={onReset}>Reset</Btn>}
     </div>
   )
 }

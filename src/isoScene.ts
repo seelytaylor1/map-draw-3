@@ -1,4 +1,4 @@
-import { DARKNESS, FACE_PX, FLOOR, FLOOR_COLOR, GRASS, LAVA, MUD, MOSSY_STONE, ROAD, RUBBLE, SAND, STONE, WALL, WATER, WATER_OFFSET_Y, Z_STEP_HEIGHT, getTileColor, type TileState } from './constants'
+import { DARKNESS, FACE_PX, FLOOR, FLOOR_COLOR, GRASS, LAVA, MUD, MOSSY_STONE, ROAD, RUBBLE, SAND, SNOW, STONE, WALL, WATER, WATER_OFFSET_Y, Z_STEP_HEIGHT, getTileColor, type TileState } from './constants'
 import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
@@ -18,6 +18,7 @@ export interface IsoSceneParams {
   tileW: number
   tileH: number
   facePx?: number
+  floorColor?: string
   frontFaceColor: string
   eastFaceColor: string
   waterColor: string
@@ -71,6 +72,7 @@ function buildFluidShapes(
 
 export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
   const facePx = p.facePx ?? FACE_PX
+  const floorColor = p.floorColor ?? FLOOR_COLOR
   const out: IsoShape[] = []
 
   if (p.wallOpacity > 0) {
@@ -99,7 +101,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
         if (state === FLOOR) {
           const shapes: IsoShape[] = [{
             points: isoFloorPoints(c, r, p.tileW, p.tileH),
-            fill: FLOOR_COLOR,
+            fill: floorColor,
             stroke: 'rgba(0,0,0,0.15)',
             strokeWidth: 0.5,
           }]
@@ -122,7 +124,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
           items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.lavaColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
         } else if (state === DARKNESS) {
           items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.darknessColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
-        } else if (state === GRASS || state === ROAD || state === SAND || state === MUD || state === STONE || state === MOSSY_STONE || state === RUBBLE) {
+        } else if (state === GRASS || state === ROAD || state === SAND || state === MUD || state === STONE || state === MOSSY_STONE || state === RUBBLE || state === SNOW) {
           const envColor = getTileColor(state, p.environmentalColors ?? new Map())
           const shapes: IsoShape[] = [{
             points: isoFloorPoints(c, r, p.tileW, p.tileH),
@@ -164,7 +166,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
         shapes.push({ points: tread.front, fill: p.frontFaceColor, stepId: run.id })
         shapes.push({
           points: tread.top,
-          fill: FLOOR_COLOR,
+          fill: floorColor,
           stroke: selected ? '#ffff00' : 'rgba(0,0,0,0.25)',
           strokeWidth: selected ? 1.5 : 0.5,
           stepId: run.id,
@@ -186,7 +188,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
       }
       shapes.push({
         points: isoRampSurface(run, p.tileW, p.tileH),
-        fill: FLOOR_COLOR,
+        fill: floorColor,
         stroke: selected ? '#ffff00' : 'rgba(0,0,0,0.25)',
         strokeWidth: selected ? 1.5 : 0.5,
         rampId: run.id,

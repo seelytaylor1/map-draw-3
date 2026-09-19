@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoProject, isoFloorPoints } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
@@ -30,7 +30,7 @@ import './ui/theme.css'
 import { Section, ToolButton, IconToggle, Segmented, ColorField, Btn } from './ui/controls'
 import {
   IconCompass, IconLayers, IconMinus, IconPlus, IconHash, IconCube,
-  IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconFlame, IconEraser, IconCave,
+  IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconFlame, IconCave,
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
 } from './ui/icons'
@@ -52,12 +52,33 @@ const WALL_PRESETS = [
   { label: 'Transparent', color: '#000000', opacity: 0 },
 ]
 
+const ENVIRONMENT_OPTIONS: { value: TileState; label: string }[] = [
+  { value: GRASS,       label: 'Grass' },
+  { value: ROAD,        label: 'Road' },
+  { value: SAND,        label: 'Sand' },
+  { value: MUD,         label: 'Mud' },
+  { value: STONE,       label: 'Stone' },
+  { value: MOSSY_STONE, label: 'Mossy' },
+  { value: RUBBLE,      label: 'Rubble' },
+  { value: SNOW,        label: 'Snow' },
+]
+
 function hexToRgba(hex: string, alpha: number): string {
   if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return `rgba(0,0,0,${alpha})`
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   return `rgba(${r},${g},${b},${alpha})`
+}
+
+function getAccessibleTextColor(hex: string): string {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return '#ffffff'
+  const channels = [0, 2, 4].map(offset => parseInt(hex.slice(offset + 1, offset + 3), 16) / 255)
+  const luminance = channels.map(channel => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0)
+  const contrastWithDark = (luminance + 0.05) / 0.05
+  const contrastWithLight = 1.05 / (luminance + 0.05)
+  return contrastWithDark >= contrastWithLight ? '#1b1814' : '#ffffff'
 }
 
 type AppSnapshot = {
@@ -108,6 +129,7 @@ export default function App() {
   const selectedPaintState: TileState = drawingState.tool === 'paint'
     ? (drawingState.phase === 'idle' ? drawingState.paintValue : drawingState.idlePaintValue)
     : FLOOR
+  const selectedEnvironment = ENVIRONMENT_OPTIONS.find(env => env.value === selectedPaintState)
   const selectedStampId: string | null = drawingState.tool === 'stamp' ? drawingState.selectedId : null
   const selectedStepId: string | null = drawingState.tool === 'steps' ? drawingState.selectedId : null
   const selectedRampId: string | null = drawingState.tool === 'ramps' ? drawingState.selectedId : null
@@ -145,6 +167,7 @@ export default function App() {
   const [show3D, setShow3D] = useState(false)
   const [showIso, setShowIso] = useState(false)
   const [isoFaceColor, setIsoFaceColor] = useState('#6a5040')
+  const [floorColor, setFloorColor] = useState(FLOOR_COLOR)
   const [waterColor, setWaterColor] = useState(WATER_COLOR)
   const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
@@ -191,8 +214,6 @@ export default function App() {
     setWindowTitle(`${marker}Map Draw — ${documentName}`)
   }, [documentName, isDirty])
 
-  const [paintTab, setPaintTab] = useState<'basic' | 'environments'>('basic')
-  const [colorPickerOpen, setColorPickerOpen] = useState<number | null>(null)
   const [workspaceTab, setWorkspaceTab] = useState<'draw' | 'assets' | 'generate' | 'document'>('draw')
   const [toolbarWidth, setToolbarWidth] = useState(328)
   const resizingToolbarRef = useRef(false)
@@ -603,6 +624,7 @@ export default function App() {
       const shapes = buildIsoScene({
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
+        floorColor,
         waterColor, lavaColor, darknessColor,
         environmentalColors: environmentalColors as Map<TileState, string>,
       })
@@ -653,6 +675,7 @@ export default function App() {
       show3D, showGrid, showHatching, showWallOutline,
       wallOutlineColor, wallOutlineStyle, wallColor, wallOpacity,
       selectedStepId, selectedRampId,
+      floorColor,
       waterColor, lavaColor, darknessColor,
       environmentalColors: environmentalColors as Map<TileState, string>,
     })
@@ -749,7 +772,7 @@ export default function App() {
         for (const fp of run.footprint) {
           runGroup.add(new Konva.Rect({
             x: fp.x, y: fp.y, width: fp.w, height: fp.h,
-            fill: FLOOR_COLOR, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 1,
+            fill: floorColor, stroke: 'rgba(0,0,0,0.35)', strokeWidth: 1,
           }))
         }
         if (run.selectionRect) {
@@ -781,7 +804,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor])
+  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor])
 
   // Stamp layer
   useEffect(() => {
@@ -919,6 +942,7 @@ export default function App() {
     }
 
     const ghostFill =
+      selectedPaintState === FLOOR    ? hexToRgba(floorColor,    0.45) :
       selectedPaintState === WATER    ? hexToRgba(waterColor,    0.45) :
       selectedPaintState === LAVA     ? hexToRgba(lavaColor,     0.45) :
       selectedPaintState === DARKNESS ? hexToRgba(darknessColor, 0.45) :
@@ -1004,7 +1028,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState, waterColor, lavaColor, darknessColor])
+  }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor])
 
   // Labels layer
   useEffect(() => {
@@ -1199,6 +1223,7 @@ export default function App() {
       wallOutlineColor,
       wallOutlineStyle,
       exportTile: getExportTilePixels(tilesPerInch),
+      floorColor,
       waterColor,
       lavaColor,
       darknessColor,
@@ -1284,10 +1309,10 @@ export default function App() {
         }
       },
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, waterColor, lavaColor, darknessColor])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, floorColor, waterColor, lavaColor, darknessColor])
 
   const getSerializedMap = () => {
-    const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
+    const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
     return JSON.stringify(mapSave, null, 2)
   }
 
@@ -1309,7 +1334,7 @@ export default function App() {
       a.click()
       URL.revokeObjectURL(url)
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
 
   const handleSaveAs = useCallback(async () => {
     if (!isTauri()) return
@@ -1322,7 +1347,7 @@ export default function App() {
       setCurrentFilePath(path)
       setSavedHistoryLength(history.past.length)
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
@@ -1351,6 +1376,10 @@ export default function App() {
     setCols(DEFAULT_COLS)
     setRows(DEFAULT_ROWS)
     setTilesPerInch(DEFAULT_TILES_PER_INCH)
+    setFloorColor(FLOOR_COLOR)
+    setWaterColor(WATER_COLOR)
+    setLavaColor(LAVA_COLOR)
+    setDarknessColor(DARKNESS_COLOR)
     setCurrentFilePath(null)
     setSavedHistoryLength(0)
     setGenerationResult(null)
@@ -1494,6 +1523,7 @@ export default function App() {
       setShowWallOutline(save.showWallOutline)
       setWallOutlineColor(save.wallOutlineColor)
       setWallOutlineStyle(save.wallOutlineStyle)
+      setFloorColor(save.floorColor)
       setWaterColor(save.waterColor)
       setLavaColor(save.lavaColor)
       setDarknessColor(save.darknessColor)
@@ -1581,95 +1611,103 @@ export default function App() {
 
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
           <Segmented
-            value={brushShape}
-            onChange={(s: BrushShape) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })}
+            value={drawingState.tool === 'rough' ? 'cave' : brushShape}
+            onChange={(s: BrushShape | 'cave') => {
+              if (s === 'cave') {
+                const ds = drawingState
+                if (ds.tool === 'rough') {
+                  if (ds.phase === 'placed2') {
+                    setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
+                  }
+                  dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+                } else {
+                  dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
+                }
+                return
+              }
+              dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })
+            }}
             options={[
-              { value: 'square', label: 'Square', icon: <IconSquareBrush size={13} /> },
-              { value: 'circle', label: 'Circle', icon: <IconCircleBrush size={13} /> },
+              { value: 'square' as const, label: 'Square', icon: <IconSquareBrush size={13} /> },
+              { value: 'circle' as const, label: 'Circle', icon: <IconCircleBrush size={13} /> },
+              { value: 'cave' as const, label: 'Cave', icon: <IconCave size={13} /> },
             ]}
           />
           <Segmented
-            value={paintTab}
-            onChange={(v: 'basic' | 'environments') => setPaintTab(v)}
+            value={selectedPaintState === WALL ? 'erase' : 'draw'}
+            onChange={(v: 'draw' | 'erase') => {
+              if (v === 'erase') {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: WALL, brushShape } })
+              } else if (selectedPaintState === WALL) {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape } })
+              }
+            }}
             options={[
-              { value: 'basic' as const, label: 'Basic' },
-              { value: 'environments' as const, label: 'Environments' },
+              { value: 'draw' as const, label: 'Draw' },
+              { value: 'erase' as const, label: 'Erase' },
             ]}
           />
-          {paintTab === 'basic' && (
+          {selectedPaintState !== WALL && (
             <>
               <Segmented
                 value={selectedPaintState}
                 onChange={(v: TileState) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: v, brushShape: brushShape } })}
-                tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness', [WALL]: 'erase' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
+                tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
                 options={[
-                  { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} /> },
-                  { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} /> },
-                  { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} /> },
-                  { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} /> },
-                  { value: WALL      as TileState, label: 'Erase',    icon: <IconEraser  size={13} /> },
+                  { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} />, style: { backgroundColor: floorColor, color: getAccessibleTextColor(floorColor) } },
+                  { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} />, style: { backgroundColor: waterColor, color: getAccessibleTextColor(waterColor) } },
+                  { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} />, style: { backgroundColor: lavaColor, color: getAccessibleTextColor(lavaColor) } },
+                  { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} />, style: { backgroundColor: darknessColor, color: getAccessibleTextColor(darknessColor) } },
                 ]}
               />
-              {selectedPaintState === WATER    && <ColorField label="Water color"    value={waterColor}    onChange={setWaterColor} />}
-              {selectedPaintState === LAVA     && <ColorField label="Lava color"     value={lavaColor}     onChange={setLavaColor} />}
-              {selectedPaintState === DARKNESS && <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} />}
-            </>
-          )}
-          {paintTab === 'environments' && (
-            <>
-              {([
-                { value: GRASS as TileState,       label: 'Grass' },
-                { value: ROAD as TileState,        label: 'Road' },
-                { value: SAND as TileState,        label: 'Sand' },
-                { value: MUD as TileState,         label: 'Mud' },
-                { value: STONE as TileState,       label: 'Stone' },
-                { value: MOSSY_STONE as TileState, label: 'Mossy' },
-                { value: RUBBLE as TileState,      label: 'Rubble' },
-              ] as { value: TileState; label: string }[]).map((env) => (
-                <div key={env.value} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  <ToolButton
-                    active={drawingState.tool === 'paint' && selectedPaintState === env.value}
-                    label={env.label}
-                    onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } })}
-                    style={{ backgroundColor: environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] }}
-                  />
-                  <button
-                    onClick={() => setColorPickerOpen(colorPickerOpen === env.value ? null : env.value)}
-                    style={{ fontSize: '10px', padding: '2px 6px' }}
-                  >
-                    ▼
-                  </button>
-                  {colorPickerOpen === env.value && (
-                    <ColorField
-                      value={environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] ?? '#000000'}
-                      onChange={(color) => {
-                        setHistory(h => push(h, {
-                          ...h.present,
-                          environmentalColors: new Map(h.present.environmentalColors).set(env.value, color),
-                        }))
-                      }}
+              {selectedPaintState === FLOOR && (
+                <ColorField label="Floor color" value={floorColor} onChange={setFloorColor} onReset={() => setFloorColor(FLOOR_COLOR)} />
+              )}
+              {selectedPaintState === WATER && (
+                <ColorField label="Water color" value={waterColor} onChange={setWaterColor} onReset={() => setWaterColor(WATER_COLOR)} />
+              )}
+              {selectedPaintState === LAVA && (
+                <ColorField label="Lava color" value={lavaColor} onChange={setLavaColor} onReset={() => setLavaColor(LAVA_COLOR)} />
+              )}
+              {selectedPaintState === DARKNESS && (
+                <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} onReset={() => setDarknessColor(DARKNESS_COLOR)} />
+              )}
+              <div className="environment-grid">
+                {ENVIRONMENT_OPTIONS.map((env) => {
+                  const color = environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] ?? FLOOR_COLOR
+                  return (
+                    <ToolButton
+                      key={env.value}
+                      active={drawingState.tool === 'paint' && selectedPaintState === env.value}
+                      label={env.label}
+                      onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } })}
+                      style={{ backgroundColor: color, color: getAccessibleTextColor(color) }}
                     />
-                  )}
-                </div>
-              ))}
+                  )
+                })}
+              </div>
+              {selectedEnvironment && (
+                <ColorField
+                  label={`${selectedEnvironment.label} color`}
+                  value={environmentalColors.get(selectedEnvironment.value) ?? ENVIRONMENTAL_DEFAULTS[selectedEnvironment.value] ?? '#000000'}
+                  onChange={(color) => {
+                    setHistory(h => push(h, {
+                      ...h.present,
+                      environmentalColors: new Map(h.present.environmentalColors).set(selectedEnvironment.value, color),
+                    }))
+                  }}
+                  onReset={() => {
+                    setHistory(h => {
+                      if (!h.present.environmentalColors.has(selectedEnvironment.value)) return h
+                      const colors = new Map(h.present.environmentalColors)
+                      colors.delete(selectedEnvironment.value)
+                      return push(h, { ...h.present, environmentalColors: colors })
+                    })
+                  }}
+                />
+              )}
             </>
           )}
-          <ToolButton
-            icon={<IconCave size={14} />}
-            label="Cave"
-            active={drawingState.tool === 'rough'}
-            onClick={() => {
-              const ds = drawingState
-              if (ds.tool === 'rough') {
-                if (ds.phase === 'placed2') {
-                  setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
-                }
-                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: brushShape } })
-              } else {
-                dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
-              }
-            }}
-          />
           {drawingState.tool === 'rough' && (
             <div className="hint">
               {roughPhase === 'idle' && 'Click 1: set start corner'}
@@ -1870,57 +1908,6 @@ export default function App() {
           })()}
         </Section>
 
-        <Section title="Style" icon={<IconHatch size={14} />}>
-          <div className="row">
-            <IconToggle icon={<IconHatch size={15} />} active={showHatching} onClick={() => setShowHatching(v => !v)} title="Hatching" />
-            {showHatching && <ColorField label="Hatch" value={hatchColor} onChange={setHatchColor} />}
-          </div>
-
-          <div className="row">
-            <IconToggle icon={<IconFrame size={15} />} active={showWallOutline} onClick={() => setShowWallOutline(v => !v)} title="Outline" />
-            {showWallOutline && <ColorField label="Outline" value={wallOutlineColor} onChange={setWallOutlineColor} />}
-          </div>
-          {showWallOutline && (
-            <Segmented
-              value={wallOutlineStyle}
-              onChange={setWallOutlineStyle}
-              options={[
-                { value: 'clean', label: 'Clean' },
-                { value: 'rough', label: 'Rough' },
-              ]}
-            />
-          )}
-
-          <div className="row" style={{ marginTop: 4 }}>
-            {WALL_PRESETS.map(p => (
-              <button
-                key={p.label}
-                onClick={() => applyPreset(p)}
-                title={p.label}
-                className="btn"
-                style={{
-                  background: p.opacity === 0 ? 'rgba(255,255,255,0.03)' : p.color,
-                  color: p.color === '#000000' ? '#fff' : '#222',
-                  borderColor: wallColor === p.color && wallOpacity === p.opacity ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
-                  outline: p.opacity === 0 ? '1px dashed rgba(255,255,255,0.25)' : 'none',
-                  outlineOffset: -1,
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          <ColorField label="Wall" value={wallColor} onChange={setWallColor} />
-          {showIso && <ColorField label="Face" value={isoFaceColor} onChange={setIsoFaceColor} />}
-
-          <div className="row">
-            <label className="label-dim" style={{ width: 56 }}>Opacity</label>
-            <input type="range" min={0} max={1} step={0.01} value={wallOpacity} onChange={e => setWallOpacity(Number(e.target.value))} />
-            <span className="label-dim" style={{ width: 30, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{Math.round(wallOpacity * 100)}%</span>
-          </div>
-        </Section>
-
         </div>
 
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'generate'}>
@@ -2119,6 +2106,57 @@ export default function App() {
               e.target.value = ''
             }}
           />
+        </Section>
+
+        <Section title="Style" icon={<IconHatch size={14} />}>
+          <div className="row">
+            <IconToggle icon={<IconHatch size={15} />} active={showHatching} onClick={() => setShowHatching(v => !v)} title="Hatching" />
+            {showHatching && <ColorField label="Hatch" value={hatchColor} onChange={setHatchColor} />}
+          </div>
+
+          <div className="row">
+            <IconToggle icon={<IconFrame size={15} />} active={showWallOutline} onClick={() => setShowWallOutline(v => !v)} title="Outline" />
+            {showWallOutline && <ColorField label="Outline" value={wallOutlineColor} onChange={setWallOutlineColor} />}
+          </div>
+          {showWallOutline && (
+            <Segmented
+              value={wallOutlineStyle}
+              onChange={setWallOutlineStyle}
+              options={[
+                { value: 'clean', label: 'Clean' },
+                { value: 'rough', label: 'Rough' },
+              ]}
+            />
+          )}
+
+          <div className="row" style={{ marginTop: 4 }}>
+            {WALL_PRESETS.map(p => (
+              <button
+                key={p.label}
+                onClick={() => applyPreset(p)}
+                title={p.label}
+                className="btn"
+                style={{
+                  background: p.opacity === 0 ? 'rgba(255,255,255,0.03)' : p.color,
+                  color: p.color === '#000000' ? '#fff' : '#222',
+                  borderColor: wallColor === p.color && wallOpacity === p.opacity ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
+                  outline: p.opacity === 0 ? '1px dashed rgba(255,255,255,0.25)' : 'none',
+                  outlineOffset: -1,
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <ColorField label="Wall" value={wallColor} onChange={setWallColor} />
+          {showIso && <ColorField label="Face" value={isoFaceColor} onChange={setIsoFaceColor} />}
+
+          <div className="row">
+            <label className="label-dim" style={{ width: 56 }}>Opacity</label>
+            <input type="range" min={0} max={1} step={0.01} value={wallOpacity} onChange={e => setWallOpacity(Number(e.target.value))} />
+            <span className="label-dim" style={{ width: 30, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{Math.round(wallOpacity * 100)}%</span>
+          </div>
         </Section>
         </div>
 
