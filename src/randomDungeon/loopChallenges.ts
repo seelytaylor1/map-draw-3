@@ -19,6 +19,10 @@ export function isLoopPreference(value: unknown): value is LoopPreference {
   return typeof value === 'string' && validPreferences.has(value as LoopPreference)
 }
 
+export function formatLoopChallenge(challenge: LoopChallenge): string {
+  return challenge.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())
+}
+
 export function selectLoopChallenge(seed: number, index: number, preference: LoopPreference, explicit?: LoopPreference): LoopChallenge {
   const selection = explicit ?? preference
   if (selection !== 'varied') return selection

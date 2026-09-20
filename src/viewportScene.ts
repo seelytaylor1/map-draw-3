@@ -205,6 +205,10 @@ export function buildTileScene(state: TileSceneState): TileScene {
   allCustomColors.set(DARKNESS, darknessColor)
 
   const zSet = new Set(grids.keys())
+  // The active level may still be an unmaterialized blank grid. It must
+  // still render so the selected editing plane has its wall pattern and
+  // outline before the first tile is painted.
+  zSet.add(activeZ)
   for (const run of steps) zSet.add(run.z)
   for (const run of ramps) zSet.add(run.z)
 

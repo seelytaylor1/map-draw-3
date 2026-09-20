@@ -50,4 +50,8 @@ describe('labels', () => {
   it('renders a number by itself when the label text is empty', () => {
     expect(getLabelDisplayText({ ...label, text: '', number: 12 })).toBe('12')
   })
+
+  it('renders numbered room labels without descriptive text when requested', () => {
+    expect(getLabelDisplayText({ ...label, number: 12, numberOnly: true })).toBe('12')
+  })
 })

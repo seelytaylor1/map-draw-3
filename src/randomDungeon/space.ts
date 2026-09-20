@@ -27,6 +27,42 @@ const KEY_LOCK_COLORS = [
 
 function center(module: SpatialModule): Point { return { col: module.origin.col + Math.floor(module.width / 2), row: module.origin.row + Math.floor(module.height / 2) } }
 
+function orderRoomsFromEntrance(modules: readonly SpatialModule[], connections: readonly SpatialConnection[]): SpatialModule[] {
+  const rooms = modules.filter(module => module.footprint.length > 0)
+  const roomsById = new Map(rooms.map(room => [room.id, room]))
+  const entrance = rooms.find(room => room.missionNodeId === 'start')
+  if (!entrance) return rooms
+
+  const adjacent = new Map<string, string[]>()
+  for (const connection of connections) {
+    if (!roomsById.has(connection.fromModuleId) || !roomsById.has(connection.toModuleId)) continue
+    const from = adjacent.get(connection.fromModuleId) ?? []
+    const to = adjacent.get(connection.toModuleId) ?? []
+    if (!from.includes(connection.toModuleId)) from.push(connection.toModuleId)
+    if (!to.includes(connection.fromModuleId)) to.push(connection.fromModuleId)
+    adjacent.set(connection.fromModuleId, from)
+    adjacent.set(connection.toModuleId, to)
+  }
+
+  const orderedIds: string[] = []
+  const visited = new Set<string>([entrance.id])
+  const queue = [entrance.id]
+  for (let head = 0; head < queue.length; head++) {
+    const current = queue[head]!
+    orderedIds.push(current)
+    for (const neighbor of adjacent.get(current) ?? []) {
+      if (visited.has(neighbor)) continue
+      visited.add(neighbor)
+      queue.push(neighbor)
+    }
+  }
+
+  // Keep any isolated realized room deterministic without letting it displace
+  // the entrance-rooted traversal.
+  for (const room of rooms) if (!visited.has(room.id)) orderedIds.push(room.id)
+  return orderedIds.map(id => roomsById.get(id)!).filter(Boolean)
+}
+
 function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationRequest, modules: SpatialModule[], connections: SpatialConnection[]): Point[] | null {
   const cells = request.cols * request.rows
   const index = (p: Point) => p.row * request.cols + p.col
@@ -353,10 +389,10 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       .sort((a, b) => distance(a) - distance(b) || a.row - b.row || a.col - b.col)
       .find(point => isFloor(point) && !occupied.has(keyOf(point)))
   }
-  const addRoomLabel = (id: string, text: string, module: SpatialModule, color?: string) => {
+  const addRoomLabel = (id: string, text: string, module: SpatialModule, color?: string, number?: number, numberOnly = false) => {
     const point = roomDecorationPoint(module)
     if (!point) return
-    labels.push({ id, col: point.col, row: point.row, text, ...(color ? { color } : {}) })
+    labels.push({ id, col: point.col, row: point.row, text, ...(number === undefined ? {} : { number }), ...(numberOnly ? { numberOnly: true } : {}), ...(color ? { color } : {}) })
     occupied.add(keyOf(point))
   }
   const addRequired = (semantic: GeneratedMarkerSemantic, id: string, point: Point, direction: Direction, color?: string) => {
@@ -381,8 +417,6 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   for (const module of plan.modules) {
     const position = center(module)
     if (module.type === 'hub') addRequired('hub', `generated-${module.id}`, position, 'E')
-    if (module.missionNodeId === mission.goalNodeId) addRoomLabel(`label-${module.id}`, 'Goal', module)
-    else if (module.missionNodeId === 'start' && module.type === 'hub') addRoomLabel(`label-${module.id}`, 'Hub', module)
   }
   for (const key of mission.keys) {
     const module = moduleByNode.get(key.nodeId)
@@ -399,6 +433,18 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   for (const connection of plan.connections) {
     const semantic = connection.semantic
     if (semantic === 'secret' || semantic === 'dangerous' || semantic === 'blocked-return' || semantic === 'one-way') addRequired(semantic === 'dangerous' ? 'danger' : semantic, `generated-${connection.id}`, midpoint(connection.path), directionForPath(connection.path.slice(Math.floor(connection.path.length / 2))))
+  }
+  const roomModules = orderRoomsFromEntrance(plan.modules, plan.connections)
+  for (const [index, module] of roomModules.entries()) {
+    const missionNode = module.missionNodeId ? mission.nodes.find(node => node.id === module.missionNodeId) : undefined
+    const text = module.missionNodeId === 'start' && module.type !== 'hub'
+      ? 'Entrance'
+      : module.type === 'hub'
+      ? 'Hub'
+      : module.missionNodeId === mission.goalNodeId
+        ? 'Goal'
+        : missionNode?.label ?? 'Support Room'
+    addRoomLabel(`label-${module.id}`, text, module, undefined, index + 1, true)
   }
   const addOptional = (types: readonly StampType[], id: string, point: Point, direction: Direction = 'E') => {
     const type = types.find(candidate => available.includes(candidate))

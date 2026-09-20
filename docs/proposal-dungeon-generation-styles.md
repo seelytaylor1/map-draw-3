@@ -170,7 +170,7 @@ Each loop challenge operates on named roles within a loop:
 | Pattern | Mission transformation |
 |---|---|
 | Alternate Paths | Both neutral routes through the loop remain valid. |
-| Hidden Shortcut | Make the Route A connection from `anchorNode` secret. |
+| Hidden Shortcut | Make the Route A connection from `anchorNode` secret and ensure Route A contains fewer rooms than Route B. |
 | Dramatic Arc | Make Route A's connection into `objectiveNode` visibly impassable while preserving Route B as the approach. |
 | Dangerous Route | Mark Route A as dangerous. Route B remains the safer alternative. |
 | Lock & Key | Create one matching Key/Lock pair. Put the Lock on one departure from `anchorNode`, place the Key in an existing room on the other route, and keep that route open so exploration can continue around the loop without room-by-room backtracking. |
@@ -186,7 +186,7 @@ These patterns are independent of the selected spatial style. A Critical Spine s
 
 Every style must support the complete mission vocabulary, including every Loop Challenge. Styles may use different spatial realizations and production weights, but they may not omit, silently downgrade, or reinterpret a requested mission pattern. If a style cannot fit the exact mission on the selected page, generation fails explicitly.
 
-The first implementation should represent each pattern as a graph rewrite with explicit preconditions and outputs. A challenge may preserve the cycle, expand it, rewire it, or consume it entirely when that is the purpose of the pattern. For example, `Hidden Shortcut` changes an existing edge's access type, `Double Lock` adds two dependencies to one objective, and `Hub & Spoke` replaces the cycle with a hub and spoke connections. This preserves the meaning of the pattern when the resulting mission is placed using different space grammars.
+The first implementation should represent each pattern as a graph rewrite with explicit preconditions and outputs. A challenge may preserve the cycle, expand it, rewire it, or consume it entirely when that is the purpose of the pattern. For example, `Hidden Shortcut` changes an existing edge's access type and extends the public route when needed so the secret route is shorter by room count, `Double Lock` adds two dependencies to one objective, and `Hub & Spoke` replaces the cycle with a hub and spoke connections. This preserves the meaning of the pattern when the resulting mission is placed using different space grammars.
 
 The first Mission Grammar implementation should make every foundational pattern and every Loop Challenge executable. Each pattern needs at least one conservative, valid graph rewrite; additional alternative rewrites can be added later for variety. The initial implementation is therefore complete in semantic coverage without requiring a large catalog of mission rules.
 

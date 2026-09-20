@@ -153,6 +153,19 @@ describe('buildTileScene — fluid tile fill colors', () => {
   })
 })
 
+describe('buildTileScene — active blank levels', () => {
+  it('renders the selected level even before its first tile is painted', () => {
+    const { levels } = buildTileScene(tileSceneParams({
+      activeZ: 1,
+      grids: new Map([[0, createGrid(3, 3)]]),
+    }))
+
+    expect(levels.map(level => level.z)).toEqual([0, 1])
+    expect(levels[1].opacity).toBe(1)
+    expect(levels[1].grid).toEqual(createGrid(3, 3))
+  })
+})
+
 describe('buildTileScene — run wall openings', () => {
   it('breaks the wall outline where an exterior run enters the room', () => {
     const grid = paintTiles(createGrid(7, 7), 7, [

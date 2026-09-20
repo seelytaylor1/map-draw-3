@@ -55,6 +55,36 @@ describe('committed dungeon geometry', () => {
     }
   }, 30_000)
 
+  it('numbers every realized room in generated label order', () => {
+    const result = generateMissionDungeon(request)
+    expect(result.ok).toBe(true)
+    const rooms = result.space!.modules.filter(module => module.footprint.length > 0)
+    const roomLabels = result.snapshot!.labels.filter(label => label.number !== undefined)
+    expect(roomLabels).toHaveLength(rooms.length)
+    expect(roomLabels.map(label => label.number).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual(rooms.map((_, index) => index + 1))
+    expect(new Set(roomLabels.map(label => label.id))).toEqual(new Set(rooms.map(room => `label-${room.id}`)))
+    expect(roomLabels.every(label => label.numberOnly)).toBe(true)
+  })
+
+  it('starts at the entrance and numbers its adjacent rooms next', () => {
+    const result = generateMissionDungeon(request)
+    expect(result.ok).toBe(true)
+    const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
+    const labels = new Map(result.snapshot!.labels.filter(label => label.number !== undefined).map(label => [label.id, label.number]))
+    const adjacentRoomIds = new Set(result.space!.connections.flatMap(connection => {
+      if (connection.fromModuleId === start.id) return [connection.toModuleId]
+      if (connection.toModuleId === start.id) return [connection.fromModuleId]
+      return []
+    }))
+    const adjacentNumbers = [...adjacentRoomIds]
+      .filter(moduleId => result.space!.modules.some(module => module.id === moduleId && module.footprint.length > 0))
+      .map(moduleId => labels.get(`label-${moduleId}`))
+      .sort((a, b) => (a ?? 0) - (b ?? 0))
+
+    expect(labels.get(`label-${start.id}`)).toBe(1)
+    expect(adjacentNumbers).toEqual([2, 3])
+  })
+
   it('keeps required locks closed while Lock and Key exploration continues around its loop', () => {
     for (const challenge of ['lock-and-key', 'double-lock', 'unknown-return'] as const) {
       const result = generateMissionDungeon({ ...request, loopPreference: challenge })

@@ -40,11 +40,12 @@ import {
 import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
-import { ALL_LOOP_CHALLENGES, generateMissionDungeon, preflightGeneration } from './randomDungeon/missionFirst'
+import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, preflightGeneration } from './randomDungeon/missionFirst'
 import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
 import { MapLegend } from './MapLegend'
+import { RoomLedger } from './RoomLedger'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -192,6 +193,7 @@ export default function App() {
   const [generationComplexity, setGenerationComplexity] = useState<ComplexityPreset>('standard')
   const [generationLoopCount, setGenerationLoopCount] = useState(1)
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
+  const [roomListOpen, setRoomListOpen] = useState(false)
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
   const isDirty = history.past.length !== savedHistoryLength
@@ -1148,13 +1150,15 @@ export default function App() {
     layer.destroyChildren()
 
     const isLight = isLightBackdrop(wallColor, wallOpacity)
-    const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
+    const dotZs = new Set(grids.keys())
+    dotZs.add(activeZ)
+    const sortedZsForDots = [...dotZs].filter(z => z <= activeZ).sort((a, b) => a - b)
     for (const z of sortedZsForDots) {
         const levelOpacity = 0.2 * Math.pow(0.5, activeZ - z)
         const dotColor = isLight
           ? `rgba(0,0,0,${levelOpacity})`
           : `rgba(255,255,255,${levelOpacity})`
-        const levelGrid = grids.get(z)!
+        const levelGrid = getGrid(grids, z, cols, rows)
         for (let r = 0; r < rows; r += 2) {
           for (let c = 0; c < cols; c += 2) {
             if (getTile(levelGrid, cols, c, r) === WALL) {
@@ -1678,6 +1682,24 @@ export default function App() {
     return generateRandomDungeonWithSeed(createRandomSeed())
   }, [generateRandomDungeonWithSeed])
 
+  const handleCommitRoomName = useCallback((moduleId: string, text: string) => {
+    const labelId = `label-${moduleId}`
+    setHistory(h => {
+      const current = h.present.labels.find(label => label.id === labelId)
+      if (!current || current.text === text) return h
+      return push(h, { ...h.present, labels: updateLabel(h.present.labels, labelId, { text }) })
+    })
+  }, [])
+
+  const handleCommitRoomDetails = useCallback((moduleId: string, details: string) => {
+    const labelId = `label-${moduleId}`
+    setHistory(h => {
+      const current = h.present.labels.find(label => label.id === labelId)
+      if (!current || current.details === details) return h
+      return push(h, { ...h.present, labels: updateLabel(h.present.labels, labelId, { details }) })
+    })
+  }, [])
+
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
 
@@ -2197,7 +2219,7 @@ export default function App() {
                   <span>Loop {index + 1}</span>
                   <select id={`generation-loop-challenge-${index}`} className="num-field" value={challenge ?? 'varied'} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
                     <option value="varied">Random</option>
-                    {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{option.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
+                    {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{formatLoopChallenge(option)}</option>)}
                   </select>
                 </label>
               ))}
@@ -2242,6 +2264,20 @@ export default function App() {
                 <strong>{generationResult.ok ? `Generated ${generationResult.summary.style}` : 'Generation request failed'}</strong>
                 <span>Seed {generationResult.summary.seed}</span>
                 <span>{generationResult.summary.mission.nodes} nodes · {generationResult.summary.mission.cycles} cycles · {generationResult.summary.space.modules} modules · {generationResult.summary.rejectedAttempts} rejected attempts</span>
+                {generationResult.summary.mission.loopChallenges.length > 0 && (
+                  <span>
+                    {generationResult.summary.mission.loopChallenges.map((loop, index) => (
+                      <span key={loop.cycleId}>{index > 0 ? ' · ' : ''}Loop {index + 1}: {formatLoopChallenge(loop.challenge)}</span>
+                    ))}
+                  </span>
+                )}
+                {generationResult.ok && generationResult.space && (
+                  <button className="room-list-launch" type="button" onClick={() => setRoomListOpen(true)}>
+                    <span className="room-list-launch-mark">01</span>
+                    <span><strong>Edit room names</strong></span>
+                    <span className="room-list-launch-arrow">↗</span>
+                  </button>
+                )}
                 {generationResult.failedAttempts.length > 0 && (
                   <details><summary>Rejected attempts</summary>{generationResult.failedAttempts.map((attempt, index) => <div key={`${attempt.code}-${index}`}>{attempt.message}</div>)}</details>
                 )}
@@ -2249,7 +2285,7 @@ export default function App() {
                   <summary>Mission &amp; space inspector</summary>
                   <div>{generationResult.summary.mission.patterns} patterns → {generationResult.summary.mission.nodes} primitive nodes</div>
                   {generationResult.summary.mission.pairings.map(pairing => <div key={pairing.keyId}>{pairing.keyId} → {pairing.lockIds.length ? pairing.lockIds.join(', ') : 'optional'}</div>)}
-                  {generationResult.summary.mission.loopChallenges.map(loop => <div key={loop.cycleId}>{loop.cycleId}: {loop.challenge} · {loop.realization}</div>)}
+                  {generationResult.summary.mission.loopChallenges.map(loop => <div key={loop.cycleId}>{loop.cycleId}: {formatLoopChallenge(loop.challenge)} · {loop.realization}</div>)}
                   <div>{generationResult.summary.space.realization}</div>
                 </details>
               </div>
@@ -2488,6 +2524,16 @@ export default function App() {
             }
           }}
           onBlur={() => setEditingLabelId(null)}
+        />
+      )}
+      {roomListOpen && generationResult?.ok && generationResult.space && (
+        <RoomLedger
+          modules={generationResult.space.modules}
+          mission={generationResult.mission}
+          labels={labels}
+          onCommitRoomName={handleCommitRoomName}
+          onCommitRoomDetails={handleCommitRoomDetails}
+          onClose={() => setRoomListOpen(false)}
         />
       )}
     </div>

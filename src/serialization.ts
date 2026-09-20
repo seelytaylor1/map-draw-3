@@ -260,7 +260,9 @@ export function deserialize(raw: unknown): DeserializedMap {
       text: o['text'] as string,
     }
     if (typeof o['number'] === 'number') label.number = o['number']
+    if (o['numberOnly'] === true) label.numberOnly = true
     if (isHexColor(o['color'])) label.color = o['color']
+    if (typeof o['details'] === 'string') label.details = o['details']
     return label
   })
 

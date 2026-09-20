@@ -236,6 +236,11 @@ describe('mission-first dungeon generation', () => {
     expect(gambitCycle.routeB.length).toBeGreaterThan(gambitCycle.routeA.length)
     expect(gambit.mission.nodes.some(node => node.id === 'gambit-cycle-1-safe-route')).toBe(true)
 
+    const hiddenShortcut = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['hidden-shortcut'] }))
+    const hiddenShortcutCycle = hiddenShortcut.mission.cycles[0]!
+    expect(hiddenShortcut.ok).toBe(true)
+    expect(hiddenShortcutCycle.routeA.length).toBeLessThan(hiddenShortcutCycle.routeB.length)
+
     const unknownReturn = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['unknown-return'] }))
     const unknownCycle = unknownReturn.mission.cycles[0]!
     expect(unknownCycle.routeA[unknownCycle.routeA.length - 1]).toBe(unknownCycle.roles.objectiveNode)
@@ -251,6 +256,7 @@ describe('mission-first dungeon generation', () => {
           const assessment = assessMapTopology(result.mission, result.space!)
           expect(result.ok, `${style}/${challenge}/${seed}`).toBe(true)
           expect(assessment.supportsMeaningfulChoices, `${style}/${challenge}/${seed}: ${assessment.findings.map(finding => finding.message).join(' ')}`).toBe(true)
+          if (challenge === 'hidden-shortcut') expect(result.mission.cycles[0]!.routeA.length, `${style}/${seed}`).toBeLessThan(result.mission.cycles[0]!.routeB.length)
         }
       }
     }

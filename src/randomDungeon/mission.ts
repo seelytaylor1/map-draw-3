@@ -64,6 +64,28 @@ function replaceEdge(mission: Mission, id: string, replacements: MissionEdge[]):
   else mission.edges.splice(index, 1, ...replacements)
 }
 
+function extendRouteBeforeObjective(mission: Mission, cycle: MissionCycle, route: 'routeA' | 'routeB', idPrefix: string, labelPrefix: string, count: number): void {
+  if (count <= 0) return
+  const routeNodes = cycle[route]
+  const finalFrom = routeNodes[routeNodes.length - 2]
+  const objective = routeNodes[routeNodes.length - 1]
+  if (!finalFrom || !objective) return
+  const finalEdge = mission.edges.find(candidate => candidate.from === finalFrom && candidate.to === objective && cycle.routeEdgeIds.includes(candidate.id))
+  if (!finalEdge) return
+  const inserted = Array.from({ length: count }, (_, index) => {
+    const suffix = index === 0 ? '' : `-${index + 1}`
+    const id = `${idPrefix}${suffix}`
+    mission.nodes.push(node(id, 'challenge', `loop-${cycle.id}`, `${labelPrefix} ${index + 1}`))
+    return id
+  })
+  const replacementNodes = [finalEdge.from, ...inserted, finalEdge.to]
+  const replacements = replacementNodes.slice(0, -1).map((from, index) => edge(`${finalEdge.id}-extended-${index + 1}`, from, replacementNodes[index + 1]!, finalEdge.kind, { coupling: finalEdge.coupling }))
+  replaceEdge(mission, finalEdge.id, replacements)
+  const routeIndex = cycle.routeEdgeIds.indexOf(finalEdge.id)
+  if (routeIndex >= 0) cycle.routeEdgeIds.splice(routeIndex, 1, ...replacements.map(candidate => candidate.id))
+  cycle[route] = [...routeNodes.slice(0, -1), ...inserted, objective]
+}
+
 function makeContract(challenge: LoopChallenge): LoopChallengeContract {
   const base = {
     challenge,
@@ -71,7 +93,11 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
   }
   const contracts: Record<LoopChallenge, LoopChallengeContract> = {
     'alternate-paths': { ...base, realization: 'two readable traversable routes', rewrite: () => {} },
-    'hidden-shortcut': { ...base, realization: 'one secret route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].secret = true } },
+    'hidden-shortcut': { ...base, realization: 'one secret route that is shorter by room count', rewrite: (mission, cycle) => {
+      extendRouteBeforeObjective(mission, cycle, 'routeB', `hidden-${cycle.id}-public-route`, `Loop ${cycle.id} Public Route`, Math.max(0, cycle.routeA.length - cycle.routeB.length + 1))
+      const route = routeEdges(mission, cycle, cycle.routeA)
+      if (route[0]) route[0].secret = true
+    } },
     'dramatic-arc': { ...base, realization: 'visible obstacle before the objective on one route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
     'dangerous-route': { ...base, realization: 'one dangerous route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].dangerous = true } },
     'lock-and-key': { ...base, realization: 'locked loop branch with its matching key on the open route', rewrite: (mission, cycle) => {
@@ -169,6 +195,7 @@ export function validateLoopChallengeContract(mission: Mission, cycle: MissionCy
   const diagnostics: GenerationDiagnostic[] = []
   for (const role of contract.requiredRoles) if (!cycle.roles[role]) diagnostics.push({ stage: 'mission', code: 'missing-loop-role', message: `${cycle.challenge} requires ${role}.`, style: mission.style, seed: mission.seed, nodeId: cycle.id, constraint: 'loop challenge roles' })
   if (cycle.challenge !== 'hub-and-spoke' && (!cycle.nonTrivial || new Set(cycle.routeA).size < 3 || new Set(cycle.routeB).size < 3)) diagnostics.push({ stage: 'mission', code: 'trivial-cycle', message: `Cycle ${cycle.id} does not contain two distinct non-trivial routes.`, style: mission.style, seed: mission.seed, nodeId: cycle.id, constraint: 'non-trivial cycle' })
+  if (cycle.challenge === 'hidden-shortcut' && cycle.routeA.length >= cycle.routeB.length) diagnostics.push({ stage: 'mission', code: 'shortcut-not-shorter', message: `${cycle.id} must make Route A shorter than Route B by room count.`, style: mission.style, seed: mission.seed, nodeId: cycle.id, constraint: 'shorter hidden shortcut' })
   if (cycle.challenge === 'unknown-return' && !mission.locks.some(lock => lock.nodeId === cycle.roles.objectiveNode && !lock.optional)) diagnostics.push({ stage: 'mission', code: 'unknown-return-missing-lock', message: `${cycle.id} must lock its Goal before the return route.`, style: mission.style, seed: mission.seed, nodeId: cycle.id, constraint: 'Unknown Return progression' })
   return diagnostics
 }
@@ -187,7 +214,7 @@ export function createMission(request: GenerationRequest, budget = createComplex
   const taskCount = Math.max(1, budget.missionNodes - 2)
   const tasks = Array.from({ length: taskCount }, (_, index) => `task-${index + 1}`)
   for (const [index, id] of tasks.entries()) {
-    mission.nodes.push(node(id, 'task', 'progression', `Task ${index + 1}`))
+    mission.nodes.push(node(id, 'task', 'progression', `Encounter ${index + 1}`))
     mission.patterns[1]!.expandsTo.push(id)
   }
   mission.nodes.push(node('goal', 'goal', 'goal-pattern', 'Goal'))

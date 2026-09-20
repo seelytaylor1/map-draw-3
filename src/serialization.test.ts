@@ -82,6 +82,14 @@ describe('serialize', () => {
     expect(restored.labels[0].color).toBe('#d52b35')
   })
 
+  it('round-trips room details on an individual label', () => {
+    const label = { id: 'label-module-task-1', col: 1, row: 2, text: 'Encounter 1', number: 2, details: 'A narrow chamber with a hidden stair.' }
+    const save = serialize({ ...BASE, labels: [label] })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.labels[0]).toMatchObject({ number: 2, details: 'A narrow chamber with a hidden stair.' })
+  })
+
   it('omits z from stamp when z === 0', () => {
     const save = serialize({ ...BASE, stamps: [STAMP] })
     expect(save.stamps[0]).not.toHaveProperty('z')

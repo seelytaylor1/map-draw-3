@@ -107,7 +107,7 @@ export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopolog
     const addMissingRealization = (message: string) => findings.push({ code: 'missing-mission-realization', cycleId: cycle.id, message })
     const routeAApproach = cycle.routeA[cycle.routeA.length - 2]
     const objectiveConnections = plan.connections.filter(connection => connection.toModuleId === objective)
-    if (cycle.challenge === 'hidden-shortcut' && !routeA.some(connection => connection.semantic === 'secret')) addMissingRealization(`${cycle.id} has no secret corridor on Route A.`)
+    if (cycle.challenge === 'hidden-shortcut' && (routeA.length >= routeB.length || !routeA.some(connection => connection.semantic === 'secret'))) addMissingRealization(`${cycle.id} must keep a secret Route A that is shorter than Route B by room count.`)
     if (cycle.challenge === 'dramatic-arc' && (!routeA.some(connection => connection.traversable === 'blocked') || !routeB.some(connection => connection.traversable !== 'blocked'))) addMissingRealization(`${cycle.id} must block Route A while keeping Route B open.`)
     if (cycle.challenge === 'dangerous-route' && !routeA.some(connection => connection.semantic === 'dangerous')) addMissingRealization(`${cycle.id} has no dangerous Route A corridor.`)
     if (cycle.challenge === 'patrolled-cycle' && ![...routeA, ...routeB].every(connection => connection.semantic === 'dangerous')) addMissingRealization(`${cycle.id} must mark both routes dangerous.`)

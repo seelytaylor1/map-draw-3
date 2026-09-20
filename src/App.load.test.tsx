@@ -245,6 +245,17 @@ describe('App load lifecycle', () => {
     expect(reportedCount).toBe(placementDiagnostics.length)
   })
 
+  it('reports the resolved type for randomly selected loops', async () => {
+    randomSeed.value = 1
+    render(<App />)
+    openWorkspace('Generate')
+
+    fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
+    await Promise.resolve()
+
+    expect(screen.getByText('Loop 1: Gambit')).toBeInTheDocument()
+  })
+
   it('stores random seeds and keeps user-edited seeds frozen', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<App />)
