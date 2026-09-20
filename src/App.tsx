@@ -379,9 +379,9 @@ export default function App() {
       const stage = e.target.getStage()!
       if (e.target === stage && editingLabelId) setEditingLabelId(null)
 
-      // A right-click on empty canvas cancels structure selection instead of
-      // entering the structure placement path below.
-      if (e.evt.button === 2 && (ds.tool === 'steps' || ds.tool === 'ramps')) {
+      // A right-click on empty canvas cancels object selection instead of
+      // entering a placement path below.
+      if (e.evt.button === 2 && (ds.tool === 'steps' || ds.tool === 'ramps' || ds.tool === 'stamp')) {
         dispatch({ type: 'SELECT', id: null })
         return
       }
@@ -927,7 +927,11 @@ export default function App() {
         node.on('mousedown', (e) => {
           e.cancelBubble = true
           e.evt.preventDefault()
-          if (e.evt.button === 2) return
+          if (e.evt.button === 2) {
+            setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, item.id) }))
+            dispatch({ type: 'SELECT', id: null })
+            return
+          }
           dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: stamp.type, selectedId: item.id } })
         })
       }
@@ -1712,7 +1716,7 @@ export default function App() {
 
         <div className="toolbar-content">
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
-          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deletes structures, deselects on blank space, or does nothing on stamps.</span></div>
+          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deletes objects, or deselects on blank space.</span></div>
 
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
           <Segmented
