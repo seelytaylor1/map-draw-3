@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "preview": "vite preview",
     "test": "vitest",
+    "diagnose:iso": "vite-node scripts/diagnose-iso.ts",
     "analyze:dungeons": "vite-node scripts/analyze-random-dungeons.ts",
     "diagnose:mission-topology": "vite-node scripts/diagnose-mission-topology.ts",
     "prototype:room-layout": "vite-node scripts/prototypes/room-graph-layout/cli.ts",

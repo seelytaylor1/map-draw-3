@@ -4,6 +4,8 @@ import { Stage, Layer } from 'react-konva'
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
 import { isoUnproject, isoUnprojectAtZ, isoProjectAtZ, isoFloorPointsAtZ } from './iso'
 import { buildIsoScene } from './isoScene'
+import { drawIsoBatch, getIsoShapeBounds, groupIsoShapes } from './isoRender'
+import { buildIsoDiagnosticGrids, normalizeIsoDiagnosticConfig, summarizeFrameTimes, type IsoDiagnosticApi, type IsoDiagnosticConfig, type IsoDiagnosticReport } from './isoDiagnostics'
 import { deriveFaceColors } from './faceColors'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
@@ -239,6 +241,10 @@ export default function App() {
   const draggedLabelRef = useRef<string | null>(null)
   const structureDragRef = useRef<StructureDrag | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const isoDiagnosticEnabled = useRef(new URLSearchParams(window.location.search).has('iso-diagnostic')).current
+  const isoDiagnosticRequestIdRef = useRef(0)
+  const isoDiagnosticRequestRef = useRef<{ requestId: number; config: ReturnType<typeof normalizeIsoDiagnosticConfig> } | null>(null)
+  const isoDiagnosticReportsRef = useRef<IsoDiagnosticReport[]>([])
 
   const stampImages = useStampImages()
   const { state: updaterState, checkForUpdate, downloadAndInstall } = useUpdater()
@@ -251,6 +257,81 @@ export default function App() {
     obs.observe(document.body)
     return () => obs.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (!isoDiagnosticEnabled) return
+
+    const api: IsoDiagnosticApi = {
+      setFixture: (input: IsoDiagnosticConfig) => {
+        const config = normalizeIsoDiagnosticConfig(input)
+        const requestId = ++isoDiagnosticRequestIdRef.current
+        isoDiagnosticRequestRef.current = { requestId, config }
+        setHistory(createHistory({
+          grids: buildIsoDiagnosticGrids(config),
+          stamps: [],
+          steps: [],
+          ramps: [],
+          labels: [],
+          environmentalColors: new Map(),
+        }))
+        setCols(config.cols)
+        setRows(config.rows)
+        setActiveZ(config.levelCount - 1)
+        setShow3D(config.show3D)
+        setShowIso(true)
+        return requestId
+      },
+      waitForReport: (requestId: number, timeoutMs = 10000) => new Promise((resolve, reject) => {
+        const deadline = performance.now() + timeoutMs
+        const check = () => {
+          const report = isoDiagnosticReportsRef.current.find(candidate => candidate.requestId === requestId)
+          if (report) {
+            resolve(report)
+          } else if (performance.now() >= deadline) {
+            reject(new Error(`Timed out waiting for iso diagnostic report ${requestId}`))
+          } else {
+            window.setTimeout(check, 0)
+          }
+        }
+        check()
+      }),
+      latestReport: () => isoDiagnosticReportsRef.current[isoDiagnosticReportsRef.current.length - 1] ?? null,
+      measurePan: (durationMs = 1000) => {
+        const stage = stageRef.current
+        if (!stage) return Promise.reject(new Error('Konva stage is not ready'))
+
+        const duration = Math.max(100, durationMs)
+        const originalPosition = stage.position()
+        const frameTimes: number[] = []
+        const startedAt = performance.now()
+        let previousFrameAt = startedAt
+
+        return new Promise(resolve => {
+          const sample = (now: number) => {
+            if (now - startedAt >= duration) {
+              stage.position(originalPosition)
+              resolve(summarizeFrameTimes(frameTimes, duration))
+              return
+            }
+            frameTimes.push(now - previousFrameAt)
+            previousFrameAt = now
+            const phase = (now - startedAt) / duration * Math.PI * 4
+            stage.position({
+              x: originalPosition.x + Math.sin(phase) * 8,
+              y: originalPosition.y + Math.cos(phase) * 8,
+            })
+            window.requestAnimationFrame(sample)
+          }
+          window.requestAnimationFrame(sample)
+        })
+      },
+    }
+
+    window.__mapDrawDiagnostics = api
+    return () => {
+      if (window.__mapDrawDiagnostics === api) delete window.__mapDrawDiagnostics
+    }
+  }, [isoDiagnosticEnabled])
 
   useEffect(() => {
     if (!editingLabelId) return
@@ -708,6 +789,8 @@ export default function App() {
 
     if (showIso) {
       // Painter-sorted scene: ordering logic lives (and is tested) in isoScene.ts
+      const diagnosticRequest = isoDiagnosticEnabled ? isoDiagnosticRequestRef.current : null
+      const diagnosticStart = diagnosticRequest ? performance.now() : 0
       const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
       const shapes = buildIsoScene({
         grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
@@ -716,8 +799,28 @@ export default function App() {
         waterColor, lavaColor, darknessColor,
         environmentalColors: environmentalColors as Map<TileState, string>,
       })
+      const sceneBuildEnd = diagnosticRequest ? performance.now() : 0
+      const groupingStart = diagnosticRequest ? performance.now() : 0
+      const groups = groupIsoShapes(shapes)
+      const groupingEnd = diagnosticRequest ? performance.now() : 0
       const structureNodes = new Map<string, { kind: StructureKind; id: string; nodes: Konva.Node[] }>()
-      for (const shape of shapes) {
+      const nodeCreateStart = diagnosticRequest ? performance.now() : 0
+      for (const group of groups) {
+        if (group.kind === 'batch') {
+          const batchNode = new Konva.Shape({
+            listening: false,
+            perfectDrawEnabled: false,
+            sceneFunc: context => drawIsoBatch(context, group.shapes),
+          })
+          layer.add(batchNode)
+          const bounds = getIsoShapeBounds(group.shapes)
+          if (bounds && (!diagnosticRequest || diagnosticRequest.config.cacheBatches)) {
+            batchNode.cache({ ...bounds, offset: 1 })
+          }
+          continue
+        }
+
+        const { shape } = group
         const node = new Konva.Line({
           points: shape.points,
           closed: true,
@@ -740,6 +843,7 @@ export default function App() {
         }
         layer.add(node)
       }
+      const nodeCreateEnd = diagnosticRequest ? performance.now() : 0
       for (const structure of structureNodes.values()) {
         const currentSelectedId = structure.kind === 'step' ? selectedStepId : selectedRampId
         for (const node of structure.nodes) {
@@ -763,7 +867,32 @@ export default function App() {
           })
         }
       }
+      const drawScheduleStart = diagnosticRequest ? performance.now() : 0
       layer.batchDraw()
+      const drawScheduleEnd = diagnosticRequest ? performance.now() : 0
+      if (diagnosticRequest) {
+        requestAnimationFrame(() => {
+          const frameAt = performance.now()
+          const report: IsoDiagnosticReport = {
+            requestId: diagnosticRequest.requestId,
+            config: diagnosticRequest.config,
+            shapeCount: shapes.length,
+            renderNodeCount: groups.length,
+            layerNodeCount: layer.getChildren().length,
+            dotNodeCount: dotLayerRef.current?.getChildren().length ?? 0,
+            stampNodeCount: stampLayerRef.current?.getChildren().length ?? 0,
+            labelNodeCount: labelsLayerRef.current?.getChildren().length ?? 0,
+            totalNodeCount: [layer, dotLayerRef.current, stampLayerRef.current, labelsLayerRef.current]
+              .reduce((total, current) => total + (current?.getChildren().length ?? 0), 0),
+            sceneBuildMs: sceneBuildEnd - diagnosticStart,
+            groupingMs: groupingEnd - groupingStart,
+            nodeCreateMs: nodeCreateEnd - nodeCreateStart,
+            drawScheduleMs: drawScheduleEnd - drawScheduleStart,
+            firstFrameMs: frameAt - diagnosticStart,
+          }
+          isoDiagnosticReportsRef.current = [...isoDiagnosticReportsRef.current, report].slice(-20)
+        })
+      }
       return
     }
 
@@ -1018,10 +1147,9 @@ export default function App() {
     if (!layer) return
     layer.destroyChildren()
 
-    {
-      const isLight = isLightBackdrop(wallColor, wallOpacity)
-      const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
-      for (const z of sortedZsForDots) {
+    const isLight = isLightBackdrop(wallColor, wallOpacity)
+    const sortedZsForDots = [...grids.keys()].filter(z => z <= activeZ).sort((a, b) => a - b)
+    for (const z of sortedZsForDots) {
         const levelOpacity = 0.2 * Math.pow(0.5, activeZ - z)
         const dotColor = isLight
           ? `rgba(0,0,0,${levelOpacity})`
@@ -1043,7 +1171,6 @@ export default function App() {
           }
         }
       }
-    }
 
     const ghostFill =
       selectedPaintState === FLOOR    ? hexToRgba(floorColor,    0.45) :

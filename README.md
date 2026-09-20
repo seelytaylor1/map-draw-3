@@ -39,3 +39,14 @@ npm run dev        # dev server at http://localhost:5173
 npm run build      # single self-contained dist/index.html
 npm test           # Vitest unit tests
 ```
+
+For repeatable iso-view performance measurements, start the dev server and run:
+
+```bash
+npm run dev
+npm run diagnose:iso
+```
+
+The diagnostic drives deterministic 1/5/10/20-level fixtures in a browser and
+prints JSON for cached and uncached render paths. Set `ISO_DIAGNOSTIC_URL` to
+measure another local server.
