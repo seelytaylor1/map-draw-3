@@ -326,6 +326,23 @@ describe('mission-first dungeon generation', () => {
     }
   })
 
+  it('keeps Dramatic Arc darkness when the mission contains multiple loops', () => {
+    for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) {
+      const result = generateMissionDungeon(request({ style, loopCount: 2, loopChallenges: ['dramatic-arc', 'alternate-paths'] }))
+      const cycle = result.mission.cycles.find(candidate => candidate.challenge === 'dramatic-arc')!
+      const chamber = result.space!.modules.find(module => module.id === result.space!.anchors[cycle.roles.objectiveNode])!
+      const grid = result.snapshot!.grids.get(0)!
+      const darkness = new Set(chamber.footprint.filter(point => grid[point.row * result.request.cols + point.col] === DARKNESS).map(point => `${point.col},${point.row}`))
+
+      expect(result.ok, style).toBe(true)
+      expect(darkness.size, style).toBeGreaterThan(0)
+      for (const connection of result.space!.connections) {
+        const aperture = connection.fromModuleId === chamber.id ? connection.path[0] : connection.toModuleId === chamber.id ? connection.path[connection.path.length - 1] : undefined
+        if (aperture) expect(darkness.has(`${aperture.col},${aperture.row}`), style).toBe(false)
+      }
+    }
+  })
+
   it('realizes every mission modifier on an early, inspectable base loop', () => {
     for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) {
       for (const challenge of ALL_LOOP_CHALLENGES) {

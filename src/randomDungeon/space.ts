@@ -167,6 +167,7 @@ export interface SpaceValidationResult { valid: boolean; diagnostics: Generation
 
 export function buildSpacePlan(request: GenerationRequest, mission: Mission, attempt = 0): SpacePlan {
   const style = getGenerationStyle(request.style)
+  const dramaticCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc')
   const dramaticGoalInStart = mission.cycles.some(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
   const modules: SpatialModule[] = mission.nodes.filter(node => !dramaticGoalInStart || node.id !== mission.goalNodeId).map(node => ({
     id: `module-${node.id}`, type: style.moduleType(node), missionNodeId: node.id,
@@ -191,15 +192,16 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     }
   }
   arrangeRooms(request, mission, modules, edges, attempt)
-  if (dramaticGoalInStart) {
-    const start = modules.find(module => module.missionNodeId === 'start')
-    if (start) {
-      const axis = start.width >= start.height ? 'vertical' : 'horizontal'
-      const maximum = axis === 'vertical' ? start.height : start.width
+  if (dramaticCycle) {
+    const dramaticRoomId = dramaticGoalInStart ? 'start' : dramaticCycle.roles.objectiveNode
+    const dramaticRoom = modules.find(module => module.missionNodeId === dramaticRoomId)
+    if (dramaticRoom) {
+      const axis = dramaticRoom.width >= dramaticRoom.height ? 'vertical' : 'horizontal'
+      const maximum = axis === 'vertical' ? dramaticRoom.height : dramaticRoom.width
       const bandLength = Math.min(6, Math.max(3, Math.min(4, maximum - 2)))
       const bandStart = Math.floor((maximum - bandLength) / 2)
-      start.excludedPortPoints = start.footprint.filter(point => {
-        const position = axis === 'vertical' ? point.row - start.origin.row : point.col - start.origin.col
+      dramaticRoom.excludedPortPoints = dramaticRoom.footprint.filter(point => {
+        const position = axis === 'vertical' ? point.row - dramaticRoom.origin.row : point.col - dramaticRoom.origin.col
         return position >= bandStart && position < bandStart + bandLength
       })
     }
@@ -420,23 +422,24 @@ export interface RasterizationResult { snapshot?: AppSnapshotShape; diagnostics:
 export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission, plan: SpacePlan): RasterizationResult {
   const diagnostics: GenerationDiagnostic[] = []
   const grid = createGrid(request.cols, request.rows)
+  const dramaticCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc')
+  const dramaticGoalInStart = Boolean(dramaticCycle && dramaticCycle.roles.objectiveNode === mission.goalNodeId)
   let dramaticLayout: { start: SpatialModule; axis: 'vertical' | 'horizontal'; bandStart: number; bandLength: number; goalSide?: 'before' | 'after' } | undefined
   for (const module of plan.modules) for (const point of module.footprint) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
   for (const connection of plan.connections) for (const point of connectionFootprint(connection)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
   for (const connection of plan.connections) if (connection.condition === 'flooded') {
     for (const point of connection.path.slice(1, -1)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = WATER
   }
-  const dramaticCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
   if (dramaticCycle) {
-    const start = plan.modules.find(module => module.missionNodeId === 'start')
-    if (start) {
-      const longAxis = start.width >= start.height ? 'vertical' : 'horizontal'
-      const maximum = longAxis === 'vertical' ? start.height : start.width
+    const dramaticRoom = plan.modules.find(module => module.id === plan.anchors[dramaticCycle.roles.objectiveNode])
+    if (dramaticRoom) {
+      const longAxis = dramaticRoom.width >= dramaticRoom.height ? 'vertical' : 'horizontal'
+      const maximum = longAxis === 'vertical' ? dramaticRoom.height : dramaticRoom.width
       const bandLength = Math.min(6, Math.max(3, Math.min(4, maximum - 2)))
       const offset = Math.floor((maximum - bandLength) / 2)
-      dramaticLayout = { start, axis: longAxis, bandStart: offset, bandLength }
-      for (const point of start.footprint) {
-        const axis = longAxis === 'vertical' ? point.row - start.origin.row : point.col - start.origin.col
+      dramaticLayout = { start: dramaticRoom, axis: longAxis, bandStart: offset, bandLength }
+      for (const point of dramaticRoom.footprint) {
+        const axis = longAxis === 'vertical' ? point.row - dramaticRoom.origin.row : point.col - dramaticRoom.origin.col
         if (axis >= offset && axis < offset + bandLength) grid[point.row * request.cols + point.col] = DARKNESS
       }
     }
@@ -513,7 +516,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
         : missionNode?.label ?? 'Support Room'
     addRoomLabel(`label-${module.id}`, text, module, undefined, index + 1, true)
   }
-  if (dramaticCycle) {
+  if (dramaticCycle && dramaticGoalInStart) {
     const start = plan.modules.find(module => module.missionNodeId === 'start')
     if (start) {
       const point = [...start.footprint].find(point => isFloor(point) && !occupied.has(keyOf(point)))
@@ -562,7 +565,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       if (connectedTiles.has(outsideKey) || occupied.has(outsideKey) || occupied.has(keyOf(inside))) continue
       if (hallwayTiles.some(point => Math.abs(point.col - outside.col) + Math.abs(point.row - outside.row) <= 1)) continue
       if (otherRoomTiles.some(point => Math.abs(point.col - outside.col) + Math.abs(point.row - outside.row) <= 1)) continue
-      if (dramaticLayout) {
+      if (dramaticLayout?.start === start) {
         const axisPosition = dramaticLayout.axis === 'vertical' ? inside.row - start.origin.row : inside.col - start.origin.col
         if (axisPosition >= dramaticLayout.bandStart && axisPosition < dramaticLayout.bandStart + dramaticLayout.bandLength) continue
       }
@@ -575,7 +578,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     if (!origin) {
       diagnostics.push({ stage: 'rasterization', code: 'missing-start-descent', message: 'No unused exterior wall can hold a descent without meeting a hallway.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'unused start-room wall', nodeId: 'start' })
     } else {
-      if (dramaticLayout) {
+      if (dramaticLayout?.start === start) {
         const axisPosition = dramaticLayout.axis === 'vertical'
           ? origin.row - dramaticLayout.start.origin.row
           : origin.col - dramaticLayout.start.origin.col
