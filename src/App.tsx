@@ -378,6 +378,14 @@ export default function App() {
       const ds = drawingStateRef.current
       const stage = e.target.getStage()!
       if (e.target === stage && editingLabelId) setEditingLabelId(null)
+
+      // A right-click on empty canvas cancels structure selection instead of
+      // entering the structure placement path below.
+      if (e.evt.button === 2 && (ds.tool === 'steps' || ds.tool === 'ramps')) {
+        dispatch({ type: 'SELECT', id: null })
+        return
+      }
+
       let tile: Tile | null
       if (showIso) {
         tile = stageToIsoTile(stage, e.evt.clientX, e.evt.clientY)
@@ -739,10 +747,10 @@ export default function App() {
             e.cancelBubble = true
             e.evt.preventDefault()
             if (e.evt.button === 2) {
-              if (structure.id === currentSelectedId) dispatch({ type: 'SELECT', id: null })
-              else dispatch({ type: 'SET_TOOL', to: structure.kind === 'step'
-                ? { tool: 'steps', selectedId: structure.id }
-                : { tool: 'ramps', selectedId: structure.id } })
+              setHistory(h => push(h, structure.kind === 'step'
+                ? { ...h.present, steps: removeStepRun(h.present.steps, structure.id) }
+                : { ...h.present, ramps: removeRampRun(h.present.ramps, structure.id) }))
+              dispatch({ type: 'SELECT', id: null })
               return
             }
             if (structure.id === currentSelectedId) {
@@ -881,8 +889,10 @@ export default function App() {
             e.evt.preventDefault()
             const currentSelectedId = isStep ? selectedStepId : selectedRampId
             if (e.evt.button === 2) {
-              if (run.id === currentSelectedId) dispatch({ type: 'SELECT', id: null })
-              else dispatch({ type: 'SET_TOOL', to: isStep ? { tool: 'steps', selectedId: run.id } : { tool: 'ramps', selectedId: run.id } })
+              setHistory(h => push(h, isStep
+                ? { ...h.present, steps: removeStepRun(h.present.steps, run.id) }
+                : { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
+              dispatch({ type: 'SELECT', id: null })
             } else if (run.id === currentSelectedId) {
               beginStructureDrag(isStep ? 'step' : 'ramp', run.id, [runGroup], e)
             } else {
@@ -1702,7 +1712,7 @@ export default function App() {
 
         <div className="toolbar-content">
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
-          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deselects structures, or does nothing on stamps.</span></div>
+          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deletes structures, deselects on blank space, or does nothing on stamps.</span></div>
 
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
           <Segmented
