@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FLOOR, WALL, WATER } from './constants'
+import { DARKNESS, FLOOR, WALL, WATER } from './constants'
 import { ALL_LOOP_CHALLENGES, assessMapTopology, createComplexityBudget, createMission, generateMissionDungeon, preflightGeneration, rasterizeSpacePlan, validateGenerationRequest, validateProgression, validateSpacePlan } from './randomDungeon/missionFirst'
 import type { Mission } from './randomDungeon/missionFirst'
 import { runTiles } from './directionalRun'
@@ -48,20 +48,18 @@ describe('mission-first dungeon generation', () => {
     expect(new Set(doubleLock.mission.locks.map(lock => lock.keyId)).size).toBe(2)
   })
 
-  it('puts a Lock and Key key on the open loop route instead of a side room', () => {
+  it('puts Lock and Key’s key on the loop and its lock in a midpoint leaf room', () => {
     const mission = createMission(request({ loopCount: 1, loopChallenges: ['lock-and-key'] }))
     const cycle = mission.cycles[0]!
     const key = mission.keys[0]!
     const lock = mission.locks[0]!
     const lockedEdges = mission.edges.filter(edge => edge.lockId === lock.id)
 
-    expect(cycle.routeB.slice(1, -1)).toContain(key.nodeId)
+    expect([...cycle.routeA.slice(1, -1), ...cycle.routeB.slice(1, -1)]).toContain(key.nodeId)
     expect(cycle.roles.keyNode).toBe(key.nodeId)
     expect(mission.edges.some(edge => edge.id.startsWith('key-access-'))).toBe(false)
-    expect(lockedEdges).toEqual([
-      expect.objectContaining({ from: cycle.roles.anchorNode, to: cycle.roles.routeANode }),
-    ])
-    expect(mission.edges.find(edge => edge.from === cycle.roles.anchorNode && edge.to === cycle.roles.routeBNode)?.lockId).toBeUndefined()
+    expect(lockedEdges).toEqual([expect.objectContaining({ to: lock.nodeId })])
+    expect(mission.edges.filter(edge => edge.from === lock.nodeId || edge.to === lock.nodeId)).toHaveLength(1)
   })
 
   it('validates exact request inputs and rejects legacy independent counts', () => {
@@ -128,8 +126,8 @@ describe('mission-first dungeon generation', () => {
       const lockedEdges = result.mission.edges.filter(edge => edge.lockId === lock?.id)
       expect(key).toBeDefined()
       expect(lock).toBeDefined()
-      expect(cycle.routeB.slice(1, -1)).toContain(key!.nodeId)
-      expect(lockedEdges).toEqual([expect.objectContaining({ from: cycle.roles.anchorNode, to: cycle.roles.routeANode })])
+      expect([...cycle.routeA.slice(1, -1), ...cycle.routeB.slice(1, -1)]).toContain(key!.nodeId)
+      expect(lockedEdges).toEqual([expect.objectContaining({ to: lock!.nodeId })])
     }
   }, 15_000)
 
@@ -246,6 +244,86 @@ describe('mission-first dungeon generation', () => {
     expect(unknownCycle.routeA[unknownCycle.routeA.length - 1]).toBe(unknownCycle.roles.objectiveNode)
     expect(unknownCycle.routeB[unknownCycle.routeB.length - 1]).toBe(unknownCycle.roles.objectiveNode)
     expect(unknownReturn.mission.edges.some(edge => edge.id === 'unknown-return-valve-cycle-1')).toBe(true)
+  })
+
+  it('enforces concentrated danger and non-bypassable key contracts', () => {
+    const dangerous = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['dangerous-route'] }))
+    const dangerousCycle = dangerous.mission.cycles[0]!
+    const encounters = (nodeId: string) => dangerous.space!.modules.find(module => module.missionNodeId === nodeId)?.encounters ?? []
+    expect(dangerousCycle.routeA.slice(1, -1).every(nodeId => encounters(nodeId).length > 0)).toBe(true)
+    expect(dangerousCycle.routeB.slice(1, -1).every(nodeId => encounters(nodeId).length === 0)).toBe(true)
+
+    const gambit = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['gambit'] }))
+    const gambitCycle = gambit.mission.cycles[0]!
+    const gambitCount = (route: readonly string[]) => route.slice(1, -1).reduce((count, nodeId) => count + (gambit.space!.modules.find(module => module.missionNodeId === nodeId)?.encounters?.length ?? 0), 0)
+    expect(gambitCycle.routeB.length - 2).toBe((gambitCycle.routeA.length - 2) * 2)
+    expect(gambitCount(gambitCycle.routeA)).toBe(gambitCount(gambitCycle.routeB))
+
+    const unknown = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['unknown-return'] }))
+    const unknownCycle = unknown.mission.cycles[0]!
+    const key = unknown.mission.keys[0]!
+    const valveId = `unknown-return-valve-${unknownCycle.id}`
+    const reachable = new Set(['start'])
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const edge of unknown.mission.edges) {
+        if (edge.id === valveId || edge.lockId) continue
+        if (reachable.has(edge.from) && !reachable.has(edge.to)) { reachable.add(edge.to); changed = true }
+        if (!edge.oneWay && reachable.has(edge.to) && !reachable.has(edge.from)) { reachable.add(edge.from); changed = true }
+      }
+    }
+    expect(reachable.has(key.nodeId)).toBe(false)
+
+    const doubleLock = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['double-lock'] }))
+    const doubleCycle = doubleLock.mission.cycles[0]!
+    const loopRooms = new Set([...doubleCycle.routeA.slice(1, -1), ...doubleCycle.routeB.slice(1, -1)])
+    expect(doubleLock.mission.keys.every(keyRecord => loopRooms.has(keyRecord.nodeId))).toBe(true)
+    expect(doubleLock.mission.locks).toHaveLength(2)
+  })
+
+  it('realizes Dramatic Arc inside Start behind a room-wide darkness band', () => {
+    const result = generateMissionDungeon(request({ seed: 42, loopCount: 1, loopChallenges: ['dramatic-arc'] }))
+    const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
+    const grid = result.snapshot!.grids.get(0)!
+    const darkness = start.footprint.filter(point => grid[point.row * result.request.cols + point.col] === DARKNESS)
+    const darkRows = new Map<number, number>()
+    for (const point of darkness) darkRows.set(point.row, (darkRows.get(point.row) ?? 0) + 1)
+    const darknessKeys = new Set(darkness.map(point => `${point.col},${point.row}`))
+
+    expect(result.space!.anchors[result.mission.goalNodeId]).toBe(start.id)
+    expect(result.space!.modules.some(module => module.missionNodeId === result.mission.goalNodeId)).toBe(false)
+    expect(result.snapshot!.labels.some(label => label.id === 'label-dramatic-goal')).toBe(true)
+    expect(start.width).toBeGreaterThanOrEqual(7)
+    expect(start.height).toBeGreaterThanOrEqual(7)
+    expect(start.footprint).toHaveLength(start.width * start.height)
+    expect(darkRows.size).toBeGreaterThanOrEqual(3)
+    expect(darkRows.size).toBeLessThanOrEqual(6)
+    expect([...darkRows.values()].every(width => width === start.width)).toBe(true)
+    for (const connection of result.space!.connections) {
+      const aperture = connection.fromModuleId === start.id ? connection.path[0] : connection.toModuleId === start.id ? connection.path[connection.path.length - 1] : undefined
+      if (aperture) expect(darknessKeys.has(`${aperture.col},${aperture.row}`)).toBe(false)
+    }
+    const descent = result.snapshot!.steps[0] ?? result.snapshot!.ramps[0]!
+    const [entryTile] = runTiles(descent)
+    const chest = result.snapshot!.stamps.find(stamp => stamp.id === `generated-room-treasure-${start.id}`)!
+    const darkTop = Math.min(...darkRows.keys())
+    const darkBottom = Math.max(...darkRows.keys())
+    const side = (row: number) => row < darkTop ? 'before' : row > darkBottom ? 'after' : 'darkness'
+    expect(side(entryTile!.row)).not.toBe('darkness')
+    expect(side(chest.row)).not.toBe('darkness')
+    expect(side(entryTile!.row)).not.toBe(side(chest.row))
+  })
+
+  it('realizes Hub and Spoke as a central hub with two declared cycle spokes', () => {
+    for (const style of ['spine-shortcuts', 'orbit-gates', 'cavern-pressure'] as const) {
+      const result = generateMissionDungeon(request({ style, loopCount: 1, loopChallenges: ['hub-and-spoke'] }))
+      const cycle = result.mission.cycles[0]!
+      const hub = result.space!.modules.find(module => module.missionNodeId === cycle.roles.anchorNode)!
+      const routeModules = cycle.routeA.slice(1, 2).concat(cycle.routeB.slice(1, 2)).map(nodeId => result.space!.anchors[nodeId])
+      expect(hub.type, style).toBe('hub')
+      expect(result.space!.connections.filter(connection => connection.fromModuleId === hub.id && routeModules.includes(connection.toModuleId) && connection.semantic === 'spoke'), style).toHaveLength(2)
+    }
   })
 
   it('realizes every mission modifier on an early, inspectable base loop', () => {
@@ -469,7 +547,7 @@ describe('mission-first dungeon generation', () => {
     expect(new Set(keyColors).size).toBe(result.mission.keys.length)
   })
 
-  it('places the Lock and Key door at one loop departure and its key on the open route', () => {
+  it('places the Lock and Key door at a locked loop leaf and its key on the loop', () => {
     const result = generateMissionDungeon(request({ seed: 382040039, loopCount: 1, loopChallenges: ['lock-and-key'] }))
     expect(result.ok).toBe(true)
 
@@ -480,8 +558,8 @@ describe('mission-first dungeon generation', () => {
     const lockedConnection = result.space!.connections.find(connection => connection.missionEdgeId === lockedEdge.id)!
     const position = lockedConnection.path[lockedConnection.path.length - 2]!
 
-    expect(lockedEdge).toMatchObject({ from: cycle.roles.anchorNode, to: cycle.roles.routeANode })
-    expect(cycle.routeB.slice(1, -1)).toContain(key.nodeId)
+    expect(lockedEdge.to).toBe(lock.nodeId)
+    expect([...cycle.routeA.slice(1, -1), ...cycle.routeB.slice(1, -1)]).toContain(key.nodeId)
     expect(result.snapshot!.stamps.some(stamp => stamp.type === 'DoorLocked1x1' && stamp.col === position.col && stamp.row === position.row)).toBe(true)
     expect(result.snapshot!.stamps.some(stamp => stamp.id === `generated-${key.id}` && stamp.type === 'Key1x1')).toBe(true)
   })

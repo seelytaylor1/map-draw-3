@@ -58,14 +58,18 @@ export function arrangeRooms(request: GenerationRequest, mission: Mission, modul
     const slot = slots[positions[i]!]!
     const max = Math.max(3, spacing - 4)
     const degree = links.filter(e => e.includes(i)).length
-    const landmark = module.missionNodeId === mission.goalNodeId || module.type === 'hub' || degree > 3
-    const landmarkSize = degree > 3 ? Math.min(spacing - 2, Math.max(max, degree + 1)) : max
+    const dramaticStart = module.missionNodeId === 'start' && mission.cycles.some(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
+    const landmark = module.missionNodeId === mission.goalNodeId || module.type === 'hub' || degree > 3 || dramaticStart
+    const landmarkSize = degree > 3 || dramaticStart ? Math.min(spacing - 2, Math.max(max, degree + 1, dramaticStart ? 9 : 0)) : max
+    // Dramatic Arc reserves a rectangular two-sided chamber. It must not use
+    // the ordinary chamfer/cross variants: the darkness slab needs a clean,
+    // full room-width silhouette like a deliberate interior set-piece.
     const width = landmark ? landmarkSize : 3 + Math.floor(random() * (max - 2))
     const height = landmark ? landmarkSize : 3 + Math.floor(random() * (max - 2))
     const origin = { col: 1 + slot.col * spacing + Math.floor((spacing - width) / 2), row: 1 + slot.row * spacing + Math.floor((spacing - height) / 2) }
     module.origin = origin; module.width = width; module.height = height; module.ports = []
     const shapeCount = width >= 7 && height >= 7 ? 3 : 2
-    const shape = degree <= 3 && width >= 5 && height >= 5 ? Math.floor(random() * shapeCount) : 0
+    const shape = !dramaticStart && degree <= 3 && width >= 5 && height >= 5 ? Math.floor(random() * shapeCount) : 0
     module.footprint = []
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       // Rectangular chambers, chamfered halls, and cruciform sanctuaries all

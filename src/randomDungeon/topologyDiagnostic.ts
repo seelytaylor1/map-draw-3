@@ -76,7 +76,7 @@ function routeConnections(mission: Mission, plan: SpacePlan, cycle: MissionCycle
  * behind an earlier meaningful choice.
  */
 export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopologyAssessment {
-  const moduleFor = (nodeId: string) => plan.modules.find(module => module.missionNodeId === nodeId)?.id
+  const moduleFor = (nodeId: string) => plan.anchors[nodeId] ?? plan.modules.find(module => module.missionNodeId === nodeId)?.id
   const start = moduleFor('start')
   const goal = moduleFor(mission.goalNodeId)
   const traversable = graphFor(plan)
@@ -105,7 +105,6 @@ export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopolog
       findings.push({ code, cycleId: cycle.id, message: cycle.challenge === 'dramatic-arc' ? `${cycle.id} intentionally closes one route with its visible obstacle.` : `${cycle.id} has only ${usableRoutes} usable route${usableRoutes === 1 ? '' : 's'} after realization.` })
     }
     const addMissingRealization = (message: string) => findings.push({ code: 'missing-mission-realization', cycleId: cycle.id, message })
-    const routeAApproach = cycle.routeA[cycle.routeA.length - 2]
     const objectiveConnections = plan.connections.filter(connection => connection.toModuleId === objective)
     if (cycle.challenge === 'hidden-shortcut' && (routeA.length >= routeB.length || !routeA.some(connection => connection.semantic === 'secret'))) addMissingRealization(`${cycle.id} must keep a secret Route A that is shorter than Route B by room count.`)
     if (cycle.challenge === 'dramatic-arc' && (!routeA.some(connection => connection.traversable === 'blocked') || !routeB.some(connection => connection.traversable !== 'blocked'))) addMissingRealization(`${cycle.id} must block Route A while keeping Route B open.`)
@@ -115,13 +114,29 @@ export function assessMapTopology(mission: Mission, plan: SpacePlan): MapTopolog
     if (cycle.challenge === 'lock-and-key') {
       const keys = mission.keys.filter(key => key.id.includes(cycle.id))
       const locks = mission.locks.filter(lock => lock.id.includes(cycle.id))
-      const lockedDeparture = mission.edges.find(edge => edge.from === cycle.roles.anchorNode && edge.to === cycle.roles.routeANode)
-      const openDeparture = mission.edges.find(edge => edge.from === cycle.roles.anchorNode && edge.to === cycle.roles.routeBNode)
-      const lockedConnections = plan.connections.filter(connection => connection.semantic === 'locked' && connection.missionEdgeId && cycle.routeEdgeIds.includes(connection.missionEdgeId))
-      const keyIsOnOpenRoute = keys.length === 1 && cycle.routeB.slice(1, -1).includes(keys[0]!.nodeId)
-      if (locks.length !== 1 || !keyIsOnOpenRoute || lockedDeparture?.lockId !== locks[0]?.id || openDeparture?.lockId || lockedConnections.length !== 1 || lockedConnections[0]?.missionEdgeId !== lockedDeparture?.id) addMissingRealization(`${cycle.id} must lock one departure and place its key on the other, open loop route.`)
+      const loopRoomIds = new Set([...cycle.routeA.slice(1, -1), ...cycle.routeB.slice(1, -1)])
+      const lockedEdge = mission.edges.find(edge => edge.lockId === locks[0]?.id)
+      const lockedConnections = plan.connections.filter(connection => connection.semantic === 'locked' && connection.missionEdgeId === lockedEdge?.id)
+      const keyIsOnLoop = keys.length === 1 && loopRoomIds.has(keys[0]!.nodeId)
+      const lockIsLeaf = Boolean(lockedEdge && mission.edges.filter(edge => edge.from === lockedEdge.to || edge.to === lockedEdge.to).length === 1)
+      if (locks.length !== 1 || !keyIsOnLoop || !lockIsLeaf || lockedConnections.length !== 1 || lockedConnections[0]?.missionEdgeId !== lockedEdge?.id) addMissingRealization(`${cycle.id} must put a locked leaf room off its loop and its key in a loop room.`)
     }
-    if (cycle.challenge === 'unknown-return' && (!objectiveConnections.every(connection => connection.semantic === 'locked') || !plan.connections.some(connection => connection.missionEdgeId === `unknown-return-valve-${cycle.id}` && connection.semantic === 'one-way') || !mission.edges.some(edge => edge.from === routeAApproach && edge.id === `unknown-return-valve-${cycle.id}`))) addMissingRealization(`${cycle.id} must lock its objective and realize the Route A-to-Key one-way return valve.`)
+    if (cycle.challenge === 'unknown-return') {
+      const valveId = `unknown-return-valve-${cycle.id}`
+      const valve = mission.edges.find(edge => edge.id === valveId)
+      const key = mission.keys.find(key => key.id.includes(cycle.id))
+      const reachableWithoutValve = new Set<string>(['start'])
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const edge of mission.edges) {
+          if (edge.id === valveId || edge.lockId || edge.blocked) continue
+          if (reachableWithoutValve.has(edge.from) && !reachableWithoutValve.has(edge.to)) { reachableWithoutValve.add(edge.to); changed = true }
+          if (!edge.oneWay && reachableWithoutValve.has(edge.to) && !reachableWithoutValve.has(edge.from)) { reachableWithoutValve.add(edge.from); changed = true }
+        }
+      }
+      if (!objectiveConnections.every(connection => connection.semantic === 'locked') || !plan.connections.some(connection => connection.missionEdgeId === valveId && connection.semantic === 'one-way') || !valve?.oneWay || !key || reachableWithoutValve.has(key.nodeId)) addMissingRealization(`${cycle.id} must require its one-way valve to reach the Key, with no bypass from Start.`)
+    }
     if (cycle.challenge === 'hub-and-spoke' && (plan.modules.find(module => module.id === anchor)?.type !== 'hub' || !plan.connections.some(connection => connection.cycleId === cycle.id && connection.semantic === 'spoke'))) addMissingRealization(`${cycle.id} must realize its anchor as a hub with explicit spokes.`)
     if (cycle.challenge === 'double-lock' && (mission.keys.filter(key => key.id.includes(cycle.id)).length !== 2 || mission.locks.filter(lock => lock.id.includes(cycle.id)).length !== 2 || new Set(mission.edges.filter(edge => edge.lockId?.includes(cycle.id)).map(edge => edge.lockId)).size !== 2)) addMissingRealization(`${cycle.id} must realize two distinct Key/Lock dependencies.`)
     return { cycleId: cycle.id, challenge: cycle.challenge, anchorDistance, objectiveDistance, choicePosition, routeConnectionCounts: [routeA.length, routeB.length] as [number, number], usableRoutes, hasDistinctRouteGeometry }

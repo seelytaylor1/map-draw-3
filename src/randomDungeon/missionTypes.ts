@@ -192,7 +192,12 @@ export interface SpatialModule {
   height: number
   footprint: Point[]
   ports: Port[]
+  /** Interior cells that may never be selected as corridor apertures. */
+  excludedPortPoints?: Point[]
   encounter?: RoomEncounter
+  /** Forced or rolled encounter payload. A room may deliberately hold more
+   * than one encounter when a mission contract needs concentrated danger. */
+  encounters?: RoomEncounter[]
   hasTreasure?: boolean
 }
 

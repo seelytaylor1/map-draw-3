@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FLOOR, WATER } from './constants'
+import { DARKNESS, FLOOR, WATER } from './constants'
 import { ALL_LOOP_CHALLENGES, generateMissionDungeon, validateSpacePlan, connectionFootprint } from './randomDungeon/missionFirst'
 import type { GenerationRequest, MissionGenerationResult } from './randomDungeon/missionFirst'
 
@@ -35,7 +35,10 @@ function reachable(result: MissionGenerationResult, missingKey?: string): Set<nu
       const at = queue[head]!
       for (const next of [at - cols, at + cols, at - 1, at + 1]) {
         if (next < 0 || next >= cols * rows || Math.abs(next % cols - at % cols) + Math.abs(Math.floor(next / cols) - Math.floor(at / cols)) !== 1) continue
-        if ((grid[next] !== FLOOR && grid[next] !== WATER) || closed.has(next) || reached.has(next) || reverse.has(`${at}/${next}`)) continue
+        // Darkness is an unlit floor treatment. Dramatic Arc’s progression
+        // blocker is its declared mission edge, not an impassable terrain
+        // type, so geometry can still verify both halves of the chamber.
+        if ((grid[next] !== FLOOR && grid[next] !== WATER && grid[next] !== DARKNESS) || closed.has(next) || reached.has(next) || reverse.has(`${at}/${next}`)) continue
         reached.add(next); queue.push(next)
       }
     }

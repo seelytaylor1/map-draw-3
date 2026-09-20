@@ -1,11 +1,11 @@
-import { FLOOR, WATER } from '../constants'
+import { DARKNESS, FLOOR, WATER } from '../constants'
 import { createGrid } from '../grid'
 import type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
 import { createD6Random, normalizeSeed } from './random'
 import { arrangeRooms } from './layout'
 import { getGenerationStyle } from './styles'
 import { validateProgression } from './progression'
-import type { DoorwayStyle, GeneratedDoorway, GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
+import type { DoorwayStyle, GeneratedDoorway, GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, RoomEncounter, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
 import { STAMP_TYPES, type Stamp, type StampType } from '../stamps'
 import { DIRECTION_DELTAS, runTiles } from '../directionalRun'
 import type { StepRun } from '../steps'
@@ -74,12 +74,14 @@ function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationR
   const exits = (module: SpatialModule) => {
     const result: Array<{ door: Point; outside: Point }> = []
     const own = new Set(module.footprint.map(keyOf))
+    const excluded = new Set((module.excludedPortPoints ?? []).map(keyOf))
     const used = module.ports.map(port => port.point)
     // A Central Hub deliberately supports many independent spokes. Its wall
     // may use adjacent apertures (with separate exterior corridors), while
     // ordinary rooms retain the wider separation that improves readability.
     const portSpacing = module.type === 'hub' ? 2 : 3
     for (const door of module.footprint) {
+      if (excluded.has(keyOf(door))) continue
       if (used.some(p => Math.abs(p.col - door.col) + Math.abs(p.row - door.row) < portSpacing)) continue
       for (const outside of adjacent(door)) {
         if (own.has(keyOf(outside))) continue
@@ -165,7 +167,8 @@ export interface SpaceValidationResult { valid: boolean; diagnostics: Generation
 
 export function buildSpacePlan(request: GenerationRequest, mission: Mission, attempt = 0): SpacePlan {
   const style = getGenerationStyle(request.style)
-  const modules: SpatialModule[] = mission.nodes.map(node => ({
+  const dramaticGoalInStart = mission.cycles.some(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
+  const modules: SpatialModule[] = mission.nodes.filter(node => !dramaticGoalInStart || node.id !== mission.goalNodeId).map(node => ({
     id: `module-${node.id}`, type: style.moduleType(node), missionNodeId: node.id,
     origin: { col: -1, row: -1 }, width: 3, height: 3, footprint: [], ports: [],
   }))
@@ -188,7 +191,21 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     }
   }
   arrangeRooms(request, mission, modules, edges, attempt)
+  if (dramaticGoalInStart) {
+    const start = modules.find(module => module.missionNodeId === 'start')
+    if (start) {
+      const axis = start.width >= start.height ? 'vertical' : 'horizontal'
+      const maximum = axis === 'vertical' ? start.height : start.width
+      const bandLength = Math.min(6, Math.max(3, Math.min(4, maximum - 2)))
+      const bandStart = Math.floor((maximum - bandLength) / 2)
+      start.excludedPortPoints = start.footprint.filter(point => {
+        const position = axis === 'vertical' ? point.row - start.origin.row : point.col - start.origin.col
+        return position >= bandStart && position < bandStart + bandLength
+      })
+    }
+  }
   const lookup = new Map(modules.map(m => [m.missionNodeId ?? m.id, m]))
+  if (dramaticGoalInStart) lookup.set(mission.goalNodeId, lookup.get('start')!)
   const connections: SpatialConnection[] = []
   const cycleByEdge = new Map(mission.cycles.flatMap(c => c.routeEdgeIds.map(id => [id, c.id] as const)))
   // Short links first leave the perimeter available for longer return routes.
@@ -201,7 +218,9 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     if (!addConnection(connections, lookup, edge, request, cycleByEdge.get(edge.originalId), edge.originalId)) diagnostics.push({ stage: 'space', code: 'unroutable-relationship', message: `Could not route ${edge.from} to ${edge.to} without an unintended connection.`, style: request.style, seed: normalizeSeed(request.seed), nodeId: edge.from, constraint: 'separated corridor routing' })
   }
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
-  const plan = { style: request.style, modules, connections, anchors: Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id])), diagnostics }
+  const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
+  if (dramaticGoalInStart) anchors[mission.goalNodeId] = anchors.start!
+  const plan = { style: request.style, modules, connections, anchors, diagnostics }
   rollGeneratedContent(request, mission, plan)
   return plan
 }
@@ -212,6 +231,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
     const roll = random.nextD6()
     module.encounter = roll <= 3 ? 'empty' : roll <= 5 ? 'monster' : 'trap'
+    module.encounters = module.encounter === 'empty' ? [] : [module.encounter]
     module.hasTreasure = random.nextD6() <= 2
   }
   for (const connection of plan.connections) {
@@ -241,8 +261,39 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     connection.doorways = doorways
   }
   if (hasMissionReward) {
-    const goal = plan.modules.find(module => module.missionNodeId === mission.goalNodeId)
+    const goal = plan.modules.find(module => module.id === plan.anchors[mission.goalNodeId])
     if (goal) goal.hasTreasure = true
+  }
+  applyChallengeEncounters(mission, plan)
+}
+
+function applyChallengeEncounters(mission: Mission, plan: SpacePlan): void {
+  const moduleFor = (nodeId: string) => plan.modules.find(module => module.missionNodeId === nodeId)
+  const setEncounters = (nodeId: string, encounters: RoomEncounter[]) => {
+    const module = moduleFor(nodeId)
+    if (!module) return
+    module.encounters = encounters
+    module.encounter = encounters[0] ?? 'empty'
+  }
+  for (const cycle of mission.cycles) {
+    const routeARooms = cycle.routeA.slice(1, -1)
+    const routeBRooms = cycle.routeB.slice(1, -1)
+    if (cycle.challenge === 'dangerous-route') {
+      // A dangerous route is dangerous room-by-room, while its alternative
+      // is deliberately cleared so it is observably safer.
+      for (const [index, nodeId] of routeARooms.entries()) setEncounters(nodeId, [index % 2 ? 'trap' : 'monster'])
+      for (const nodeId of routeBRooms) setEncounters(nodeId, [])
+    }
+    if (cycle.challenge === 'gambit') {
+      // The long route has one encounter per room. The short route carries
+      // the same total number, concentrating multiple encounters per room.
+      const dangerCount = routeBRooms.length
+      for (const [index, nodeId] of routeBRooms.entries()) setEncounters(nodeId, [index % 2 ? 'trap' : 'monster'])
+      for (const [index, nodeId] of routeARooms.entries()) {
+        const remaining = dangerCount - index * 2
+        setEncounters(nodeId, Array.from({ length: Math.min(2, Math.max(0, remaining)) }, (_, encounterIndex) => (index + encounterIndex) % 2 ? 'trap' : 'monster'))
+      }
+    }
   }
 }
 
@@ -369,10 +420,26 @@ export interface RasterizationResult { snapshot?: AppSnapshotShape; diagnostics:
 export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission, plan: SpacePlan): RasterizationResult {
   const diagnostics: GenerationDiagnostic[] = []
   const grid = createGrid(request.cols, request.rows)
+  let dramaticLayout: { start: SpatialModule; axis: 'vertical' | 'horizontal'; bandStart: number; bandLength: number; goalSide?: 'before' | 'after' } | undefined
   for (const module of plan.modules) for (const point of module.footprint) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
   for (const connection of plan.connections) for (const point of connectionFootprint(connection)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
   for (const connection of plan.connections) if (connection.condition === 'flooded') {
     for (const point of connection.path.slice(1, -1)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = WATER
+  }
+  const dramaticCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
+  if (dramaticCycle) {
+    const start = plan.modules.find(module => module.missionNodeId === 'start')
+    if (start) {
+      const longAxis = start.width >= start.height ? 'vertical' : 'horizontal'
+      const maximum = longAxis === 'vertical' ? start.height : start.width
+      const bandLength = Math.min(6, Math.max(3, Math.min(4, maximum - 2)))
+      const offset = Math.floor((maximum - bandLength) / 2)
+      dramaticLayout = { start, axis: longAxis, bandStart: offset, bandLength }
+      for (const point of start.footprint) {
+        const axis = longAxis === 'vertical' ? point.row - start.origin.row : point.col - start.origin.col
+        if (axis >= offset && axis < offset + bandLength) grid[point.row * request.cols + point.col] = DARKNESS
+      }
+    }
   }
   const available = request.availableStampTypes ?? STAMP_TYPES
   const stamps: Stamp[] = []
@@ -446,6 +513,13 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
         : missionNode?.label ?? 'Support Room'
     addRoomLabel(`label-${module.id}`, text, module, undefined, index + 1, true)
   }
+  if (dramaticCycle) {
+    const start = plan.modules.find(module => module.missionNodeId === 'start')
+    if (start) {
+      const point = [...start.footprint].find(point => isFloor(point) && !occupied.has(keyOf(point)))
+      if (point) { labels.push({ id: 'label-dramatic-goal', col: point.col, row: point.row, text: 'Goal' }); occupied.add(keyOf(point)) }
+    }
+  }
   const addOptional = (types: readonly StampType[], id: string, point: Point, direction: Direction = 'E') => {
     const type = types.find(candidate => available.includes(candidate))
     if (!type || occupied.has(keyOf(point))) return
@@ -488,6 +562,10 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       if (connectedTiles.has(outsideKey) || occupied.has(outsideKey) || occupied.has(keyOf(inside))) continue
       if (hallwayTiles.some(point => Math.abs(point.col - outside.col) + Math.abs(point.row - outside.row) <= 1)) continue
       if (otherRoomTiles.some(point => Math.abs(point.col - outside.col) + Math.abs(point.row - outside.row) <= 1)) continue
+      if (dramaticLayout) {
+        const axisPosition = dramaticLayout.axis === 'vertical' ? inside.row - start.origin.row : inside.col - start.origin.col
+        if (axisPosition >= dramaticLayout.bandStart && axisPosition < dramaticLayout.bandStart + dramaticLayout.bandLength) continue
+      }
       outwardCandidates.push({ run: { id: 'generated-start-descent', col: inside.col, row: inside.row, z: 0, direction: outward, ascending: true }, outward, inside })
     }
     const preferredOutward = oppositeDirection[directionForPath(firstConnection.path.slice(0, 2))]
@@ -497,6 +575,12 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     if (!origin) {
       diagnostics.push({ stage: 'rasterization', code: 'missing-start-descent', message: 'No unused exterior wall can hold a descent without meeting a hallway.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'unused start-room wall', nodeId: 'start' })
     } else {
+      if (dramaticLayout) {
+        const axisPosition = dramaticLayout.axis === 'vertical'
+          ? origin.row - dramaticLayout.start.origin.row
+          : origin.col - dramaticLayout.start.origin.col
+        dramaticLayout.goalSide = axisPosition < dramaticLayout.bandStart + dramaticLayout.bandLength / 2 ? 'after' : 'before'
+      }
       const descentRoll = createD6Random(normalizeSeed(request.seed) ^ 0x1a5c3e2d).nextD6()
       if (descentRoll <= 3) steps.push(origin)
       else ramps.push(origin)
@@ -504,18 +588,31 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     }
   }
   for (const module of plan.modules) {
-    if (module.encounter === 'monster' || module.encounter === 'trap') {
-      const point = roomDecorationPoint(module)
-      if (point) {
-        if (module.encounter === 'monster') {
-          addOptional(GENERATED_DECORATION_STAMP_TYPES.monster, `generated-monster-${module.id}`, point)
-        } else {
-          addOptional(GENERATED_DECORATION_STAMP_TYPES.roomTrap, `generated-room-trap-${module.id}`, point)
-        }
+    const encounters = module.encounters ?? (module.encounter === 'empty' || !module.encounter ? [] : [module.encounter])
+    for (const [encounterIndex, encounter] of encounters.entries()) {
+      const point = [roomDecorationPoint(module), ...module.footprint].find(candidate => candidate && !occupied.has(keyOf(candidate)))
+      if (!point) continue
+      if (encounter === 'monster') {
+        addOptional(GENERATED_DECORATION_STAMP_TYPES.monster, `generated-monster-${module.id}-${encounterIndex}`, point)
+      } else {
+        addOptional(GENERATED_DECORATION_STAMP_TYPES.roomTrap, `generated-room-trap-${module.id}-${encounterIndex}`, point)
       }
     }
     if (module.hasTreasure) {
-      const point = roomDecorationPoint(module)
+      const point = module === dramaticLayout?.start && dramaticLayout.goalSide
+        ? [...module.footprint]
+          .filter(candidate => {
+            if (!isFloor(candidate) || occupied.has(keyOf(candidate))) return false
+            const axisPosition = dramaticLayout.axis === 'vertical' ? candidate.row - module.origin.row : candidate.col - module.origin.col
+            return dramaticLayout.goalSide === 'before'
+              ? axisPosition < dramaticLayout.bandStart
+              : axisPosition >= dramaticLayout.bandStart + dramaticLayout.bandLength
+          })
+          .sort((a, b) => {
+            const axis = (point: Point) => dramaticLayout!.axis === 'vertical' ? point.row - module.origin.row : point.col - module.origin.col
+            return dramaticLayout!.goalSide === 'before' ? axis(a) - axis(b) : axis(b) - axis(a)
+          })[0]
+        : roomDecorationPoint(module)
       if (point) addOptional(GENERATED_DECORATION_STAMP_TYPES.treasure, `generated-room-treasure-${module.id}`, point)
     }
   }

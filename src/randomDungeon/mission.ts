@@ -64,6 +64,15 @@ function replaceEdge(mission: Mission, id: string, replacements: MissionEdge[]):
   else mission.edges.splice(index, 1, ...replacements)
 }
 
+function loopRooms(cycle: MissionCycle): string[] {
+  return [...cycle.routeA.slice(1, -1), ...cycle.routeB.slice(1, -1)]
+}
+
+function seededLoopRoom(mission: Mission, cycle: MissionCycle, offset = 0, excluded = new Set<string>()): string {
+  const rooms = loopRooms(cycle).filter(id => !excluded.has(id))
+  return rooms[(mission.seed + offset) % rooms.length]!
+}
+
 function extendRouteBeforeObjective(mission: Mission, cycle: MissionCycle, route: 'routeA' | 'routeB', idPrefix: string, labelPrefix: string, count: number): void {
   if (count <= 0) return
   const routeNodes = cycle[route]
@@ -99,16 +108,20 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       if (route[0]) route[0].secret = true
     } },
     'dramatic-arc': { ...base, realization: 'visible obstacle before the objective on one route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
-    'dangerous-route': { ...base, realization: 'one dangerous route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); if (route[0]) route[0].dangerous = true } },
+    'dangerous-route': { ...base, realization: 'every room on one route is dangerous and the alternate route is safer', rewrite: (mission, cycle) => {
+      for (const route of routeEdges(mission, cycle, cycle.routeA)) route.dangerous = true
+    } },
     'lock-and-key': { ...base, realization: 'locked loop branch with its matching key on the open route', rewrite: (mission, cycle) => {
       const keyId = `key-${cycle.id}`
-      addKeyAtNode(mission, cycle, keyId, cycle.roles.routeBNode)
-      const lockId = addLock(mission, cycle, keyId, cycle.roles.routeANode)
-      // Present the lock at the loop's choice point. The other departure
-      // remains open and carries the key, so exploration can continue around
-      // the cycle without revisiting any previously entered room.
-      const lockedDeparture = routeEdges(mission, cycle, cycle.routeA)[0]
-      if (lockedDeparture) lockedDeparture.lockId = lockId
+      const keyRoom = seededLoopRoom(mission, cycle)
+      addKeyAtNode(mission, cycle, keyId, keyRoom)
+      const lockedRoom = `locked-room-${cycle.id}`
+      const midpoint = seededLoopRoom(mission, cycle, 1, new Set([keyRoom]))
+      mission.nodes.push(node(lockedRoom, 'lock', `loop-${cycle.id}`, `Locked Room ${cycle.id}`))
+      const lockId = addLock(mission, cycle, keyId, lockedRoom)
+      // The lock is a leaf off the loop rather than a special start-room
+      // branch. The complete loop remains explorable until its key is found.
+      mission.edges.push(edge(`locked-leaf-${cycle.id}`, midpoint, lockedRoom, 'key-lock', { lockId, coupling: 'tight' }))
     } },
     'unknown-return': { ...base, realization: 'required locked goal, one-way valve, key room, and return route', rewrite: (mission, cycle) => {
       const routeAApproach = cycle.routeA[cycle.routeA.length - 2]!
@@ -117,18 +130,21 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       if (lockEdge) lockEdge.lockId = dependency.lockId
       for (const entry of mission.edges.filter(e => e.to === cycle.roles.objectiveNode)) entry.lockId = dependency.lockId
       const valve = edge(`unknown-return-valve-${cycle.id}`, routeAApproach, dependency.keyNodeId, 'return', { oneWay: true })
-      const returnEdge = edge(`unknown-return-back-${cycle.id}`, dependency.keyNodeId, cycle.roles.anchorNode, 'return')
+      // This return edge is directional as well. Making it bidirectional
+      // allowed Start to reach the Key directly and bypass the valve.
+      const returnEdge = edge(`unknown-return-back-${cycle.id}`, dependency.keyNodeId, cycle.roles.anchorNode, 'return', { oneWay: true })
       mission.edges.push(valve, returnEdge)
       cycle.routeEdgeIds = [...cycle.routeEdgeIds, valve.id, returnEdge.id]
     } },
     'patrolled-cycle': { ...base, realization: 'danger metadata on both routes', rewrite: (mission, cycle) => { for (const route of cycleEdges(mission, cycle)) route.dangerous = true } },
-    'gambit': { ...base, realization: 'dangerous short route and longer safer route', rewrite: (mission, cycle) => {
-      const shortRoute = routeEdges(mission, cycle, cycle.routeA)
-      if (shortRoute[0]) shortRoute[0].dangerous = true
+    'gambit': { ...base, realization: 'a half-length dangerous route carrying the safe route’s total danger', rewrite: (mission, cycle) => {
+      for (const route of routeEdges(mission, cycle, cycle.routeA)) route.dangerous = true
       const safeRoute = routeEdges(mission, cycle, cycle.routeB)
       const safeFinal = safeRoute[safeRoute.length - 1]
       if (!safeFinal) return
-      const additionalNodeCount = Math.max(1, cycle.routeA.length - cycle.routeB.length + 1)
+      const shortRoomCount = cycle.routeA.length - 2
+      const targetSafeRoomCount = shortRoomCount * 2
+      const additionalNodeCount = Math.max(0, targetSafeRoomCount - (cycle.routeB.length - 2))
       const safeNodeIds = Array.from({ length: additionalNodeCount }, (_, nodeIndex) => {
         const suffix = nodeIndex === 0 ? '' : `-${nodeIndex + 1}`
         const id = `gambit-${cycle.id}-safe-route${suffix}`
@@ -151,31 +167,28 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       // declared spokes when space is realized.
       cycle.nonTrivial = true
     } },
-    'double-lock': { ...base, realization: 'two distinct locks on one objective', rewrite: (mission, cycle) => {
-      const first = addRequiredKeyLock(mission, cycle, mission.style === 'orbit-gates' ? cycle.roles.routeANode : cycle.roles.anchorNode, '')
+    'double-lock': { ...base, realization: 'two loop keys open two serial locks before the objective', rewrite: (mission, cycle) => {
+      const firstKeyId = `key-${cycle.id}`
+      const firstKeyRoom = seededLoopRoom(mission, cycle)
+      addKeyAtNode(mission, cycle, firstKeyId, firstKeyRoom)
       const secondKeyId = `key-${cycle.id}-2`
-      addKey(mission, cycle, secondKeyId, cycle.roles.routeANode)
+      const secondKeyRoom = seededLoopRoom(mission, cycle, 1, new Set([firstKeyRoom]))
+      addKeyAtNode(mission, cycle, secondKeyId, secondKeyRoom)
       const gateOneId = `lock-node-${cycle.id}-1`
       const gateTwoId = `lock-node-${cycle.id}-2`
-      if (!mission.nodes.some(candidate => candidate.id === gateOneId)) mission.nodes.push(node(gateOneId, 'lock', `loop-${cycle.id}`, `Lock ${first.lockId}`, { lockId: first.lockId }))
+      const firstLockId = addLock(mission, cycle, firstKeyId, gateOneId)
+      if (!mission.nodes.some(candidate => candidate.id === gateOneId)) mission.nodes.push(node(gateOneId, 'lock', `loop-${cycle.id}`, `Lock ${firstLockId}`, { lockId: firstLockId }))
       if (!mission.nodes.some(candidate => candidate.id === gateTwoId)) mission.nodes.push(node(gateTwoId, 'lock', `loop-${cycle.id}`, `Lock ${cycle.id}-2`, { lockId: `lock-${cycle.id}-2` }))
       const secondLockId = addLock(mission, cycle, secondKeyId, gateTwoId, '-2')
-      const route = cycleEdges(mission, cycle)
-      const final = route[route.length - 1]
-      if (final) {
-        const firstGate = edge(`${final.id}-gate-1`, final.from, gateOneId, final.kind, { coupling: final.coupling })
-        const secondGate = edge(`${final.id}-gate-2`, gateOneId, gateTwoId, final.kind, { coupling: final.coupling, lockId: first.lockId })
-        const objective = edge(`${final.id}-objective`, gateTwoId, final.to, final.kind, { coupling: final.coupling, lockId: secondLockId })
-        replaceEdge(mission, final.id, [firstGate, secondGate, objective])
-        const routeIndex = cycle.routeEdgeIds.indexOf(final.id)
-        if (routeIndex >= 0) cycle.routeEdgeIds.splice(routeIndex, 1, firstGate.id, secondGate.id, objective.id)
-      }
       // Both approaches merge before the two serial gates. Neither entrance
       // may reach the objective without collecting both keys.
       for (const entry of mission.edges.filter(e => e.to === cycle.roles.objectiveNode && e.from !== gateTwoId)) entry.to = gateOneId
-      const routeBNode = cycle.routeB[1]!
-      cycle.routeA = [cycle.roles.anchorNode, cycle.roles.routeANode, gateOneId, gateTwoId, cycle.roles.objectiveNode]
-      cycle.routeB = [cycle.roles.anchorNode, routeBNode, gateOneId, gateTwoId, cycle.roles.objectiveNode]
+      const firstGate = edge(`double-lock-${cycle.id}-gate-1`, gateOneId, gateTwoId, 'key-lock', { coupling: 'tight', lockId: firstLockId })
+      const objective = edge(`double-lock-${cycle.id}-objective`, gateTwoId, cycle.roles.objectiveNode, 'key-lock', { coupling: 'tight', lockId: secondLockId })
+      mission.edges.push(firstGate, objective)
+      cycle.routeEdgeIds.push(firstGate.id, objective.id)
+      cycle.routeA = [...cycle.routeA.slice(0, -1), gateOneId, gateTwoId, cycle.roles.objectiveNode]
+      cycle.routeB = [...cycle.routeB.slice(0, -1), gateOneId, gateTwoId, cycle.roles.objectiveNode]
 
     } },
   }
