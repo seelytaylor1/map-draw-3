@@ -110,6 +110,18 @@ describe('App load lifecycle', () => {
     expect(openAssetFolder).toHaveBeenCalledTimes(1)
   })
 
+  it('returns to paint mode when Draw is clicked after selecting a structure tool', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Steps' }))
+    expect(screen.getByText('Steps', { selector: 'strong' })).toBeInTheDocument()
+
+    const drawButtons = screen.getAllByRole('button', { name: 'Draw' })
+    fireEvent.click(drawButtons[1])
+
+    expect(screen.getByText('Paint', { selector: 'strong' })).toBeInTheDocument()
+  })
+
   it('launches with one-eighth-inch squares and uses that as the canvas dimension step', () => {
     render(<App />)
     openWorkspace('File')

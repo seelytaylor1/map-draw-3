@@ -12,8 +12,8 @@ import {
   addStamp, colorStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
   type Stamp,
 } from './stamps'
-import { addStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
-import { addRampRun, removeRampRun, rotateRampRun, toggleRampRunAscending, type RampRun } from './ramps'
+import { addStepRun, moveStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
+import { addRampRun, moveRampRun, removeRampRun, rotateRampRun, toggleRampRunAscending, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
 import { drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
@@ -88,6 +88,16 @@ type AppSnapshot = {
   ramps: RampRun[]
   labels: Label[]
   environmentalColors: Map<number, string>
+}
+
+type StructureKind = 'step' | 'ramp'
+
+type StructureDrag = {
+  kind: StructureKind
+  id: string
+  startClientX: number
+  startClientY: number
+  nodes: Array<{ node: Konva.Node; x: number; y: number }>
 }
 
 function getAreaTiles(start: Tile, end: Tile, shape: BrushShape): Tile[] {
@@ -227,6 +237,7 @@ export default function App() {
   const labelsLayerRef = useRef<Konva.Layer>(null)
   const labelEditorRef = useRef<HTMLInputElement>(null)
   const draggedLabelRef = useRef<string | null>(null)
+  const structureDragRef = useRef<StructureDrag | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const stampImages = useStampImages()
@@ -343,6 +354,18 @@ export default function App() {
     const row = Math.floor(fr)
     return (col >= 0 && row >= 0 && col < cols && row < rows) ? { col, row } : null
   }
+
+  const beginStructureDrag = useCallback((kind: StructureKind, id: string, nodes: Konva.Node[], e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (e.evt.button !== 0) return
+    e.evt.preventDefault()
+    structureDragRef.current = {
+      kind,
+      id,
+      startClientX: e.evt.clientX,
+      startClientY: e.evt.clientY,
+      nodes: nodes.map(node => ({ node, x: node.x(), y: node.y() })),
+    }
+  }, [])
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -464,6 +487,18 @@ export default function App() {
         return
       }
       const stage = e.target.getStage()!
+
+      const structureDrag = structureDragRef.current
+      if (structureDrag) {
+        const scale = stage.scaleX()
+        const dx = (e.evt.clientX - structureDrag.startClientX) / scale
+        const dy = (e.evt.clientY - structureDrag.startClientY) / scale
+        for (const item of structureDrag.nodes) {
+          item.node.position({ x: item.x + dx, y: item.y + dy })
+        }
+        return
+      }
+
       let tile: Tile | null
       if (showIso) {
         tile = stageToIsoTile(stage, e.evt.clientX, e.evt.clientY)
@@ -523,6 +558,51 @@ export default function App() {
       isPanningRef.current = false
       return
     }
+
+    const structureDrag = structureDragRef.current
+    if (structureDrag) {
+      const stage = stageRef.current
+      if (stage && e.button === 0) {
+        const scale = stage.scaleX()
+        const dx = (e.clientX - structureDrag.startClientX) / scale
+        const dy = (e.clientY - structureDrag.startClientY) / scale
+        const tileDelta = showIso
+          ? isoUnproject(dx, dy, TILE_PX * 2, TILE_PX)
+          : { col: dx / TILE_PX, row: dy / TILE_PX }
+        const colDelta = Math.round(tileDelta.col)
+        const rowDelta = Math.round(tileDelta.row)
+
+        for (const item of structureDrag.nodes) {
+          item.node.position({ x: item.x, y: item.y })
+        }
+        structureDragRef.current = null
+
+        if (colDelta !== 0 || rowDelta !== 0) {
+          if (structureDrag.kind === 'step') {
+            setHistory(h => {
+              const run = h.present.steps.find(item => item.id === structureDrag.id)
+              return run
+                ? push(h, { ...h.present, steps: moveStepRun(h.present.steps, structureDrag.id, run.col + colDelta, run.row + rowDelta) })
+                : h
+            })
+          } else {
+            setHistory(h => {
+              const run = h.present.ramps.find(item => item.id === structureDrag.id)
+              return run
+                ? push(h, { ...h.present, ramps: moveRampRun(h.present.ramps, structureDrag.id, run.col + colDelta, run.row + rowDelta) })
+                : h
+            })
+          }
+        }
+      } else {
+        for (const item of structureDrag.nodes) {
+          item.node.position({ x: item.x, y: item.y })
+        }
+        structureDragRef.current = null
+      }
+      return
+    }
+
     const ds = drawingStateRef.current
 
     if (ds.tool === 'rough' && ds.phase === 'placed1') {
@@ -556,7 +636,7 @@ export default function App() {
       })
       dispatch({ type: 'PAINT_COMMIT' })
     }
-  }, [cols, rows])
+  }, [cols, rows, showIso])
 
   useEffect(() => {
     window.addEventListener('mouseup', handleMouseUp)
@@ -628,6 +708,7 @@ export default function App() {
         waterColor, lavaColor, darknessColor,
         environmentalColors: environmentalColors as Map<TileState, string>,
       })
+      const structureNodes = new Map<string, { kind: StructureKind; id: string; nodes: Konva.Node[] }>()
       for (const shape of shapes) {
         const node = new Konva.Line({
           points: shape.points,
@@ -638,30 +719,41 @@ export default function App() {
           strokeWidth: shape.strokeWidth,
         })
         if (shape.stepId) {
-          const sid = shape.stepId
-          node.on('mousedown', (e) => {
-            e.cancelBubble = true
-            if (e.evt.button === 2 && sid === selectedStepId) {
-              setHistory(h => push(h, { ...h.present, steps: removeStepRun(h.present.steps, sid) }))
-              dispatch({ type: 'SELECT', id: null })
-            } else {
-              dispatch({ type: 'SET_TOOL', to: { tool: 'steps', selectedId: sid } })
-            }
-          })
+          const key = `step:${shape.stepId}`
+          const entry = structureNodes.get(key) ?? { kind: 'step' as const, id: shape.stepId, nodes: [] }
+          entry.nodes.push(node)
+          structureNodes.set(key, entry)
         }
         if (shape.rampId) {
-          const rid = shape.rampId
+          const key = `ramp:${shape.rampId}`
+          const entry = structureNodes.get(key) ?? { kind: 'ramp' as const, id: shape.rampId, nodes: [] }
+          entry.nodes.push(node)
+          structureNodes.set(key, entry)
+        }
+        layer.add(node)
+      }
+      for (const structure of structureNodes.values()) {
+        const currentSelectedId = structure.kind === 'step' ? selectedStepId : selectedRampId
+        for (const node of structure.nodes) {
           node.on('mousedown', (e) => {
             e.cancelBubble = true
-            if (e.evt.button === 2 && rid === selectedRampId) {
-              setHistory(h => push(h, { ...h.present, ramps: removeRampRun(h.present.ramps, rid) }))
-              dispatch({ type: 'SELECT', id: null })
+            e.evt.preventDefault()
+            if (e.evt.button === 2) {
+              if (structure.id === currentSelectedId) dispatch({ type: 'SELECT', id: null })
+              else dispatch({ type: 'SET_TOOL', to: structure.kind === 'step'
+                ? { tool: 'steps', selectedId: structure.id }
+                : { tool: 'ramps', selectedId: structure.id } })
+              return
+            }
+            if (structure.id === currentSelectedId) {
+              beginStructureDrag(structure.kind, structure.id, structure.nodes, e)
             } else {
-              dispatch({ type: 'SET_TOOL', to: { tool: 'ramps', selectedId: rid } })
+              dispatch({ type: 'SET_TOOL', to: structure.kind === 'step'
+                ? { tool: 'steps', selectedId: structure.id }
+                : { tool: 'ramps', selectedId: structure.id } })
             }
           })
         }
-        layer.add(node)
       }
       layer.batchDraw()
       return
@@ -786,12 +878,13 @@ export default function App() {
           const isStep = run.runType === 'step'
           runGroup.on('mousedown', (e) => {
             e.cancelBubble = true
+            e.evt.preventDefault()
             const currentSelectedId = isStep ? selectedStepId : selectedRampId
-            if (e.evt.button === 2 && run.id === currentSelectedId) {
-              setHistory(h => push(h, isStep
-                ? { ...h.present, steps: removeStepRun(h.present.steps, run.id) }
-                : { ...h.present, ramps: removeRampRun(h.present.ramps, run.id) }))
-              dispatch({ type: 'SELECT', id: null })
+            if (e.evt.button === 2) {
+              if (run.id === currentSelectedId) dispatch({ type: 'SELECT', id: null })
+              else dispatch({ type: 'SET_TOOL', to: isStep ? { tool: 'steps', selectedId: run.id } : { tool: 'ramps', selectedId: run.id } })
+            } else if (run.id === currentSelectedId) {
+              beginStructureDrag(isStep ? 'step' : 'ramp', run.id, [runGroup], e)
             } else {
               dispatch({ type: 'SET_TOOL', to: isStep ? { tool: 'steps', selectedId: run.id } : { tool: 'ramps', selectedId: run.id } })
             }
@@ -820,15 +913,12 @@ export default function App() {
       const stampImage = colorizeStampImage(imgEl, stamp.color)
       const v = item.variant
 
-      const attachDelete = (node: Konva.Node) => {
+      const attachStampInteraction = (node: Konva.Node) => {
         node.on('mousedown', (e) => {
           e.cancelBubble = true
-          if (e.evt.button === 2 && item.id === selectedStampId) {
-            setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, item.id) }))
-            dispatch({ type: 'SELECT', id: null })
-          } else {
-            dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: stamp.type, selectedId: item.id } })
-          }
+          e.evt.preventDefault()
+          if (e.evt.button === 2) return
+          dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: stamp.type, selectedId: item.id } })
         })
       }
 
@@ -841,7 +931,7 @@ export default function App() {
           rotation: v.rotation,
           scaleX: v.mirrored ? -1 : 1,
         })
-        attachDelete(imgNode)
+        attachStampInteraction(imgNode)
         layer.add(imgNode)
         if (item.selectionRect) {
           const sel = item.selectionRect
@@ -860,7 +950,7 @@ export default function App() {
           scaleX: v.scaleX, scaleY: v.scaleY, skewX: v.skewX,
         })
         group.add(new Konva.Image({ image: stampImage, x: -v.w / 2, y: -v.h / 2, width: v.w, height: v.h }))
-        attachDelete(group)
+        attachStampInteraction(group)
         if (item.selected) {
           group.add(new Konva.Rect({
             x: -v.w / 2 - 1, y: -v.h / 2 - 1,
@@ -882,7 +972,7 @@ export default function App() {
           opacity: v.opacity,
         })
         if (item.interactive) {
-          attachDelete(node)
+          attachStampInteraction(node)
           node.on('dragend', () => {
             const sz = stampSize(stamp.type)
             const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - v.w / 2) / TILE_PX)))
@@ -1598,7 +1688,12 @@ export default function App() {
               role="tab"
               aria-selected={workspaceTab === value}
               className={workspaceTab === value ? 'active' : ''}
-              onClick={() => setWorkspaceTab(value)}
+              onClick={() => {
+                setWorkspaceTab(value)
+                if (value === 'draw' && (drawingState.tool === 'steps' || drawingState.tool === 'ramps')) {
+                  dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+                }
+              }}
             >
               {label}
             </button>
@@ -1607,7 +1702,7 @@ export default function App() {
 
         <div className="toolbar-content">
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
-          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click always erases.</span></div>
+          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deselects structures, or does nothing on stamps.</span></div>
 
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
           <Segmented
@@ -1638,8 +1733,8 @@ export default function App() {
             onChange={(v: 'draw' | 'erase') => {
               if (v === 'erase') {
                 dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: WALL, brushShape } })
-              } else if (selectedPaintState === WALL) {
-                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape } })
+              } else {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState === WALL ? FLOOR : selectedPaintState, brushShape } })
               }
             }}
             options={[
