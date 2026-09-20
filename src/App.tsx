@@ -1590,8 +1590,8 @@ export default function App() {
           {([
             ['draw', 'Draw'],
             ['assets', 'Assets'],
-            ['generate', 'Generate'],
             ['document', 'File'],
+            ['generate', 'Generate'],
           ] as const).map(([value, label]) => (
             <button
               key={value}
@@ -1733,7 +1733,7 @@ export default function App() {
           </div>
         </Section>
 
-        <Section title="Structures" icon={<IconStairs size={14} />}>
+        <Section title="Structures" icon={<IconStairs size={14} />} defaultOpen>
           <ToolButton
             icon={<IconStairs size={14} />}
             label="Steps"
@@ -1857,7 +1857,7 @@ export default function App() {
 
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
 
-        <Section title="Labels" icon={<IconTag size={14} />}>
+        <Section title="Labels" icon={<IconTag size={14} />} defaultOpen>
           <ToolButton
             icon={<IconTag size={14} />}
             label="Add Label"
@@ -2108,7 +2108,7 @@ export default function App() {
           />
         </Section>
 
-        <Section title="Style" icon={<IconHatch size={14} />}>
+        <Section title="Style" icon={<IconHatch size={14} />} defaultOpen>
           <div className="row">
             <IconToggle icon={<IconHatch size={15} />} active={showHatching} onClick={() => setShowHatching(v => !v)} title="Hatching" />
             {showHatching && <ColorField label="Hatch" value={hatchColor} onChange={setHatchColor} />}

@@ -64,7 +64,7 @@ export function StampPicker({ mode, onModeChange }: Props) {
           Map icons <span>{DEFAULT_ICON_TYPES.length}</span>
         </button>
         <button role="tab" aria-selected={category === 'objects'} className={category === 'objects' ? 'active' : ''} onClick={() => setCategory('objects')}>
-          Objects <span>{OBJECT_STAMP_TYPES.length}</span>
+          Iso objects <span>{OBJECT_STAMP_TYPES.length}</span>
         </button>
       </div>
 
