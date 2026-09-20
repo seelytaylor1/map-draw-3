@@ -51,6 +51,7 @@ vi.mock('react-konva', () => ({
 }))
 
 import App from './App'
+import { ALL_LOOP_CHALLENGES, LOOP_CHALLENGE_DESCRIPTIONS } from './randomDungeon/missionFirst'
 
 const openWorkspace = (name: 'Assets' | 'Generate' | 'File') => {
   fireEvent.click(screen.getByRole('tab', { name }))
@@ -362,6 +363,23 @@ describe('App load lifecycle', () => {
     fireEvent.change(loopOne, { target: { value: 'lock-and-key' } })
     expect(loopOne.value).toBe('lock-and-key')
     expect(screen.getByText(/derived dependencies: 1 key · 1 lock/i)).toBeInTheDocument()
+  })
+
+  it('provides descriptions for every loop challenge option', () => {
+    render(<App />)
+    openWorkspace('Generate')
+
+    const loopOne = screen.getByLabelText(/loop 1 challenge/i) as HTMLSelectElement
+    const randomOption = loopOne.querySelector<HTMLOptionElement>('option[value="varied"]')
+    expect(randomOption).toHaveAttribute('title', LOOP_CHALLENGE_DESCRIPTIONS.varied)
+
+    for (const challenge of ALL_LOOP_CHALLENGES) {
+      const option = loopOne.querySelector<HTMLOptionElement>(`option[value="${challenge}"]`)
+      expect(option).toHaveAttribute('title', LOOP_CHALLENGE_DESCRIPTIONS[challenge])
+    }
+
+    fireEvent.change(loopOne, { target: { value: 'gambit' } })
+    expect(screen.getByTestId('loop-challenge-0-tooltip')).toHaveTextContent(LOOP_CHALLENGE_DESCRIPTIONS.gambit)
   })
 
   it('preserves loop choices by index and defaults newly added loops to random', () => {

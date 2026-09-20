@@ -40,7 +40,7 @@ import {
 import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
-import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, preflightGeneration } from './randomDungeon/missionFirst'
+import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, LOOP_CHALLENGE_DESCRIPTIONS, preflightGeneration } from './randomDungeon/missionFirst'
 import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
@@ -2214,15 +2214,27 @@ export default function App() {
                 <span>Number of loops</span>
                 <input id="generation-loop-count" className="num-field loop-count-field" type="number" min={0} max={20} step={1} value={generationLoopCount} onChange={e => setRequestedLoopCount(Number(e.target.value))} aria-label="Number of loops" />
               </label>
-              {generationLoopChallenges.slice(0, generationLoopCount).map((challenge, index) => (
-                <label className="field-row" htmlFor={`generation-loop-challenge-${index}`} key={`loop-challenge-${index}`}>
-                  <span>Loop {index + 1}</span>
-                  <select id={`generation-loop-challenge-${index}`} className="num-field" value={challenge ?? 'varied'} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
-                    <option value="varied">Random</option>
-                    {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{formatLoopChallenge(option)}</option>)}
-                  </select>
-                </label>
-              ))}
+              {generationLoopChallenges.slice(0, generationLoopCount).map((challenge, index) => {
+                const selectedChallenge = challenge ?? 'varied'
+                const tooltipId = `loop-challenge-${index}-tooltip`
+                return (
+                  <div className="field-row" key={`loop-challenge-${index}`}>
+                    <div className="field-label-with-tooltip">
+                      <label htmlFor={`generation-loop-challenge-${index}`}>Loop {index + 1}</label>
+                      <button type="button" className="tooltip-trigger" aria-label={`Loop ${index + 1} description`} aria-describedby={tooltipId}>
+                        <IconInfo size={12} />
+                      </button>
+                      <span id={tooltipId} className="tooltip-content" role="tooltip" data-testid={tooltipId}>
+                        <strong>{selectedChallenge === 'varied' ? 'Random' : formatLoopChallenge(selectedChallenge)}</strong> — {LOOP_CHALLENGE_DESCRIPTIONS[selectedChallenge]}
+                      </span>
+                    </div>
+                    <select id={`generation-loop-challenge-${index}`} className="num-field" value={selectedChallenge} title={LOOP_CHALLENGE_DESCRIPTIONS[selectedChallenge]} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
+                      <option value="varied" title={LOOP_CHALLENGE_DESCRIPTIONS.varied}>Random</option>
+                      {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option} title={LOOP_CHALLENGE_DESCRIPTIONS[option]}>{formatLoopChallenge(option)}</option>)}
+                    </select>
+                  </div>
+                )
+              })}
             </div>
           </Section>
 
