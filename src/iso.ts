@@ -1,4 +1,4 @@
-import { WATER_OFFSET_Y } from './constants'
+import { WATER_OFFSET_Y, Z_STEP_HEIGHT } from './constants'
 
 export function isoProject(col: number, row: number, tileW: number, tileH: number): { x: number; y: number } {
   return {
@@ -14,12 +14,33 @@ export function isoUnproject(x: number, y: number, tileW: number, tileH: number)
   }
 }
 
+export function isoUnprojectAtZ(
+  x: number,
+  y: number,
+  tileW: number,
+  tileH: number,
+  z: number,
+  zStepHeight = Z_STEP_HEIGHT,
+): { col: number; row: number } {
+  return isoUnproject(x, y + z * zStepHeight, tileW, tileH)
+}
+
 export function isoFloorPoints(col: number, row: number, tileW: number, tileH: number): number[] {
   const top = isoProject(col, row, tileW, tileH)
   const right = isoProject(col + 1, row, tileW, tileH)
   const bottom = isoProject(col + 1, row + 1, tileW, tileH)
   const left = isoProject(col, row + 1, tileW, tileH)
   return [top.x, top.y, right.x, right.y, bottom.x, bottom.y, left.x, left.y]
+}
+
+export function isoProjectAtZ(col: number, row: number, tileW: number, tileH: number, z: number, zStepHeight = Z_STEP_HEIGHT): { x: number; y: number } {
+  const point = isoProject(col, row, tileW, tileH)
+  return { x: point.x, y: point.y - z * zStepHeight }
+}
+
+export function isoFloorPointsAtZ(col: number, row: number, tileW: number, tileH: number, z: number, zStepHeight = Z_STEP_HEIGHT): number[] {
+  const points = isoFloorPoints(col, row, tileW, tileH)
+  return points.map((value, index) => index % 2 === 1 ? value - z * zStepHeight : value)
 }
 
 export function isoFrontFacePoints(col: number, row: number, tileW: number, tileH: number, faceH: number): number[] {

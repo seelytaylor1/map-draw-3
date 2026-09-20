@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
-import { isoUnproject, isoProject, isoFloorPoints } from './iso'
+import { isoUnproject, isoUnprojectAtZ, isoProjectAtZ, isoFloorPointsAtZ } from './iso'
 import { buildIsoScene } from './isoScene'
 import { deriveFaceColors } from './faceColors'
 import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
@@ -349,7 +349,7 @@ export default function App() {
     const scale = stage.scaleX()
     const worldX = (clientX - rect.left - stage.x()) / scale
     const worldY = (clientY - rect.top - stage.y()) / scale
-    const { col: fc, row: fr } = isoUnproject(worldX, worldY, TILE_PX * 2, TILE_PX)
+    const { col: fc, row: fr } = isoUnprojectAtZ(worldX, worldY, TILE_PX * 2, TILE_PX, activeZRef.current)
     const col = Math.floor(fc)
     const row = Math.floor(fr)
     return (col >= 0 && row >= 0 && col < cols && row < rows) ? { col, row } : null
@@ -532,7 +532,7 @@ export default function App() {
         let endWorldX: number
         let endWorldY: number
         if (showIso) {
-          const center = isoProject(rEnd.col + 0.5, rEnd.row + 0.5, TILE_PX * 2, TILE_PX)
+          const center = isoProjectAtZ(rEnd.col + 0.5, rEnd.row + 0.5, TILE_PX * 2, TILE_PX, activeZRef.current)
           endWorldX = center.x
           endWorldY = center.y
         } else {
@@ -1031,7 +1031,7 @@ export default function App() {
           for (let c = 0; c < cols; c += 2) {
             if (getTile(levelGrid, cols, c, r) === WALL) {
               const dotPos = showIso
-                ? isoProject(c + 0.5, r + 0.5, TILE_PX * 2, TILE_PX)
+                ? isoProjectAtZ(c + 0.5, r + 0.5, TILE_PX * 2, TILE_PX, z)
                 : { x: c * TILE_PX + TILE_PX, y: r * TILE_PX + TILE_PX }
               layer.add(new Konva.Circle({
                 x: dotPos.x,
@@ -1055,7 +1055,7 @@ export default function App() {
       if (t.col < 0 || t.row < 0 || t.col >= cols || t.row >= rows) continue
       if (showIso) {
         layer.add(new Konva.Line({
-          points: isoFloorPoints(t.col, t.row, TILE_PX * 2, TILE_PX),
+          points: isoFloorPointsAtZ(t.col, t.row, TILE_PX * 2, TILE_PX, activeZ),
           closed: true,
           fill: ghostFill,
           stroke: undefined,
@@ -1074,7 +1074,7 @@ export default function App() {
     // Rough mode: anchor dot + ghost rect preview during placed1
     if (roughStart && roughPhase !== 'idle') {
       const dotPos = showIso
-        ? isoProject(roughStart.col + 0.5, roughStart.row + 0.5, TILE_PX * 2, TILE_PX)
+        ? isoProjectAtZ(roughStart.col + 0.5, roughStart.row + 0.5, TILE_PX * 2, TILE_PX, activeZ)
         : { x: roughStart.col * TILE_PX + TILE_PX / 2, y: roughStart.row * TILE_PX + TILE_PX / 2 }
       layer.add(new Konva.Circle({
         x: dotPos.x,
@@ -1092,7 +1092,7 @@ export default function App() {
         for (let r = minR; r <= maxR; r++) {
           for (let c = minC; c <= maxC; c++) {
             layer.add(new Konva.Line({
-              points: isoFloorPoints(c, r, TILE_PX * 2, TILE_PX),
+              points: isoFloorPointsAtZ(c, r, TILE_PX * 2, TILE_PX, activeZ),
               closed: true,
               fill: GHOST_COLOR,
               strokeWidth: 0,
@@ -1116,7 +1116,7 @@ export default function App() {
       if (flip.col < 0 || flip.row < 0 || flip.col >= cols || flip.row >= rows) continue
       if (showIso) {
         layer.add(new Konva.Line({
-          points: isoFloorPoints(flip.col, flip.row, TILE_PX * 2, TILE_PX),
+          points: isoFloorPointsAtZ(flip.col, flip.row, TILE_PX * 2, TILE_PX, activeZ),
           closed: true,
           fill: 'rgba(255,80,0,0.45)',
           strokeWidth: 0,

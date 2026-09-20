@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isoProject, isoUnproject, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints } from './iso'
+import { isoProject, isoUnproject, isoUnprojectAtZ, isoFloorPoints, isoFrontFacePoints, isoEastFacePoints, isoWaterPoints } from './iso'
 
 describe('isoProject', () => {
   it('origin stays at origin', () => {
@@ -120,6 +120,20 @@ describe('isoUnproject', () => {
     const result = isoUnproject(midX, midY, tileW, tileH)
     expect(result.col).toBeCloseTo(1.5)
     expect(result.row).toBeCloseTo(0)
+  })
+
+  it('inverts a point on a shifted Z plane', () => {
+    const tileW = 64
+    const tileH = 32
+    const zStepHeight = 18
+    const base = isoProject(25.5, 25.5, tileW, tileH)
+    const z = -5
+    const shifted = { x: base.x, y: base.y - z * zStepHeight }
+
+    const result = isoUnprojectAtZ(shifted.x, shifted.y, tileW, tileH, z, zStepHeight)
+
+    expect(result.col).toBeCloseTo(25.5)
+    expect(result.row).toBeCloseTo(25.5)
   })
 })
 
