@@ -15,8 +15,7 @@ Map Draw 3 is a browser and desktop dungeon-map editor for tabletop RPG battle m
 
 ## Features
 
-- **Mission-first dungeon generation**: Choose Critical Spine, Central Hub, or Branch-and-merge layouts; tune complexity; set a seed; and add loops with challenges such as alternate paths, hidden shortcuts, locks and keys, and dangerous routes.
-- **Generation review**: Preflight checks show capacity, room anchors, branches, challenge density, derived keys and locks, and rejected attempts before a generated dungeon replaces the canvas.
+- **Dungeon generation**: Choose Spine, Hub, or Branches; tune complexity, seed, loops, and challenges; then review capacity before replacing the canvas.
 - **Draw & paint**: Use square or circle brushes for floors, water, lava, darkness, and erasing. Environment painting includes grass, road, sand, mud, stone, mossy stone, and rubble with custom colors.
 - **Caves and structures**: Create rough caves with a three-click workflow, work across Z-levels, and place ascending or descending stairs and ramps.
 - **Assets and annotations**: Search 88 map icons and 137 object assets, then place, move, rotate, mirror, recolor, and scale them. Add numbered or named labels to the map.
