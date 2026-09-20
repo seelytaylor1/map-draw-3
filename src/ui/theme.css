@@ -545,6 +545,55 @@ body.resizing-panel, body.resizing-panel * { cursor: ew-resize !important; user-
   color-scheme: dark;
 }
 .seed-row { margin-top: 3px; }
+.field-label-with-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.field-label-with-tooltip label { cursor: default; }
+.tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid rgba(207, 155, 70, 0.38);
+  border-radius: 50%;
+  color: var(--accent-strong);
+  background: rgba(207, 155, 70, 0.1);
+  cursor: help;
+}
+.tooltip-trigger:hover,
+.tooltip-trigger:focus-visible { background: var(--accent-wash-strong); }
+.tooltip-content {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 7px);
+  left: 0;
+  width: 220px;
+  padding: 7px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--panel-top);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
+  font-size: 10px;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  visibility: hidden;
+}
+.field-label-with-tooltip:hover .tooltip-content,
+.field-label-with-tooltip:focus-within .tooltip-content {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
 
 .preflight-summary {
   display: flex;
@@ -640,9 +689,19 @@ body.resizing-panel, body.resizing-panel * { cursor: ew-resize !important; user-
   margin: 0;
 }
 
+.loop-count-field::-webkit-outer-spin-button,
+.loop-count-field::-webkit-inner-spin-button {
+  -webkit-appearance: auto;
+  opacity: 1;
+}
+
 .num-field[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+.loop-count-field[type='number'] {
+  -moz-appearance: auto;
+  appearance: auto;
 }
 
 /* text + range inputs */

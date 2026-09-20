@@ -33,6 +33,7 @@ import {
   IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconFlame, IconCave,
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
   IconStampFloor, IconSave, IconFolder, IconImage,
+  IconInfo,
 } from './ui/icons'
 import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
@@ -188,7 +189,6 @@ export default function App() {
   const [generationStyle, setGenerationStyle] = useState<GenerationStyle>('spine-shortcuts')
   const [generationComplexity, setGenerationComplexity] = useState<ComplexityPreset>('standard')
   const [generationLoopCount, setGenerationLoopCount] = useState(1)
-  const [generationLoopPreference, setGenerationLoopPreference] = useState<LoopPreference>('varied')
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
@@ -203,13 +203,13 @@ export default function App() {
     orientation: cols >= rows ? 'landscape' : 'portrait',
     complexity: generationComplexity,
     loopCount: generationLoopCount,
-    loopPreference: generationLoopPreference,
+    loopPreference: 'varied',
     loopChallenges: generationLoopChallenges.slice(0, Math.max(0, generationLoopCount)),
   }
   const generationPreflight = preflightGeneration(generationRequest)
 
   const setRequestedLoopCount = (value: number) => {
-    const next = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+    const next = Number.isFinite(value) ? Math.min(20, Math.max(0, Math.floor(value))) : 0
     setGenerationLoopCount(next)
     setGenerationLoopChallenges(previous => Array.from({ length: next }, (_, index) => previous[index]))
   }
@@ -2024,43 +2024,52 @@ export default function App() {
 
           <Section title="Dungeon setup" icon={<IconCave size={14} />} defaultOpen>
             <div className="field-stack">
-              <label className="field-row" htmlFor="generation-style">
-                <span>Layout</span>
+              <div className="field-row">
+                <div className="field-label-with-tooltip">
+                  <label htmlFor="generation-style">Layout</label>
+                  <button type="button" className="tooltip-trigger" aria-label="Layout information" aria-describedby="layout-tooltip">
+                    <IconInfo size={12} />
+                  </button>
+                  <span id="layout-tooltip" className="tooltip-content" role="tooltip">
+                    Spine: a linear Start-to-Goal path with loops returning to the main route. Hub: a central start with room spokes and loops returning to it. Branches: routes split from a room chain and merge at explicit junctions.
+                  </span>
+                </div>
                 <select id="generation-style" className="num-field" value={generationStyle} onChange={e => setGenerationStyle(e.target.value as GenerationStyle)} aria-label="Generation style">
-                  <option value="spine-shortcuts">Critical Spine</option>
-                  <option value="orbit-gates">Central Hub</option>
-                  <option value="cavern-pressure">Branch-and-merge</option>
+                  <option value="spine-shortcuts">Spine</option>
+                  <option value="orbit-gates">Hub</option>
+                  <option value="cavern-pressure">Branches</option>
                 </select>
-              </label>
-              <label className="field-row" htmlFor="generation-complexity">
-                <span>Complexity</span>
+              </div>
+              <div className="field-row">
+                <div className="field-label-with-tooltip">
+                  <label htmlFor="generation-complexity">Complexity</label>
+                  <button type="button" className="tooltip-trigger" aria-label="Layout complexity information" aria-describedby="layout-complexity-tooltip">
+                    <IconInfo size={12} />
+                  </button>
+                  <span id="layout-complexity-tooltip" className="tooltip-content" role="tooltip">
+                    Compact uses fewer rooms and branches. Standard balances space and variety. Dense packs in more rooms, branches, and challenges.
+                  </span>
+                </div>
                 <select id="generation-complexity" className="num-field" value={generationComplexity} onChange={e => setGenerationComplexity(e.target.value as ComplexityPreset)} aria-label="Complexity preset">
                   <option value="compact">Compact</option>
                   <option value="standard">Standard</option>
                   <option value="dense">Dense</option>
                 </select>
-              </label>
+              </div>
             </div>
           </Section>
 
           <Section title="Loops & challenges" icon={<IconRotate size={14} />} defaultOpen>
             <div className="field-stack">
               <label className="field-row" htmlFor="generation-loop-count">
-                <span>Loops</span>
-                <input id="generation-loop-count" className="num-field" type="number" min={0} max={20} value={generationLoopCount} onChange={e => setRequestedLoopCount(Number(e.target.value))} aria-label="Loop count" />
-              </label>
-              <label className="field-row">
-                <span>Default challenge</span>
-                <select className="num-field" value={generationLoopPreference} onChange={e => setGenerationLoopPreference(e.target.value as LoopPreference)} aria-label="Loop preference">
-                  <option value="varied">Varied</option>
-                  {ALL_LOOP_CHALLENGES.map(challenge => <option key={challenge} value={challenge}>{challenge.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
-                </select>
+                <span>Number of loops</span>
+                <input id="generation-loop-count" className="num-field loop-count-field" type="number" min={0} max={20} step={1} value={generationLoopCount} onChange={e => setRequestedLoopCount(Number(e.target.value))} aria-label="Number of loops" />
               </label>
               {generationLoopChallenges.slice(0, generationLoopCount).map((challenge, index) => (
                 <label className="field-row" htmlFor={`generation-loop-challenge-${index}`} key={`loop-challenge-${index}`}>
                   <span>Loop {index + 1}</span>
-                  <select id={`generation-loop-challenge-${index}`} className="num-field" value={challenge ?? generationLoopPreference} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
-                    <option value="varied">Varied</option>
+                  <select id={`generation-loop-challenge-${index}`} className="num-field" value={challenge ?? 'varied'} onChange={e => setGenerationLoopChallenges(previous => previous.map((current, itemIndex) => itemIndex === index ? e.target.value as LoopPreference : current))} aria-label={`Loop ${index + 1} challenge`}>
+                    <option value="varied">Random</option>
                     {ALL_LOOP_CHALLENGES.map(option => <option key={option} value={option}>{option.replace(/-/g, ' ').replace(/\b\w/g, character => character.toUpperCase())}</option>)}
                   </select>
                 </label>

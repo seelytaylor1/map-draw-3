@@ -325,38 +325,39 @@ describe('App load lifecycle', () => {
     openWorkspace('Generate')
 
     expect(screen.getByLabelText(/generation style/i)).toHaveValue('spine-shortcuts')
-    expect(screen.getByRole('option', { name: /central hub/i })).toHaveValue('orbit-gates')
+    expect(screen.getByRole('option', { name: 'Hub' })).toHaveValue('orbit-gates')
     expect(screen.getByLabelText(/complexity preset/i)).toHaveValue('standard')
     expect(screen.queryByLabelText(/key count/i)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/lock count/i)).not.toBeInTheDocument()
-    expect(screen.getByLabelText(/loop count/i)).toHaveValue(1)
+    expect(screen.getByLabelText(/number of loops/i)).toHaveValue(1)
     expect(screen.getByLabelText(/loop 1 challenge/i)).toHaveValue('varied')
+    expect(screen.getByRole('option', { name: 'Random' })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/default challenge|loop preference/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Layout information' })).toHaveAttribute('aria-describedby', 'layout-tooltip')
+    expect(screen.getByText(/spine: a linear start-to-goal path.*hub: a central start.*branches: routes split/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /layout complexity information/i })).toHaveAttribute('aria-describedby', 'layout-complexity-tooltip')
     expect(screen.getAllByRole('option', { name: /unknown return/i }).length).toBeGreaterThan(0)
     expect(screen.getByText(/ready to generate|tight fit/i)).toBeInTheDocument()
     expect(screen.getByText(/mission nodes/i)).toBeInTheDocument()
   })
 
-  it('inherits the global challenge for unspecified loops while preserving explicit overrides', () => {
+  it('defaults each loop to random while preserving explicit overrides', () => {
     render(<App />)
     openWorkspace('Generate')
 
-    const globalPreference = screen.getByLabelText(/loop preference/i) as HTMLSelectElement
     const loopOne = screen.getByLabelText(/loop 1 challenge/i) as HTMLSelectElement
-    fireEvent.change(globalPreference, { target: { value: 'lock-and-key' } })
+    expect(loopOne.value).toBe('varied')
+
+    fireEvent.change(loopOne, { target: { value: 'lock-and-key' } })
     expect(loopOne.value).toBe('lock-and-key')
     expect(screen.getByText(/derived dependencies: 1 key · 1 lock/i)).toBeInTheDocument()
-
-    fireEvent.change(loopOne, { target: { value: 'varied' } })
-    fireEvent.change(globalPreference, { target: { value: 'double-lock' } })
-    expect(loopOne.value).toBe('varied')
-    expect(screen.getByText(/derived dependencies:/i)).toBeInTheDocument()
   })
 
-  it('preserves loop choices by index and defaults newly added loops to the inherited value', () => {
+  it('preserves loop choices by index and defaults newly added loops to random', () => {
     render(<App />)
     openWorkspace('Generate')
 
-    const count = screen.getByLabelText(/loop count/i) as HTMLInputElement
+    const count = screen.getByLabelText(/number of loops/i) as HTMLInputElement
     const loopOne = screen.getByLabelText(/loop 1 challenge/i) as HTMLSelectElement
     fireEvent.change(loopOne, { target: { value: 'hidden-shortcut' } })
     fireEvent.change(count, { target: { value: '2' } })

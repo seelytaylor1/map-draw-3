@@ -153,6 +153,13 @@ export const IconCompass = (p: IconProps) => (
   </Base>
 )
 
+export const IconInfo = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8h.01" />
+  </Base>
+)
+
 export const IconStampFloor = (p: IconProps) => (
   <Base {...p}><rect x="4" y="11" width="16" height="9" rx="1" /><path d="M4 11 12 4l8 7" /></Base>
 )
