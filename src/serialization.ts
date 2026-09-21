@@ -17,6 +17,7 @@ export interface MapSave {
   wallOpacity: number
   brushShape: 'square' | 'circle'
   showGrid: boolean
+  playerView: boolean
   show3D: boolean
   isoFaceColor?: string
   showHatching?: boolean
@@ -45,6 +46,7 @@ export interface DeserializedMap {
   wallOpacity: number
   brushShape: 'square' | 'circle'
   showGrid: boolean
+  playerView: boolean
   show3D: boolean
   isoFaceColor: string
   showHatching: boolean
@@ -72,6 +74,7 @@ export function serialize(params: {
   wallOpacity: number
   brushShape: 'square' | 'circle'
   showGrid: boolean
+  playerView?: boolean
   show3D: boolean
   isoFaceColor: string
   showHatching: boolean
@@ -103,6 +106,7 @@ export function serialize(params: {
     wallOpacity: params.wallOpacity,
     brushShape: params.brushShape,
     showGrid: params.showGrid,
+    playerView: params.playerView === true,
     show3D: params.show3D,
     isoFaceColor: params.isoFaceColor,
     showHatching: params.showHatching,
@@ -153,6 +157,7 @@ export function deserialize(raw: unknown): DeserializedMap {
   if (typeof s['wallOpacity'] !== 'number') throw new Error('Invalid wallOpacity')
   if (s['brushShape'] !== 'square' && s['brushShape'] !== 'circle') throw new Error('Invalid brushShape')
   if (typeof s['showGrid'] !== 'boolean') throw new Error('Invalid showGrid')
+  const playerView = s['playerView'] === true
   const show3D = s['show3D'] === true
   const isoFaceColor = typeof s['isoFaceColor'] === 'string' ? s['isoFaceColor'] : '#6a5040'
 
@@ -299,6 +304,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     wallOpacity: s['wallOpacity'] as number,
     brushShape: s['brushShape'] as 'square' | 'circle',
     showGrid: s['showGrid'] as boolean,
+    playerView,
     show3D,
     isoFaceColor,
     showHatching,

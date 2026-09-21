@@ -79,6 +79,58 @@ describe('buildStampScene — top-down view of object stamps', () => {
     expect(iso.find(item => item.id === 'color-floor')?.variant.color).toBe('#e04b61')
     expect(iso.find(item => item.id === 'color-object')?.variant.color).toBe('#4b83e0')
   })
+
+  it('hides trap, hazard, and chest icons when player view is enabled', () => {
+    const trapStamp: Stamp = { id: 'trap', type: 'Trap1x1', col: 0, row: 0, rotation: 0, z: 0 }
+    const legacyTrapStamp: Stamp = { id: 'legacy-trap', type: 'trap', col: 0, row: 1, rotation: 0, z: 0 }
+    const hazardStamp: Stamp = { id: 'hazard', type: 'Danger1x1', col: 0, row: 2, rotation: 0, z: 0 }
+    const legacyHazardStamp: Stamp = { id: 'legacy-hazard', type: 'danger', col: 0, row: 3, rotation: 0, z: 0 }
+    const chestStamp: Stamp = { id: 'chest', type: 'Chest1x1', col: 0, row: 4, rotation: 0, z: 0 }
+    const doorStamp: Stamp = { id: 'door', type: 'door', col: 1, row: 0, rotation: 0, z: 0 }
+    const items = buildStampScene({
+      stamps: [trapStamp, legacyTrapStamp, hazardStamp, legacyHazardStamp, chestStamp, doorStamp],
+      selectedStampId: null,
+      stampImages: new Map([['Trap1x1', fakeImage()], ['trap', fakeImage()], ['Danger1x1', fakeImage()], ['danger', fakeImage()], ['Chest1x1', fakeImage()], ['door', fakeImage()]]),
+      activeZ: 0,
+      tilePx: TILE_PX,
+      showIso: false,
+      showTrapIcons: false,
+    })
+
+    expect(items.map(item => item.id)).toEqual(['door'])
+  })
+
+  it('hides secret-door icons when player view is enabled', () => {
+    const secretDoor: Stamp = { id: 'secret', type: 'DoorSecret1x1', col: 0, row: 0, rotation: 0, z: 0 }
+    const doorStamp: Stamp = { id: 'door', type: 'door', col: 1, row: 0, rotation: 0, z: 0 }
+    const items = buildStampScene({
+      stamps: [secretDoor, doorStamp],
+      selectedStampId: null,
+      stampImages: new Map([['DoorSecret1x1', fakeImage()], ['door', fakeImage()]]),
+      activeZ: 0,
+      tilePx: TILE_PX,
+      showIso: false,
+      showSecretDoors: false,
+    })
+
+    expect(items.map(item => item.id)).toEqual(['door'])
+  })
+
+  it('renders locked doors as regular doors in player view', () => {
+    const lockedDoor: Stamp = { id: 'locked', type: 'DoorLocked1x1', col: 0, row: 0, rotation: 0, z: 0 }
+    const items = buildStampScene({
+      stamps: [lockedDoor],
+      selectedStampId: null,
+      stampImages: new Map([['DoorLocked1x1', fakeImage()], ['Door1x1', fakeImage()]]),
+      activeZ: 0,
+      tilePx: TILE_PX,
+      showIso: false,
+      showLockedDoors: false,
+    })
+
+    expect(items).toHaveLength(1)
+    expect(items[0].stampType).toBe('Door1x1')
+  })
 })
 
 describe('buildLabelScene', () => {
@@ -88,6 +140,15 @@ describe('buildLabelScene', () => {
     ], null, TILE_PX)
 
     expect(items[0].text).toBe('3 Throne Room')
+  })
+
+  it('hides generated room numbers when player view is enabled', () => {
+    const items = buildLabelScene([
+      { id: 'room-1', col: 1, row: 2, text: 'Throne Room', number: 3, numberOnly: true },
+      { id: 'note-1', col: 2, row: 2, text: 'Secret door' },
+    ], null, TILE_PX, false)
+
+    expect(items.map(item => item.id)).toEqual(['note-1'])
   })
 
   it('keeps a label color in the scene for rendering', () => {
@@ -163,6 +224,21 @@ describe('buildTileScene — active blank levels', () => {
     expect(levels.map(level => level.z)).toEqual([0, 1])
     expect(levels[1].opacity).toBe(1)
     expect(levels[1].grid).toEqual(createGrid(3, 3))
+  })
+})
+
+describe('buildTileScene — player view secret doors', () => {
+  it('renders secret-door cells as walls without changing the source grid', () => {
+    const grid = paintTiles(createGrid(3, 3), 3, [{ col: 1, row: 1 }], FLOOR)
+    const secretDoor: Stamp = { id: 'secret', type: 'DoorSecret1x1', col: 1, row: 1, rotation: 0, z: 0 }
+    const scene = buildTileScene(tileSceneParams({
+      grids: new Map([[0, grid]]),
+      secretDoorStamps: [secretDoor],
+    }))
+
+    expect(scene.levels[0].grid[4]).toBe(WALL)
+    expect(grid[4]).toBe(FLOOR)
+    expect(scene.levels[0].tiles.some(tile => tile.rect.x === 20 && tile.rect.y === 20)).toBe(false)
   })
 })
 

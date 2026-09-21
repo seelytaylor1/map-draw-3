@@ -33,7 +33,6 @@ export const GENERATED_DOORWAY_STAMP_TYPES = {
 export const GENERATED_DECORATION_STAMP_TYPES = {
   hallwayTrap: ['Trap1x1'],
   hallwayHazard: ['Danger1x1'],
-  monster: ['TriangleArrowhead1x1'],
   roomTrap: ['Trap1x1'],
   roomHazard: ['Danger1x1'],
   treasure: ['Chest1x1'],

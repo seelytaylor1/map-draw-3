@@ -6,6 +6,7 @@ import { FACE_PX, FLOOR, FLOOR_COLOR, LAVA, DARKNESS, WATER, WATER_COLOR, WATER_
 import { STEP_TREAD_COUNT, isoStepTreads, type StepRun } from './steps'
 import { isoRampSurface, type RampRun } from './ramps'
 import { deriveFaceColors } from './faceColors'
+import type { Stamp } from './stamps'
 
 const TILE_W = 40
 const TILE_H = 20
@@ -222,6 +223,14 @@ describe('buildIsoScene: multiple z levels', () => {
     const br = isoProject(8, 8, TILE_W, TILE_H)
     expect(shapes[0].points[0]).toBe(tl.x)
     expect(shapes[0].points[5]).toBe(br.y)
+  })
+
+  it('renders a secret-door cell as a wall in player view', () => {
+    const grids = new Map([[0, gridWith([{ col: 1, row: 1 }])]])
+    const secretDoor: Stamp = { id: 'secret', type: 'DoorSecret1x1', col: 1, row: 1, rotation: 0, z: 0 }
+    const shapes = buildIsoScene(params({ grids, secretDoorStamps: [secretDoor] }))
+
+    expect(shapes.some(shape => shape.points.join(',') === isoFloorPoints(1, 1, TILE_W, TILE_H).join(','))).toBe(false)
   })
 })
 

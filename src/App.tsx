@@ -46,6 +46,7 @@ import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreferen
 import { formatTileCoordinate } from './coordinates'
 import { MapLegend } from './MapLegend'
 import { RoomLedger } from './RoomLedger'
+import { applyPlayerViewSecretDoors } from './playerView'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -185,6 +186,7 @@ export default function App() {
   const [wallOutlineColor, setWallOutlineColor] = useState('#000000')
   const [wallOutlineStyle, setWallOutlineStyle] = useState<'clean' | 'rough'>('clean')
   const [showGrid, setShowGrid] = useState(false)
+  const [playerView, setPlayerView] = useState(false)
   const [show3D, setShow3D] = useState(false)
   const [showIso, setShowIso] = useState(false)
   const [isoFaceColor, setIsoFaceColor] = useState('#6a5040')
@@ -810,6 +812,7 @@ export default function App() {
         floorColor,
         waterColor, lavaColor, darknessColor,
         environmentalColors: environmentalColors as Map<TileState, string>,
+        secretDoorStamps: playerView ? stamps : [],
       })
       const sceneBuildEnd = diagnosticRequest ? performance.now() : 0
       const groupingStart = diagnosticRequest ? performance.now() : 0
@@ -919,6 +922,7 @@ export default function App() {
       floorColor,
       waterColor, lavaColor, darknessColor,
       environmentalColors: environmentalColors as Map<TileState, string>,
+      secretDoorStamps: playerView ? stamps : [],
     })
 
     if (scene.wallBackground) {
@@ -1048,7 +1052,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor])
+  }, [grids, stamps, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, playerView, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor])
 
   // Stamp layer
   useEffect(() => {
@@ -1056,11 +1060,11 @@ export default function App() {
     if (!layer || !stampImages) return
     layer.destroyChildren()
 
-    const items = buildStampScene({ stamps, selectedStampId, stampImages, activeZ, tilePx: TILE_PX, showIso })
+    const items = buildStampScene({ stamps, selectedStampId, stampImages, activeZ, tilePx: TILE_PX, showIso, showTrapIcons: !playerView, showSecretDoors: !playerView, showLockedDoors: !playerView })
 
     for (const item of items) {
       const stamp = stamps.find(s => s.id === item.id)!
-      const imgEl = stampImages.get(stamp.type)!
+      const imgEl = stampImages.get(item.stampType)!
       const stampImage = colorizeStampImage(imgEl, stamp.color)
       const v = item.variant
 
@@ -1151,7 +1155,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [stamps, selectedStampId, stampImages, cols, rows, showIso, activeZ])
+  }, [stamps, selectedStampId, stampImages, cols, rows, showIso, activeZ, playerView])
 
   // Non-exported layer: dot pattern + ghost cursor preview
   useEffect(() => {
@@ -1168,7 +1172,7 @@ export default function App() {
         const dotColor = isLight
           ? `rgba(0,0,0,${levelOpacity})`
           : `rgba(255,255,255,${levelOpacity})`
-        const levelGrid = getGrid(grids, z, cols, rows)
+        const levelGrid = applyPlayerViewSecretDoors(getGrid(grids, z, cols, rows), cols, rows, z, playerView ? stamps : [])
         for (let r = 0; r < rows; r += 2) {
           for (let c = 0; c < cols; c += 2) {
             if (getTile(levelGrid, cols, c, r) === WALL) {
@@ -1273,7 +1277,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor])
+  }, [grids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor])
 
   // Labels layer
   useEffect(() => {
@@ -1282,7 +1286,7 @@ export default function App() {
     layer.destroyChildren()
     if (showIso) { layer.batchDraw(); return }
 
-    const items = buildLabelScene(labels, selectedLabelId, TILE_PX)
+    const items = buildLabelScene(labels, selectedLabelId, TILE_PX, !playerView)
 
     for (const item of items) {
       const textNode = new Konva.Text({
@@ -1355,7 +1359,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [cols, labels, rows, showIso, selectedLabelId])
+  }, [cols, labels, playerView, rows, showIso, selectedLabelId])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
@@ -1557,7 +1561,7 @@ export default function App() {
   }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, floorColor, waterColor, lavaColor, darknessColor])
 
   const getSerializedMap = () => {
-    const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
+    const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
     return JSON.stringify(mapSave, null, 2)
   }
 
@@ -1579,7 +1583,7 @@ export default function App() {
       a.click()
       URL.revokeObjectURL(url)
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
 
   const handleSaveAs = useCallback(async () => {
     if (!isTauri()) return
@@ -1592,7 +1596,7 @@ export default function App() {
       setCurrentFilePath(path)
       setSavedHistoryLength(history.past.length)
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
@@ -1621,6 +1625,7 @@ export default function App() {
     setCols(DEFAULT_COLS)
     setRows(DEFAULT_ROWS)
     setTilesPerInch(DEFAULT_TILES_PER_INCH)
+    setPlayerView(false)
     setFloorColor(FLOOR_COLOR)
     setWaterColor(WATER_COLOR)
     setLavaColor(LAVA_COLOR)
@@ -1785,6 +1790,7 @@ export default function App() {
       setWallOpacity(save.wallOpacity)
       dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape: save.brushShape } })
       setShowGrid(save.showGrid)
+      setPlayerView(save.playerView)
       setShow3D(save.show3D)
       setIsoFaceColor(save.isoFaceColor)
       setShowHatching(save.showHatching)
@@ -2414,6 +2420,15 @@ export default function App() {
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export PNG
           </button>
+
+          <div className="subsection-label">View</div>
+          <ToolButton
+            icon={<IconHash size={14} />}
+            label="Player view"
+            active={playerView}
+            onClick={() => setPlayerView(value => !value)}
+          />
+          <div className="hint">{playerView ? 'Room numbers, trap, hazard and chest icons hidden; secret doors become walls; locked doors become regular doors' : 'Room numbers, trap, hazard and chest icons visible; secret and locked doors shown'}</div>
 
           {loadError && (
             <div className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{loadError}</div>

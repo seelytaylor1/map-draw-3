@@ -151,6 +151,20 @@ describe('App load lifecycle', () => {
     expect(sizeButtons.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('puts the player view toggle on the File tab', () => {
+    render(<App />)
+    openWorkspace('File')
+
+    const playerView = screen.getByRole('button', { name: /player view/i })
+    expect(playerView).not.toHaveClass('active')
+    expect(screen.getByText('Room numbers, trap, hazard and chest icons visible; secret and locked doors shown')).toBeInTheDocument()
+
+    fireEvent.click(playerView)
+
+    expect(playerView).toHaveClass('active')
+    expect(screen.getByText('Room numbers, trap, hazard and chest icons hidden; secret doors become walls; locked doors become regular doors')).toBeInTheDocument()
+  })
+
   it('supports keyboard step adjustments for canvas size fields', () => {
     render(<App />)
     openWorkspace('File')

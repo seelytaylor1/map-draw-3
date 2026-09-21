@@ -794,9 +794,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
     for (const [encounterIndex, encounter] of encounters.entries()) {
       const point = [roomDecorationPoint(module), ...module.footprint].find(candidate => candidate && !occupied.has(keyOf(candidate)))
       if (!point) continue
-      if (encounter === 'monster') {
-        addOptional(GENERATED_DECORATION_STAMP_TYPES.monster, `generated-monster-${module.id}-${encounterIndex}`, point)
-      } else if (encounter === 'trap') {
+      if (encounter === 'trap') {
         addOptional(GENERATED_DECORATION_STAMP_TYPES.roomTrap, `generated-room-trap-${module.id}-${encounterIndex}`, point)
       } else if (encounter === 'hazard') {
         addOptional(GENERATED_DECORATION_STAMP_TYPES.roomHazard, `generated-room-hazard-${module.id}-${encounterIndex}`, point)

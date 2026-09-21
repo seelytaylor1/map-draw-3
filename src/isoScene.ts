@@ -3,6 +3,8 @@ import { getTile } from './grid'
 import { isoEastFacePoints, isoFloorPoints, isoFrontFacePoints, isoProject, isoWaterPoints } from './iso'
 import { isoStepSideFaces, isoStepTreads, stepTreadCenters, type StepRun } from './steps'
 import { isoRampSideFace, isoRampSurface, rampCenter, type RampRun } from './ramps'
+import { isSecretDoorStamp, type Stamp } from './stamps'
+import { applyPlayerViewSecretDoors } from './playerView'
 
 export interface IsoSceneParams {
   grids: Map<number, Uint8Array>
@@ -25,6 +27,7 @@ export interface IsoSceneParams {
   lavaColor: string
   darknessColor: string
   environmentalColors?: Map<TileState, string>
+  secretDoorStamps?: readonly Stamp[]
 }
 
 export interface IsoShape {
@@ -74,6 +77,7 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
   const facePx = p.facePx ?? FACE_PX
   const floorColor = p.floorColor ?? FLOOR_COLOR
   const out: IsoShape[] = []
+  const hiddenSecretDoors = (p.secretDoorStamps ?? []).filter(isSecretDoorStamp)
 
   if (p.wallOpacity > 0) {
     const tl = isoProject(0, 0, p.tileW, p.tileH)
@@ -90,9 +94,10 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
   const zSet = new Set(p.grids.keys())
   for (const run of p.steps) zSet.add(run.z)
   for (const run of p.ramps) zSet.add(run.z)
+  for (const stamp of hiddenSecretDoors) zSet.add(stamp.z)
   const zs = [...zSet].sort((a, b) => a - b)
   for (const z of zs) {
-    const grid = p.grids.get(z)
+    const grid = applyPlayerViewSecretDoors(p.grids.get(z) ?? new Uint8Array(p.cols * p.rows), p.cols, p.rows, z, hiddenSecretDoors)
     const yOff = -z * Z_STEP_HEIGHT
     const items: Renderable[] = []
     if (grid) for (let r = 0; r < p.rows; r++) {

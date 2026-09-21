@@ -17,7 +17,8 @@ import {
   buildHatchPolylines, buildWallOutlineSegments, mergeOutlineSegments,
   roughenSegments, varyWidthsAlongStroke, OUTLINE_ROUGH_OPTS,
 } from './patterns'
-import { isObjectStamp, stampSize, type Stamp, type StampType, type ObjectStampType } from './stamps'
+import { isChestStamp, isHazardStamp, isLockedDoorStamp, isObjectStamp, isSecretDoorStamp, stampSize, type Stamp, type StampType, type ObjectStampType } from './stamps'
+import { applyPlayerViewSecretDoors } from './playerView'
 import { stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
 import { getLabelDisplayText, type Label } from './labels'
@@ -80,6 +81,7 @@ export interface TileSceneState {
   lavaColor: string
   darknessColor: string
   environmentalColors: Map<TileState, string>
+  secretDoorStamps?: readonly Stamp[]
 }
 
 export interface TileScene {
@@ -195,7 +197,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
     grids, steps, ramps, cols, rows, activeZ, tilePx, facePx,
     show3D, showGrid, showHatching, showWallOutline, wallOutlineColor, wallOutlineStyle,
     wallColor, wallOpacity, selectedStepId, selectedRampId, floorColor = FLOOR_COLOR,
-    waterColor, lavaColor, darknessColor, environmentalColors,
+    waterColor, lavaColor, darknessColor, environmentalColors, secretDoorStamps = [],
   } = state
 
   const allCustomColors = new Map(environmentalColors)
@@ -203,6 +205,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
   allCustomColors.set(WATER, waterColor)
   allCustomColors.set(LAVA, lavaColor)
   allCustomColors.set(DARKNESS, darknessColor)
+  const hiddenSecretDoors = secretDoorStamps.filter(isSecretDoorStamp)
 
   const zSet = new Set(grids.keys())
   // The active level may still be an unmaterialized blank grid. It must
@@ -211,12 +214,13 @@ export function buildTileScene(state: TileSceneState): TileScene {
   zSet.add(activeZ)
   for (const run of steps) zSet.add(run.z)
   for (const run of ramps) zSet.add(run.z)
+  for (const stamp of hiddenSecretDoors) zSet.add(stamp.z)
 
   const levels: LevelScene[] = []
 
   const belowAndActive = [...zSet].filter(z => z <= activeZ).sort((a, b) => a - b)
   for (const z of belowAndActive) {
-    const levelGrid = grids.get(z) ?? createGrid(cols, rows)
+    const levelGrid = applyPlayerViewSecretDoors(grids.get(z) ?? createGrid(cols, rows), cols, rows, z, hiddenSecretDoors)
     const faces: PxRect[] = []
     if (show3D) {
       for (let r = 0; r < rows; r++) {
@@ -257,7 +261,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
 
   const aboveZs = [...zSet].filter(z => z > activeZ).sort((a, b) => a - b)
   for (const z of aboveZs) {
-    const levelGrid = grids.get(z) ?? createGrid(cols, rows)
+    const levelGrid = applyPlayerViewSecretDoors(grids.get(z) ?? createGrid(cols, rows), cols, rows, z, hiddenSecretDoors)
     const runs = buildRunShapes(steps, ramps, z, tilePx, facePx, false, null, null)
     levels.push({
       z,
@@ -307,17 +311,23 @@ export interface StampSceneState {
   activeZ: number
   tilePx: number
   showIso: boolean
+  showTrapIcons?: boolean
+  showSecretDoors?: boolean
+  showLockedDoors?: boolean
 }
 
 export function buildStampScene(state: StampSceneState): StampSceneItem[] {
-  const { stamps, selectedStampId, stampImages, activeZ, tilePx, showIso } = state
+  const { stamps, selectedStampId, stampImages, activeZ, tilePx, showIso, showTrapIcons = true, showSecretDoors = true, showLockedDoors = true } = state
   const items: StampSceneItem[] = []
 
   for (const stamp of stamps) {
-    const sz = stampSize(stamp.type)
+    if (!showTrapIcons && (isHazardStamp(stamp) || isChestStamp(stamp))) continue
+    if (!showSecretDoors && isSecretDoorStamp(stamp)) continue
+    const stampType = !showLockedDoors && isLockedDoorStamp(stamp) ? 'Door1x1' : stamp.type
+    const sz = stampSize(stampType)
     const w = sz.cols * tilePx
     const h = sz.rows * tilePx
-    const imgEl = stampImages.get(stamp.type)
+    const imgEl = stampImages.get(stampType)
     if (!imgEl) continue
     const selected = stamp.id === selectedStampId
 
@@ -332,7 +342,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
         const zOffsetY = -stamp.z * Z_STEP_HEIGHT
         const pivotY = isoBottom.y - billboardH / 2 + zOffsetY
         items.push({
-          id: stamp.id, stampType: stamp.type, selected, interactive: true,
+          id: stamp.id, stampType, selected, interactive: true,
           variant: { kind: 'isoBillboard', x: pivotX, y: pivotY, w: bw, h: billboardH, rotation: stamp.rotation, mirrored: !!stamp.mirrored, color: stamp.color },
           selectionRect: selected ? { x: pivotX - (bw + 2) / 2, y: pivotY - (billboardH + 2) / 2, w: bw + 2, h: billboardH + 2 } : null,
         })
@@ -343,7 +353,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
         const t = isoStampTransform(stamp.rotation)
         const zOffsetY = -stamp.z * Z_STEP_HEIGHT
         items.push({
-          id: stamp.id, stampType: stamp.type, selected, interactive: true,
+          id: stamp.id, stampType, selected, interactive: true,
           variant: {
             kind: 'isoFloor', x: isoCenter.x, y: isoCenter.y + zOffsetY, w: effectiveW, h: effectiveH, color: stamp.color,
             rotation: t.rotation, scaleX: stamp.mirrored ? -t.scaleX : t.scaleX, scaleY: t.scaleY, skewX: t.skewX,
@@ -365,7 +375,7 @@ export function buildStampScene(state: StampSceneState): StampSceneItem[] {
     const y = stamp.row * tilePx + h / 2
     const interactive = !isAbove
     items.push({
-      id: stamp.id, stampType: stamp.type, selected: interactive && selected, interactive,
+      id: stamp.id, stampType, selected: interactive && selected, interactive,
       variant: {
         kind: 'topdown', x, y, w: effectiveW, h: effectiveH, rotation: stamp.rotation, mirrored: !!stamp.mirrored, color: stamp.color,
         opacity: stampOpacity,
@@ -394,8 +404,8 @@ export interface LabelSceneItem {
   selectionRect: PxRect | null
 }
 
-export function buildLabelScene(labels: Label[], selectedLabelId: string | null, tilePx: number): LabelSceneItem[] {
-  return labels.map(label => {
+export function buildLabelScene(labels: Label[], selectedLabelId: string | null, tilePx: number, showRoomNumbers = true): LabelSceneItem[] {
+  return labels.filter(label => showRoomNumbers || !label.numberOnly).map(label => {
     const displayText = getLabelDisplayText(label)
     const textWidth = tilePx * 4
     const fontSize = label.number !== undefined ? 14 : 10

@@ -138,6 +138,20 @@ describe('deserialize', () => {
     expect(restored.stamps).toEqual([])
   })
 
+  it('round-trips player view', () => {
+    const json = JSON.stringify(serialize({ ...BASE, playerView: true }))
+    const restored = deserialize(JSON.parse(json))
+
+    expect(restored.playerView).toBe(true)
+  })
+
+  it('defaults player view to editor view for older saves', () => {
+    const save = serialize(BASE)
+    delete (save as Partial<typeof save>).playerView
+
+    expect(deserialize(save).playerView).toBe(false)
+  })
+
   it('normalizes unsupported square scales when loading a save', () => {
     const restored = deserialize({ ...serialize(BASE), tilesPerInch: 10 })
     expect(restored.tilesPerInch).toBe(8)

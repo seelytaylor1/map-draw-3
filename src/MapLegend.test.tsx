@@ -15,13 +15,12 @@ describe('map legend', () => {
     fireEvent.click(screen.getByText('Dungeon legend'))
 
     expect(disclosure).toHaveAttribute('open')
-    expect(screen.getByText('Monster')).toBeInTheDocument()
     expect(screen.getByText('Dungeon entrance')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Ascending steps or ramp' })).toHaveTextContent('↑')
     expect(screen.getByText('Trap')).toBeInTheDocument()
     expect(screen.getByText('Locked door')).toBeInTheDocument()
     expect(screen.getByText('Spiral stairs')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: 'Monster' })).toHaveAttribute('src', expect.stringContaining('TriangleArrowhead1x1'))
+    expect(screen.queryByRole('img', { name: 'Monster' })).not.toBeInTheDocument()
 
     const stampImages = Array.from(disclosure.querySelectorAll('img'))
     expect(stampImages).toHaveLength(GENERATED_STAMP_TYPES.length)

@@ -152,6 +152,22 @@ export function isFloorStamp(s: Stamp): s is Stamp & { type: StampType } {
   return (STAMP_TYPES as string[]).includes(s.type)
 }
 
+export function isSecretDoorStamp(s: Pick<Stamp, 'type'>): boolean {
+  return ['secret-door', 'DoorSecret1x1', 'DoorConcealed1x1', 'TrapdoorSecret1x1'].includes(s.type)
+}
+
+export function isLockedDoorStamp(s: Pick<Stamp, 'type'>): boolean {
+  return ['locked-door', 'DoorLocked1x1'].includes(s.type)
+}
+
+export function isHazardStamp(s: Pick<Stamp, 'type'>): boolean {
+  return ['trap', 'Trap1x1', 'danger', 'Danger1x1'].includes(s.type)
+}
+
+export function isChestStamp(s: Pick<Stamp, 'type'>): boolean {
+  return ['chest', 'Chest1x1'].includes(s.type)
+}
+
 export function stampSize(type: StampType | ObjectStampType): { cols: number; rows: number } {
   const size = type.match(/(\d+)x(\d+)(?:_\d+)?(?:$|[_-])/)
   if (size) return { cols: Number(size[1]), rows: Number(size[2]) }

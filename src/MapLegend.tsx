@@ -31,7 +31,6 @@ const generatedStampLabels: Record<GeneratedStampType, string> = {
   Window1x1: 'Window',
   DoorArchway1x1: 'Archway',
   Curtain1x1: 'Curtain',
-  TriangleArrowhead1x1: 'Monster',
   Chest1x1: 'Treasure',
 }
 

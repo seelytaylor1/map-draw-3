@@ -430,7 +430,7 @@ describe('mission-first dungeon generation', () => {
         roomCount++
         if (hasTreasure) treasureCount++
         if (room.encounter === 'monster') {
-          expect(result.snapshot!.stamps.some(stamp => stamp.type === 'TriangleArrowhead1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+          expect(result.snapshot!.stamps.some(stamp => stamp.type === 'TriangleArrowhead1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(false)
           expect(result.snapshot!.labels.some(label => label.text === 'Monster' && room.footprint.some(point => point.col === label.col && point.row === label.row))).toBe(false)
         }
         if (room.encounter === 'trap') {
