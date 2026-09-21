@@ -281,17 +281,18 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     })
     let trapIndex = 0
     let hazardIndex = 0
-    module.generatedDetails = module.encounter === 'empty'
+    const encounterDetails = module.encounter === 'empty'
       ? ['Empty room.']
       : (module.encounters ?? []).flatMap(encounter => {
-      if (encounter === 'monster') {
-        const monster = pickRandomMonster(random)
-        return [`Monster: ${monster.name} (LV ${monster.level})\n${monster.flavor}`]
-      }
-      if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]
-      if (encounter === 'hazard') return [formatHazardRecord(module.hazardDetails![hazardIndex++]!)]
-      return []
+        if (encounter === 'monster') {
+          const monster = pickRandomMonster(random)
+          return [`Monster: ${monster.name} (LV ${monster.level})\n${monster.flavor}`]
+        }
+        if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]
+        if (encounter === 'hazard') return [formatHazardRecord(module.hazardDetails![hazardIndex++]!)]
+        return []
       })
+    module.generatedDetails = module.hasTreasure ? [...encounterDetails, 'Treasure: present.'] : encounterDetails
   }
   const hallwayTrapConnections = plan.connections.filter(connection => connection.condition === 'trap')
   if (hallwayTrapConnections.length > 0) {

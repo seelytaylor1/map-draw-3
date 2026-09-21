@@ -502,7 +502,26 @@ describe('mission-first dungeon generation', () => {
     expect(generated?.ok).toBe(true)
     expect(emptyModule).toBeDefined()
     const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${emptyModule!.id}`)
-    expect(label?.details).toBe('Empty room.')
+    expect(label?.details).toContain('Empty room.')
+  })
+
+  it('documents treasure in its room ledger entry', () => {
+    let generated: ReturnType<typeof generateMissionDungeon> | undefined
+    let treasureModule: NonNullable<ReturnType<typeof generateMissionDungeon>['space']>['modules'][number] | undefined
+
+    for (let seed = 1; seed <= 100 && !treasureModule; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      const candidate = result.space?.modules.find(module => module.hasTreasure)
+      if (candidate) {
+        generated = result
+        treasureModule = candidate
+      }
+    }
+
+    expect(generated?.ok).toBe(true)
+    expect(treasureModule).toBeDefined()
+    const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${treasureModule!.id}`)
+    expect(label?.details).toContain('Treasure: present.')
   })
 
   it('records one shared hallway trap variety in general notes', () => {
