@@ -15,6 +15,7 @@ import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 import { pickRandomMonster } from './monsterCatalog'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
+import { createHazardRecord, formatHazardRecord } from './hazardGenerator'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
@@ -281,12 +282,18 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       return []
     })
   }
-  const hallwayHazardConnections = plan.connections.filter(connection => connection.condition === 'trap' || connection.condition === 'hazard')
+  const hallwayTrapConnections = plan.connections.filter(connection => connection.condition === 'trap')
+  if (hallwayTrapConnections.length > 0) {
+    const hallwayTrap = createTrapRecord(random)
+    const details = formatTrapRecord(hallwayTrap)
+    for (const connection of hallwayTrapConnections) connection.conditionDetails = details
+    plan.generalNotes.push(`Hallway traps: all trapped hallways share one variety. ${details}`)
+  }
+  const hallwayHazardConnections = plan.connections.filter(connection => connection.condition === 'hazard')
   if (hallwayHazardConnections.length > 0) {
-    const hallwayHazard = createTrapRecord(random)
-    const details = formatTrapRecord(hallwayHazard)
+    const details = formatHazardRecord(createHazardRecord(random))
     for (const connection of hallwayHazardConnections) connection.conditionDetails = details
-    plan.generalNotes.push(`Hallway hazards: all trapped and hazardous hallways share one variety. ${details}`)
+    plan.generalNotes.push(`Hallway hazards: all hazardous hallways share one variety. ${details}`)
   }
 }
 
