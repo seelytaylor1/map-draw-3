@@ -446,6 +446,30 @@ describe('mission-first dungeon generation', () => {
     expect([...encounterTreasurePairs]).toEqual(expect.arrayContaining(['empty/false', 'empty/true', 'monster/false', 'monster/true', 'trap/false', 'trap/true', 'hazard/false', 'hazard/true']))
   })
 
+  it('builds one five-entry monster encounter table and assigns monster rooms from it', () => {
+    const first = generateMissionDungeon(request({ seed: 42, complexity: 'compact', loopCount: 0 }))
+    const second = generateMissionDungeon(request({ seed: 42, complexity: 'compact', loopCount: 0 }))
+
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    const table = first.space!.monsterEncounterTable
+    const monsterRooms = first.space!.modules.filter(module => module.encounter === 'monster')
+    const assignments = monsterRooms.flatMap(room => room.monsterDetails ?? [])
+
+    expect(table).toHaveLength(5)
+    expect(new Set(table.map(monster => monster.name)).size).toBe(5)
+    expect(monsterRooms.length).toBeGreaterThan(0)
+    expect(assignments.length).toBe(monsterRooms.length)
+    expect(assignments.every(monster => table.some(entry => entry.name === monster.name))).toBe(true)
+    expect(first.space!.generalNotes[0]).toBe([
+      'Random Encounter Table:',
+      '1. Torch extinguished',
+      ...table.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
+    ].join('\n'))
+    expect(second.space!.monsterEncounterTable).toEqual(table)
+    expect(second.space!.modules.flatMap(room => room.monsterDetails ?? [])).toEqual(assignments)
+  })
+
   it('documents the selected monster in its room ledger entry', () => {
     let generated: ReturnType<typeof generateMissionDungeon> | undefined
     let monsterModule: NonNullable<ReturnType<typeof generateMissionDungeon>['space']>['modules'][number] | undefined

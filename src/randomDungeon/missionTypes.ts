@@ -2,6 +2,7 @@ import type { StampType } from '../stamps'
 import type { AppSnapshotShape, Direction, Point } from './commonTypes'
 import type { TrapRecord } from './trapGenerator'
 import type { HazardRecord } from './hazardGenerator'
+import type { MonsterRecord } from './monsterCatalog'
 
 export type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
 
@@ -212,6 +213,8 @@ export interface SpatialModule {
   encounters?: RoomEncounter[]
   /** Generated encounter prose shown in the room ledger and copied to labels. */
   generatedDetails?: string[]
+  /** Structured monster assignments selected from the dungeon encounter table. */
+  monsterDetails?: MonsterRecord[]
   /** Structured generated room traps used to render their ledger prose. */
   trapDetails?: TrapRecord[]
   /** Structured generated room hazards used to render their ledger prose. */
@@ -244,6 +247,7 @@ export interface SpacePlan {
   modules: SpatialModule[]
   connections: SpatialConnection[]
   anchors: Record<string, string>
+  monsterEncounterTable: MonsterRecord[]
   generalNotes: string[]
   diagnostics: GenerationDiagnostic[]
 }

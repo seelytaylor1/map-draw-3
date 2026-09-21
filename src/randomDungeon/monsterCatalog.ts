@@ -1215,3 +1215,19 @@ function nextCatalogIndex(random: D6Random, count: number): number {
 export function pickRandomMonster(random: D6Random): MonsterRecord {
   return MONSTER_CATALOG[nextCatalogIndex(random, MONSTER_CATALOG.length)]!
 }
+
+export const MONSTER_ENCOUNTER_TABLE_SIZE = 5
+
+/** Build a dungeon-local encounter table without repeating a monster entry. */
+export function createMonsterEncounterTable(random: D6Random, size = MONSTER_ENCOUNTER_TABLE_SIZE): MonsterRecord[] {
+  if (!Number.isInteger(size) || size < 1 || size > MONSTER_CATALOG.length) throw new RangeError('Monster encounter table size is out of range.')
+  const remaining = [...MONSTER_CATALOG]
+  const table: MonsterRecord[] = []
+  while (table.length < size) table.push(remaining.splice(nextCatalogIndex(random, remaining.length), 1)[0]!)
+  return table
+}
+
+export function pickRandomMonsterFromTable(random: D6Random, table: readonly MonsterRecord[]): MonsterRecord {
+  if (table.length === 0) throw new RangeError('Cannot pick a monster from an empty encounter table.')
+  return table[nextCatalogIndex(random, table.length)]!
+}

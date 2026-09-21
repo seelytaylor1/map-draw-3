@@ -20,6 +20,10 @@ interface RoomEntry {
   details: string
 }
 
+function formatGeneralNotes(notes: readonly string[]): string {
+  return notes.join('\n\n')
+}
+
 function roomName(module: SpatialModule, mission: Mission, labels: readonly Label[]): string {
   const generatedLabel = labels.find(label => label.id === `label-${module.id}`)
   if (generatedLabel) return generatedLabel.text
@@ -81,7 +85,7 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
   const rooms = useMemo(() => buildRooms(modules, mission, labels), [labels, mission, modules])
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
   const [detailsDrafts, setDetailsDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
-  const [generalNotesDraft, setGeneralNotesDraft] = useState(() => generalNotes.join('\n'))
+  const [generalNotesDraft, setGeneralNotesDraft] = useState(() => formatGeneralNotes(generalNotes))
   const [selectedEntryId, setSelectedEntryId] = useState<'general-notes' | string>('general-notes')
 
   useEffect(() => {
@@ -90,7 +94,7 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
     setSelectedEntryId(previous => previous === 'general-notes' || rooms.some(room => room.module.id === previous) ? previous : 'general-notes')
   }, [rooms.length, rooms.map(room => room.module.id).join('|')])
 
-  useEffect(() => { setGeneralNotesDraft(generalNotes.join('\n')) }, [generalNotes])
+  useEffect(() => { setGeneralNotesDraft(formatGeneralNotes(generalNotes)) }, [generalNotes])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -124,8 +128,9 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
   }
 
   const commitGeneralNotes = () => {
-    const notes = generalNotesDraft.split('\n').map(note => note.trim()).filter(Boolean)
-    if (notes.join('\n') !== generalNotes.join('\n')) onCommitGeneralNotes(notes)
+    const blocks = generalNotesDraft.includes('\n\n') ? generalNotesDraft.split(/\n[ \t]*\n/) : generalNotesDraft.split('\n')
+    const notes = blocks.map(note => note.trim()).filter(Boolean)
+    if (formatGeneralNotes(notes) !== formatGeneralNotes(generalNotes)) onCommitGeneralNotes(notes)
   }
 
   return (
@@ -165,7 +170,7 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
               onBlur={commitGeneralNotes}
             />
             </label>
-            <div className="room-editor-hint">Details save to the room record when you leave the field. One note per line.</div>
+            <div className="room-editor-hint">Details save to the room record when you leave the field. Use blank lines to separate formatted note blocks.</div>
           </div>
         ) : selectedRoom && (
           <div className="room-ledger-editor">

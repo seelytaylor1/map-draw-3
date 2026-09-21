@@ -13,7 +13,7 @@ import type { RampRun } from '../ramps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
-import { pickRandomMonster } from './monsterCatalog'
+import { createMonsterEncounterTable, pickRandomMonsterFromTable } from './monsterCatalog'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -226,13 +226,19 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
   const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
   if (dramaticGoalInStart) anchors[mission.goalNodeId] = anchors.start!
-  const plan = { style: request.style, modules, connections, anchors, generalNotes: [], diagnostics }
+  const plan = { style: request.style, modules, connections, anchors, monsterEncounterTable: [], generalNotes: [], diagnostics }
   rollGeneratedContent(request, mission, plan)
   return plan
 }
 
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
+  plan.monsterEncounterTable = createMonsterEncounterTable(random)
+  plan.generalNotes.push([
+    'Random Encounter Table:',
+    '1. Torch extinguished',
+    ...plan.monsterEncounterTable.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
+  ].join('\n'))
   const hasMissionReward = mission.nodes.some(node => node.kind === 'reward') || mission.cycles.some(cycle => cycle.roles.objectiveNode === mission.goalNodeId)
   const roomHazardNames = new Set<string>()
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
@@ -272,7 +278,9 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   }
   applyMissionRoomDirectives(mission, plan)
   for (const module of plan.modules) {
+    let monsterIndex = 0
     module.trapDetails = (module.encounters ?? []).flatMap(encounter => encounter === 'trap' ? [createTrapRecord(random)] : [])
+    module.monsterDetails = (module.encounters ?? []).flatMap(encounter => encounter === 'monster' ? [pickRandomMonsterFromTable(random, plan.monsterEncounterTable)] : [])
     module.hazardDetails = (module.encounters ?? []).flatMap(encounter => {
       if (encounter !== 'hazard') return []
       const hazard = createUniqueHazardRecord(random, roomHazardNames)
@@ -285,7 +293,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       ? ['Empty room.']
       : (module.encounters ?? []).flatMap(encounter => {
         if (encounter === 'monster') {
-          const monster = pickRandomMonster(random)
+          const monster = module.monsterDetails![monsterIndex++]!
           return [`Monster: ${monster.name} (LV ${monster.level})\n${monster.flavor}`]
         }
         if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]

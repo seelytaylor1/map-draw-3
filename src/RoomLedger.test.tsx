@@ -52,6 +52,27 @@ describe('room ledger', () => {
     expect(screen.getByRole('textbox', { name: 'Room 0 details' })).toHaveValue('Hallway traps: all trapped hallways share one variety.')
   })
 
+  it('separates formatted general-note blocks with blank lines', () => {
+    render(
+      <RoomLedger
+        modules={[module]}
+        mission={mission}
+        labels={[{ id: 'label-module-room-1', col: 2, row: 2, text: 'Room', number: 1 }]}
+        generalNotes={['Random Encounter Table:\n1. Torch extinguished', 'Hallway traps: all trapped hallways share one variety.', 'Hallway hazards: all hazardous hallways share one variety.']}
+        onCommitGeneralNotes={vi.fn()}
+        onCommitRoomName={vi.fn()}
+        onCommitRoomDetails={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Room 0 details' })).toHaveValue([
+      'Random Encounter Table:\n1. Torch extinguished',
+      'Hallway traps: all trapped hallways share one variety.',
+      'Hallway hazards: all hazardous hallways share one variety.',
+    ].join('\n\n'))
+  })
+
   it('commits editable general notes one line at a time', () => {
     const onCommitGeneralNotes = vi.fn()
     render(
