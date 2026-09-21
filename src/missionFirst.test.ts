@@ -260,8 +260,17 @@ describe('mission-first dungeon generation', () => {
     expect(dangerous.space!.monsterEncounterTable.some(monster => typeof monster.level === 'number' && monster.level >= 10)).toBe(true)
     expect(dangerousRouteGroups.some(group => group.monsterLevel >= 10)).toBe(true)
 
+    const patrolled = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['patrolled-cycle'] }))
+    const patrolledCycle = patrolled.mission.cycles[0]!
+    const patrolledGroups = [...patrolledCycle.routeA, ...patrolledCycle.routeB].slice(1, -1).flatMap(nodeId => patrolled.space!.modules.find(module => module.missionNodeId === nodeId)?.monsterEncounterGroups ?? [])
+    expect(patrolled.space!.monsterEncounterTable.some(monster => typeof monster.level === 'number' && monster.level >= 10)).toBe(true)
+    expect(patrolledGroups.some(group => group.monsterLevel >= 10)).toBe(true)
+
     const gambit = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['gambit'] }))
     const gambitCycle = gambit.mission.cycles[0]!
+    const gambitDangerousGroups = gambitCycle.routeA.slice(1, -1).flatMap(nodeId => gambit.space!.modules.find(module => module.missionNodeId === nodeId)?.monsterEncounterGroups ?? [])
+    expect(gambit.space!.monsterEncounterTable.some(monster => typeof monster.level === 'number' && monster.level >= 10)).toBe(true)
+    expect(gambitDangerousGroups.some(group => group.monsterLevel >= 10)).toBe(true)
     const gambitCount = (route: readonly string[]) => route.slice(1, -1).reduce((count, nodeId) => count + (gambit.space!.modules.find(module => module.missionNodeId === nodeId)?.encounters?.length ?? 0), 0)
     const gambitDangerCount = (route: readonly string[]) => route.slice(1, -1).reduce((count, nodeId) => count + gambitCycle.dangerEntries.filter(entry => entry.nodeId === nodeId).reduce((sum, entry) => sum + entry.count, 0), 0)
     expect(gambitCycle.routeB.length - 2).toBe((gambitCycle.routeA.length - 2) * 2)

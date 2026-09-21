@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateMissionDungeon, getDungeonLevelBudget, rollMonsterEncounter } from './missionFirst'
+import { generateMissionDungeon, getDungeonLevelBudget, remainingMonsterRoomBudget, rollMonsterEncounter } from './missionFirst'
 import { createD6Random } from './random'
 import { MONSTER_CATALOG, createMonsterEncounterTable } from './monsterCatalog'
 import type { MonsterRecord } from './monsterCatalog'
@@ -53,6 +53,12 @@ describe('monster level budgets', () => {
     const badger: MonsterRecord = { name: 'Badger', flavor: 'A badger.', level: 1 }
 
     expect(rollMonsterEncounter(badger, 4, 3)).toBeNull()
+  })
+
+  it('reserves a standard encounter budget for future monster rooms', () => {
+    expect(remainingMonsterRoomBudget(20, 0, 4, 2)).toBe(12)
+    expect(remainingMonsterRoomBudget(20, 8, 4, 1)).toBe(8)
+    expect(remainingMonsterRoomBudget(20, 20, 4, 0)).toBe(0)
   })
 
   it('samples the full catalog before applying budgets to room groups', () => {

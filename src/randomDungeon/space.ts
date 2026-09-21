@@ -14,7 +14,7 @@ import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 import { createMonsterEncounterTable, MONSTER_CATALOG, pickRandomMonsterFromTable, type MonsterRecord } from './monsterCatalog'
-import { minimumMonsterEncounterCost, numericMonsterLevel, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
+import { minimumMonsterEncounterCost, numericMonsterLevel, remainingMonsterRoomBudget, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -232,35 +232,35 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   return plan
 }
 
-const DANGEROUS_ROUTE_MONSTER_LEVEL = 10
+const HIGH_LEVEL_CONTRACT_MONSTER_LEVEL = 10
 
-function roomPlaceableDangerousRouteMonsters(table: readonly MonsterRecord[], budget: DungeonLevelBudget): MonsterRecord[] {
+function roomPlaceableHighLevelContractMonsters(table: readonly MonsterRecord[], budget: DungeonLevelBudget): MonsterRecord[] {
   const candidates = table.filter(monster => {
     const level = numericMonsterLevel(monster)
-    return level !== null && level >= DANGEROUS_ROUTE_MONSTER_LEVEL && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.dungeonBudget
+    return level !== null && level >= HIGH_LEVEL_CONTRACT_MONSTER_LEVEL && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.dungeonBudget
   })
   if (candidates.length === 0) return []
   const lowestCost = Math.min(...candidates.map(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget)))
   return candidates.filter(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget) === lowestCost)
 }
 
-function ensureDangerousRouteMonsterOnTable(random: ReturnType<typeof createD6Random>, table: MonsterRecord[], budget: DungeonLevelBudget): MonsterRecord[] {
-  let candidates = roomPlaceableDangerousRouteMonsters(table, budget)
+function ensureHighLevelContractMonsterOnTable(random: ReturnType<typeof createD6Random>, table: MonsterRecord[], budget: DungeonLevelBudget): MonsterRecord[] {
+  let candidates = roomPlaceableHighLevelContractMonsters(table, budget)
   if (candidates.length > 0) return candidates
 
-  // A dangerous-route contract is allowed to add its required entry to the
+  // A high-level danger contract is allowed to add its required entry to the
   // otherwise unrestricted table. Prefer the lowest-level qualifying catalog
   // entry so the contract can fit every dungeon-level budget band.
   const catalogCandidates = MONSTER_CATALOG.filter(monster => {
     const level = numericMonsterLevel(monster)
-    return !table.includes(monster) && level !== null && level >= DANGEROUS_ROUTE_MONSTER_LEVEL && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.dungeonBudget
+    return !table.includes(monster) && level !== null && level >= HIGH_LEVEL_CONTRACT_MONSTER_LEVEL && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.dungeonBudget
   })
   if (catalogCandidates.length === 0) return []
   const lowestCost = Math.min(...catalogCandidates.map(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget)))
   const qualifyingCatalogCandidates = catalogCandidates.filter(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget) === lowestCost)
   const requiredMonster = pickRandomMonsterFromTable(random, qualifyingCatalogCandidates)
   table[table.length - 1] = requiredMonster
-  candidates = roomPlaceableDangerousRouteMonsters(table, budget)
+  candidates = roomPlaceableHighLevelContractMonsters(table, budget)
   return candidates
 }
 
@@ -272,9 +272,9 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   // room, so high-level entries can still appear and be documented as
   // rejected when they cannot fit the generated dungeon.
   plan.monsterEncounterTable = createMonsterEncounterTable(random)
-  const dangerousRouteCycles = mission.cycles.filter(cycle => cycle.challenge === 'dangerous-route')
-  const dangerousRouteMonsterCandidates = dangerousRouteCycles.length > 0
-    ? ensureDangerousRouteMonsterOnTable(random, plan.monsterEncounterTable, plan.dungeonLevelBudget)
+  const highLevelContractCycles = mission.cycles.filter(cycle => cycle.challenge === 'dangerous-route' || cycle.challenge === 'patrolled-cycle' || cycle.challenge === 'gambit')
+  const highLevelContractMonsterCandidates = highLevelContractCycles.length > 0
+    ? ensureHighLevelContractMonsterOnTable(random, plan.monsterEncounterTable, plan.dungeonLevelBudget)
     : []
   plan.generalNotes.push([
     'Random Encounter Table:',
@@ -321,19 +321,24 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   }
   applyMissionRoomDirectives(mission, plan)
   const contractMonsterAssignments = new Map<string, MonsterRecord[]>()
-  if (dangerousRouteCycles.length > 0) {
-    for (const cycle of dangerousRouteCycles) {
-      const nodeId = cycle.routeA.slice(1, -1)[0]
-      const module = nodeId ? plan.modules.find(candidate => candidate.missionNodeId === nodeId) : undefined
-      const selectedMonster = dangerousRouteMonsterCandidates.length > 0 ? pickRandomMonsterFromTable(random, dangerousRouteMonsterCandidates) : undefined
-      if (!module || !selectedMonster) continue
+  if (highLevelContractCycles.length > 0) {
+    for (const cycle of highLevelContractCycles) {
+      const routeModules = cycle.routeA.slice(1, -1).map(nodeId => plan.modules.find(candidate => candidate.missionNodeId === nodeId)).filter((module): module is SpatialModule => Boolean(module))
+      const module = routeModules.find(candidate => candidate.encounters?.includes('monster')) ?? routeModules[0]
+      const nodeId = module?.missionNodeId
+      const selectedMonster = highLevelContractMonsterCandidates.length > 0 ? pickRandomMonsterFromTable(random, highLevelContractMonsterCandidates) : undefined
+      if (!module || !nodeId || !selectedMonster) continue
       const assignments = contractMonsterAssignments.get(nodeId) ?? []
       assignments.push(selectedMonster)
       contractMonsterAssignments.set(nodeId, assignments)
       // Put the required contract encounter ahead of any ambient result that
-      // was already rolled for this room.
-      module.encounters = ['monster', ...(module.encounters ?? [])]
-      module.encounter = 'monster'
+      // was already rolled for this room. If the contract route already has a
+      // monster encounter, upgrade that encounter instead of adding another
+      // one so route-balance contracts retain their intended counts.
+      if (!module.encounters?.includes('monster')) {
+        module.encounters = ['monster', ...(module.encounters ?? [])]
+        module.encounter = 'monster'
+      }
     }
   }
   let monsterLevelsUsed = 0
@@ -345,26 +350,34 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     const rightPriority = contractMonsterAssignments.has(rightNodeId) ? 0 : right.encounters?.includes('monster') && forcedDangerNodes.has(rightNodeId) ? 1 : 2
     return leftPriority - rightPriority
   })
+  const monsterRoomCount = modulesByMonsterPriority.filter(module => module.encounters?.includes('monster')).length
+  let monsterRoomsRemaining = monsterRoomCount
   for (const module of modulesByMonsterPriority) {
     const resolvedEncounters: RoomEncounter[] = []
     const monsterGroups = [] as NonNullable<SpatialModule['monsterEncounterGroups']>
     const monsterDetails = [] as NonNullable<SpatialModule['monsterDetails']>
     const contractMonsters = contractMonsterAssignments.get(module.missionNodeId ?? '') ?? []
+    const hasMonsterRoom = module.encounters?.includes('monster') ?? false
+    const futureMonsterRooms = Math.max(0, monsterRoomsRemaining - (hasMonsterRoom ? 1 : 0))
     let contractMonsterIndex = 0
     for (const encounter of module.encounters ?? []) {
       if (encounter !== 'monster') {
         resolvedEncounters.push(encounter)
         continue
       }
-      const isForcedDangerMonster = forcedDangerNodes.has(module.missionNodeId ?? '')
+      const isMissionContractMonster = forcedDangerNodes.has(module.missionNodeId ?? '') || contractMonsterAssignments.has(module.missionNodeId ?? '')
       // Mission-directed danger is a required contract, so it gets a complete
       // encounter even when ambient rooms have already spent the dungeon pool.
       // Ordinary random monster rooms remain hard-capped by that pool.
-      const remainingDungeonBudget = isForcedDangerMonster ? Number.MAX_SAFE_INTEGER : plan.dungeonLevelBudget.dungeonBudget - monsterLevelsUsed
+      const remainingDungeonBudget = isMissionContractMonster ? Number.MAX_SAFE_INTEGER : plan.dungeonLevelBudget.dungeonBudget - monsterLevelsUsed
+      const reservedDungeonBudget = isMissionContractMonster ? 0 : futureMonsterRooms * plan.dungeonLevelBudget.encounterBudget
+      const availableDungeonBudget = isMissionContractMonster
+        ? Number.MAX_SAFE_INTEGER
+        : remainingMonsterRoomBudget(plan.dungeonLevelBudget.dungeonBudget, monsterLevelsUsed, plan.dungeonLevelBudget.encounterBudget, futureMonsterRooms)
       const contractMonster = contractMonsterIndex < contractMonsters.length ? contractMonsters[contractMonsterIndex++] : undefined
       const affordableMonsters = plan.monsterEncounterTable.filter(monster => {
         const level = numericMonsterLevel(monster)
-        return level !== null && minimumMonsterEncounterCost(level, plan.dungeonLevelBudget.encounterBudget) <= remainingDungeonBudget
+        return level !== null && minimumMonsterEncounterCost(level, plan.dungeonLevelBudget.encounterBudget) <= availableDungeonBudget
       })
       const selectedMonster = contractMonster ?? (affordableMonsters.length > 0 ? pickRandomMonsterFromTable(random, affordableMonsters) : undefined)
       const group = selectedMonster
@@ -380,6 +393,9 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
           ...(module.missionNodeId ? { missionNodeId: module.missionNodeId } : {}),
           candidateMonsters: (affordableMonsters.length > 0 ? [selectedMonster?.name ?? 'Selected monster'] : plan.monsterEncounterTable.map(monster => monster.name)),
           remainingDungeonBudget: Math.max(0, remainingDungeonBudget),
+          reservedDungeonBudget,
+          availableDungeonBudget: Math.max(0, availableDungeonBudget),
+          futureMonsterRooms,
           encounterBudget: plan.dungeonLevelBudget.encounterBudget,
           minimumRequiredLevel,
           reason: 'insufficient-dungeon-budget',
@@ -391,6 +407,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       monsterDetails.push(group.monster)
       monsterLevelsUsed += group.levelTotal
     }
+    if (hasMonsterRoom) monsterRoomsRemaining -= 1
     module.encounters = resolvedEncounters
     module.encounter = resolvedEncounters[0] ?? 'empty'
     module.trapDetails = resolvedEncounters.flatMap(encounter => encounter === 'trap' ? [createTrapRecord(random)] : [])
@@ -426,7 +443,8 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       ...plan.monsterRejections.map(rejection => {
         const room = rejection.missionNodeId ?? rejection.moduleId
         const candidates = rejection.candidateMonsters.join(', ')
-        return `${room}: ${candidates} rejected; ${rejection.remainingDungeonBudget} dungeon levels remained, but at least ${rejection.minimumRequiredLevel} were needed for a ${rejection.encounterBudget}-level encounter.`
+        const reserve = rejection.futureMonsterRooms > 0 ? `; ${rejection.reservedDungeonBudget} reserved for ${rejection.futureMonsterRooms} future standard room${rejection.futureMonsterRooms === 1 ? '' : 's'}` : ''
+        return `${room}: ${candidates} rejected; ${rejection.remainingDungeonBudget} dungeon levels remained${reserve}, leaving ${rejection.availableDungeonBudget} available, but at least ${rejection.minimumRequiredLevel} were needed for a ${rejection.encounterBudget}-level encounter.`
       }),
     ].join('\n'))
   }

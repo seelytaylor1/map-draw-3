@@ -25,6 +25,9 @@ export interface MonsterRejection {
   missionNodeId?: string
   candidateMonsters: string[]
   remainingDungeonBudget: number
+  reservedDungeonBudget: number
+  availableDungeonBudget: number
+  futureMonsterRooms: number
   encounterBudget: number
   minimumRequiredLevel: number
   reason: 'insufficient-dungeon-budget'
@@ -62,6 +65,19 @@ export function monsterFitsLevelBudget(monster: MonsterRecord, budget: DungeonLe
 export function minimumMonsterEncounterCost(monsterLevel: number, encounterBudget: number): number {
   const cost = Math.max(1, monsterLevel)
   return Math.ceil(encounterBudget / cost) * cost
+}
+
+/**
+ * Keep one standard encounter's worth of dungeon budget available for each
+ * future monster room before allowing the current room to spend the surplus.
+ */
+export function remainingMonsterRoomBudget(
+  dungeonBudget: number,
+  monsterLevelsUsed: number,
+  encounterBudget: number,
+  futureMonsterRooms: number,
+): number {
+  return Math.max(0, dungeonBudget - monsterLevelsUsed - encounterBudget * futureMonsterRooms)
 }
 
 /**
