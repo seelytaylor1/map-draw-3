@@ -35,6 +35,7 @@ export const GENERATED_DECORATION_STAMP_TYPES = {
   hallwayHazard: ['Danger1x1'],
   monster: ['TriangleArrowhead1x1'],
   roomTrap: ['Trap1x1'],
+  roomHazard: ['Danger1x1'],
   treasure: ['Chest1x1'],
 } as const satisfies Record<string, readonly StampType[]>
 

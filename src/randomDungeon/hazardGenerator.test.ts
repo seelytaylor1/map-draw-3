@@ -6,6 +6,7 @@ function sequenceRandom(values: number[]): D6Random {
   return {
     seed: 1,
     nextD6: () => values.shift() ?? 1,
+    nextD10: () => values.shift() ?? 1,
   }
 }
 

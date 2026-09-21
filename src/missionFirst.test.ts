@@ -250,13 +250,19 @@ describe('mission-first dungeon generation', () => {
     const dangerous = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['dangerous-route'] }))
     const dangerousCycle = dangerous.mission.cycles[0]!
     const encounters = (nodeId: string) => dangerous.space!.modules.find(module => module.missionNodeId === nodeId)?.encounters ?? []
+    expect(dangerousCycle.dangerEntries.map(entry => entry.nodeId)).toEqual(dangerousCycle.routeA.slice(1, -1))
+    expect(dangerousCycle.dangerEntries.every(entry => entry.count === 1 && entry.kinds === 'all')).toBe(true)
+    expect(dangerousCycle.emptyRoomIds).toEqual(dangerousCycle.routeB.slice(1, -1))
     expect(dangerousCycle.routeA.slice(1, -1).every(nodeId => encounters(nodeId).length > 0)).toBe(true)
     expect(dangerousCycle.routeB.slice(1, -1).every(nodeId => encounters(nodeId).length === 0)).toBe(true)
+    expect(dangerousCycle.routeA.slice(1, -1).flatMap(nodeId => encounters(nodeId))).toEqual(expect.arrayContaining(['monster', 'trap', 'hazard']))
 
     const gambit = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['gambit'] }))
     const gambitCycle = gambit.mission.cycles[0]!
     const gambitCount = (route: readonly string[]) => route.slice(1, -1).reduce((count, nodeId) => count + (gambit.space!.modules.find(module => module.missionNodeId === nodeId)?.encounters?.length ?? 0), 0)
+    const gambitDangerCount = (route: readonly string[]) => route.slice(1, -1).reduce((count, nodeId) => count + gambitCycle.dangerEntries.filter(entry => entry.nodeId === nodeId).reduce((sum, entry) => sum + entry.count, 0), 0)
     expect(gambitCycle.routeB.length - 2).toBe((gambitCycle.routeA.length - 2) * 2)
+    expect(gambitDangerCount(gambitCycle.routeA)).toBe(gambitDangerCount(gambitCycle.routeB))
     expect(gambitCount(gambitCycle.routeA)).toBe(gambitCount(gambitCycle.routeB))
 
     const unknown = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['unknown-return'] }))
@@ -388,7 +394,7 @@ describe('mission-first dungeon generation', () => {
 
   it('rolls room encounters and independent treasure by seed', () => {
     const encounterKinds = new Set<string>()
-    const encounterCounts = { empty: 0, monster: 0, trap: 0 }
+    const encounterCounts = { empty: 0, monster: 0, trap: 0, hazard: 0 }
     const encounterTreasurePairs = new Set<string>()
     let roomCount = 0
     let treasureCount = 0
@@ -398,9 +404,11 @@ describe('mission-first dungeon generation', () => {
       expect(result.ok, `seed ${seed}`).toBe(true)
       const rooms = result.space!.modules.filter(module => module.footprint.length > 0)
       const chest = result.snapshot!.stamps.filter(stamp => stamp.type === 'Chest1x1')
+      const roomHazards = rooms.flatMap(room => room.hazardDetails ?? [])
+      expect(new Set(roomHazards.map(hazard => hazard.name)).size).toBe(roomHazards.length)
 
       for (const room of rooms) {
-        expect(['empty', 'monster', 'trap']).toContain(room.encounter)
+        expect(['empty', 'monster', 'trap', 'hazard']).toContain(room.encounter)
         encounterKinds.add(room.encounter!)
         encounterCounts[room.encounter as keyof typeof encounterCounts]++
         const hasTreasure = Boolean(room.hasTreasure)
@@ -416,20 +424,26 @@ describe('mission-first dungeon generation', () => {
         if (room.encounter === 'trap') {
           expect(result.snapshot!.stamps.some(stamp => stamp.type === 'Trap1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
         }
+        if (room.encounter === 'hazard') {
+          expect(room.generatedDetails?.[0]).toMatch(/^Hazard: /)
+          expect(result.snapshot!.stamps.some(stamp => stamp.type === 'Danger1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(true)
+        }
       }
       expect(chest).toHaveLength(rooms.filter(room => room.hasTreasure).length)
     }
 
-    expect([...encounterKinds].sort()).toEqual(['empty', 'monster', 'trap'])
+    expect([...encounterKinds].sort()).toEqual(['empty', 'hazard', 'monster', 'trap'])
     expect(encounterCounts.empty / roomCount).toBeGreaterThan(0.42)
     expect(encounterCounts.empty / roomCount).toBeLessThan(0.58)
-    expect(encounterCounts.monster / roomCount).toBeGreaterThan(0.27)
-    expect(encounterCounts.monster / roomCount).toBeLessThan(0.40)
-    expect(encounterCounts.trap / roomCount).toBeGreaterThan(0.10)
-    expect(encounterCounts.trap / roomCount).toBeLessThan(0.24)
+    expect(encounterCounts.monster / roomCount).toBeGreaterThan(0.22)
+    expect(encounterCounts.monster / roomCount).toBeLessThan(0.38)
+    expect(encounterCounts.trap / roomCount).toBeGreaterThan(0.05)
+    expect(encounterCounts.trap / roomCount).toBeLessThan(0.17)
+    expect(encounterCounts.hazard / roomCount).toBeGreaterThan(0.05)
+    expect(encounterCounts.hazard / roomCount).toBeLessThan(0.17)
     expect(treasureCount / roomCount).toBeGreaterThan(0.27)
     expect(treasureCount / roomCount).toBeLessThan(0.40)
-    expect([...encounterTreasurePairs]).toEqual(expect.arrayContaining(['empty/false', 'empty/true', 'monster/false', 'monster/true', 'trap/false', 'trap/true']))
+    expect([...encounterTreasurePairs]).toEqual(expect.arrayContaining(['empty/false', 'empty/true', 'monster/false', 'monster/true', 'trap/false', 'trap/true', 'hazard/false', 'hazard/true']))
   })
 
   it('documents the selected monster in its room ledger entry', () => {
@@ -470,6 +484,25 @@ describe('mission-first dungeon generation', () => {
     expect(label?.details).toMatch(/^Trap: (Hidden Trap|Trap with Tell|Obvious Trap)\./)
     expect(label?.details).toContain('Attack: ')
     expect(label?.details).toContain('Effect: ')
+  })
+
+  it('documents empty rooms in their room ledger entry', () => {
+    let generated: ReturnType<typeof generateMissionDungeon> | undefined
+    let emptyModule: NonNullable<ReturnType<typeof generateMissionDungeon>['space']>['modules'][number] | undefined
+
+    for (let seed = 1; seed <= 100 && !emptyModule; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      const candidate = result.space?.modules.find(module => module.encounter === 'empty')
+      if (candidate) {
+        generated = result
+        emptyModule = candidate
+      }
+    }
+
+    expect(generated?.ok).toBe(true)
+    expect(emptyModule).toBeDefined()
+    const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${emptyModule!.id}`)
+    expect(label?.details).toBe('Empty room.')
   })
 
   it('records one shared hallway trap variety in general notes', () => {

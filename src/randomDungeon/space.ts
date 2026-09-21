@@ -5,7 +5,7 @@ import { createD6Random, normalizeSeed } from './random'
 import { arrangeRooms } from './layout'
 import { getGenerationStyle } from './styles'
 import { validateProgression } from './progression'
-import type { DoorwayStyle, GeneratedDoorway, GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, RoomEncounter, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
+import type { DangerEntry, DoorwayStyle, GeneratedDoorway, GenerationDiagnostic, GenerationRequest, Mission, MissionEdge, RoomEncounter, SpacePlan, SpatialConnection, SpatialConnectionSemantic, SpatialModule } from './missionTypes'
 import { STAMP_TYPES, type Stamp, type StampType } from '../stamps'
 import { DIRECTION_DELTAS, runTiles } from '../directionalRun'
 import type { StepRun } from '../steps'
@@ -15,7 +15,8 @@ import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 import { pickRandomMonster } from './monsterCatalog'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
-import { createHazardRecord, formatHazardRecord } from './hazardGenerator'
+import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
+import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
@@ -233,9 +234,9 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
   const hasMissionReward = mission.nodes.some(node => node.kind === 'reward') || mission.cycles.some(cycle => cycle.roles.objectiveNode === mission.goalNodeId)
+  const roomHazardNames = new Set<string>()
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
-    const roll = random.nextD6()
-    module.encounter = roll <= 3 ? 'empty' : roll <= 5 ? 'monster' : 'trap'
+    module.encounter = rollRoomEncounter(random)
     module.encounters = module.encounter === 'empty' ? [] : [module.encounter]
     module.hasTreasure = random.nextD6() <= 2
   }
@@ -269,18 +270,28 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     const goal = plan.modules.find(module => module.id === plan.anchors[mission.goalNodeId])
     if (goal) goal.hasTreasure = true
   }
-  applyChallengeEncounters(mission, plan)
+  applyMissionRoomDirectives(mission, plan)
   for (const module of plan.modules) {
     module.trapDetails = (module.encounters ?? []).flatMap(encounter => encounter === 'trap' ? [createTrapRecord(random)] : [])
+    module.hazardDetails = (module.encounters ?? []).flatMap(encounter => {
+      if (encounter !== 'hazard') return []
+      const hazard = createUniqueHazardRecord(random, roomHazardNames)
+      roomHazardNames.add(hazard.name)
+      return [hazard]
+    })
     let trapIndex = 0
-    module.generatedDetails = (module.encounters ?? []).flatMap(encounter => {
+    let hazardIndex = 0
+    module.generatedDetails = module.encounter === 'empty'
+      ? ['Empty room.']
+      : (module.encounters ?? []).flatMap(encounter => {
       if (encounter === 'monster') {
         const monster = pickRandomMonster(random)
         return [`Monster: ${monster.name} (LV ${monster.level})\n${monster.flavor}`]
       }
       if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]
+      if (encounter === 'hazard') return [formatHazardRecord(module.hazardDetails![hazardIndex++]!)]
       return []
-    })
+      })
   }
   const hallwayTrapConnections = plan.connections.filter(connection => connection.condition === 'trap')
   if (hallwayTrapConnections.length > 0) {
@@ -297,33 +308,38 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   }
 }
 
-function applyChallengeEncounters(mission: Mission, plan: SpacePlan): void {
-  const moduleFor = (nodeId: string) => plan.modules.find(module => module.missionNodeId === nodeId)
-  const setEncounters = (nodeId: string, encounters: RoomEncounter[]) => {
-    const module = moduleFor(nodeId)
-    if (!module) return
+function applyMissionRoomDirectives(mission: Mission, plan: SpacePlan): void {
+  const directives = new Map<string, { dangerEntries: DangerEntry[]; empty: boolean }>()
+  for (const cycle of mission.cycles) {
+    for (const nodeId of cycle.emptyRoomIds) {
+      const directive = directives.get(nodeId) ?? { dangerEntries: [], empty: false }
+      directive.empty = true
+      directives.set(nodeId, directive)
+    }
+    for (const entry of cycle.dangerEntries) {
+      const directive = directives.get(entry.nodeId) ?? { dangerEntries: [], empty: false }
+      directive.dangerEntries.push(entry)
+      directives.set(entry.nodeId, directive)
+    }
+  }
+
+  let dangerSequenceIndex = 0
+  for (const module of plan.modules) {
+    const nodeId = module.missionNodeId
+    if (!nodeId) continue
+    const directive = directives.get(nodeId)
+    if (!directive) continue
+    if (directive.empty) {
+      module.encounters = []
+      module.encounter = 'empty'
+      continue
+    }
+    const encounters: RoomEncounter[] = []
+    for (const entry of directive.dangerEntries) {
+      for (let index = 0; index < entry.count; index += 1) encounters.push(resolveDangerKind(entry, dangerSequenceIndex++))
+    }
     module.encounters = encounters
     module.encounter = encounters[0] ?? 'empty'
-  }
-  for (const cycle of mission.cycles) {
-    const routeARooms = cycle.routeA.slice(1, -1)
-    const routeBRooms = cycle.routeB.slice(1, -1)
-    if (cycle.challenge === 'dangerous-route') {
-      // A dangerous route is dangerous room-by-room, while its alternative
-      // is deliberately cleared so it is observably safer.
-      for (const [index, nodeId] of routeARooms.entries()) setEncounters(nodeId, [index % 2 ? 'trap' : 'monster'])
-      for (const nodeId of routeBRooms) setEncounters(nodeId, [])
-    }
-    if (cycle.challenge === 'gambit') {
-      // The long route has one encounter per room. The short route carries
-      // the same total number, concentrating multiple encounters per room.
-      const dangerCount = routeBRooms.length
-      for (const [index, nodeId] of routeBRooms.entries()) setEncounters(nodeId, [index % 2 ? 'trap' : 'monster'])
-      for (const [index, nodeId] of routeARooms.entries()) {
-        const remaining = dangerCount - index * 2
-        setEncounters(nodeId, Array.from({ length: Math.min(2, Math.max(0, remaining)) }, (_, encounterIndex) => (index + encounterIndex) % 2 ? 'trap' : 'monster'))
-      }
-    }
   }
 }
 
@@ -625,8 +641,10 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       if (!point) continue
       if (encounter === 'monster') {
         addOptional(GENERATED_DECORATION_STAMP_TYPES.monster, `generated-monster-${module.id}-${encounterIndex}`, point)
-      } else {
+      } else if (encounter === 'trap') {
         addOptional(GENERATED_DECORATION_STAMP_TYPES.roomTrap, `generated-room-trap-${module.id}-${encounterIndex}`, point)
+      } else if (encounter === 'hazard') {
+        addOptional(GENERATED_DECORATION_STAMP_TYPES.roomHazard, `generated-room-hazard-${module.id}-${encounterIndex}`, point)
       }
     }
     if (module.hasTreasure) {

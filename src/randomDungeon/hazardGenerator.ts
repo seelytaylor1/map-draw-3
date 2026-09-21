@@ -53,6 +53,15 @@ const BARREL_CONTENTS = [
   { name: 'Soul Reliquaries', description: 'Roll WIS or take double damage for 1d4 rounds.' },
 ] as const
 
+const ALL_HAZARD_RECORDS: readonly HazardRecord[] = [
+  ...Object.entries(HAZARDS).map(([roll, hazard]) => ({ roll, ...hazard })),
+  ...BARREL_CONTENTS.map(contents => ({
+    roll: '52',
+    name: `Exploding Barrels: ${contents.name}`,
+    description: `A set of barrels or pottery explodes when struck. ${contents.description}`,
+  })),
+]
+
 function d66(random: D6Random): string {
   return `${random.nextD6()}${random.nextD6()}`
 }
@@ -66,6 +75,19 @@ export function createHazardRecord(random: D6Random): HazardRecord {
   const hazard = HAZARDS[roll]
   if (!hazard) return createHazardRecord(random)
   return { roll, ...hazard }
+}
+
+/** Pick a room hazard that has not already been used in this generated map. */
+export function createUniqueHazardRecord(random: D6Random, usedNames: ReadonlySet<string>): HazardRecord {
+  for (let attempt = 0; attempt < ALL_HAZARD_RECORDS.length * 2; attempt += 1) {
+    const candidate = createHazardRecord(random)
+    if (!usedNames.has(candidate.name)) return candidate
+  }
+
+  // A generated map normally has far fewer hazards than the catalog. This
+  // deterministic fallback keeps uniqueness guaranteed even if repeated
+  // random rolls exhaust the retry budget.
+  return ALL_HAZARD_RECORDS.find(candidate => !usedNames.has(candidate.name)) ?? createHazardRecord(random)
 }
 
 export function formatHazardRecord(record: HazardRecord): string {

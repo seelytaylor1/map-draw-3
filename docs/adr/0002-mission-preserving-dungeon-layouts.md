@@ -35,10 +35,15 @@ rooms. Neither loop membership nor junction metadata permits an incidental
 crossing or contact. The validator rejects those contacts independently of the
 router. Every spatial segment, including support-room segments, must route
 successfully. Lock markers appear at every guarded entrance, oriented to the
-local corridor segment. Seeded room encounter rolls produce empty rooms on
-1–3, monsters on 4–5, and traps on 6. Every room independently has a 2-in-6
-chance of a Chest, which can coexist with any encounter. Loop Challenge rewards
-also place a Chest in the Goal room. Seeded corridor condition rolls produce
+local corridor segment. Seeded room encounter rolls produce empty rooms 50% of
+the time, monsters 30%, traps 10%, and hazards 10%. Room hazards receive unique
+records within the generated map. Mission contracts emit room Danger Entries;
+the space layer resolves an `all` entry from the central danger-kind pool, so
+hazards count as danger without challenge-specific encounter logic. Contract-
+cleared rooms currently resolve to Empty, leaving room for future Empty
+variants such as NPC or lore. Every room independently has a 2-in-6 chance of
+a Chest, which can coexist with any encounter. Loop Challenge rewards also
+place a Chest in the Goal room. Seeded corridor condition rolls produce
 open, flooded, trapped, or hazardous passages; floods use traversable Water
 tiles. Each unguarded room aperture has a 3-in-6 chance of a decorative door
 on the first hallway tile outside the room, while corridors with 5–9 interior

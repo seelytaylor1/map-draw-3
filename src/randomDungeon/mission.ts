@@ -1,6 +1,6 @@
 import { createComplexityBudget } from './preflight'
 import { ALL_LOOP_CHALLENGES } from './loopChallenges'
-import type { CycleRoles, GenerationDiagnostic, GenerationRequest, LoopChallenge, Mission, MissionCycle, MissionEdge, MissionNode, MissionSummary } from './missionTypes'
+import type { CycleRoles, DangerEntry, GenerationDiagnostic, GenerationRequest, LoopChallenge, Mission, MissionCycle, MissionEdge, MissionNode, MissionSummary } from './missionTypes'
 
 const edge = (id: string, from: string, to: string, kind: MissionEdge['kind'] = 'progression', extra: Partial<MissionEdge> = {}): MissionEdge => ({ id, from, to, kind, coupling: kind === 'progression' ? 'tight' : 'loose', ...extra })
 
@@ -73,6 +73,14 @@ function seededLoopRoom(mission: Mission, cycle: MissionCycle, offset = 0, exclu
   return rooms[(mission.seed + offset) % rooms.length]!
 }
 
+function addDangerEntries(cycle: MissionCycle, nodeIds: readonly string[], count = 1, kinds: DangerEntry['kinds'] = 'all'): void {
+  for (const nodeId of nodeIds) cycle.dangerEntries.push({ nodeId, count, kinds })
+}
+
+function markEmptyRooms(cycle: MissionCycle, nodeIds: readonly string[]): void {
+  for (const nodeId of nodeIds) if (!cycle.emptyRoomIds.includes(nodeId)) cycle.emptyRoomIds.push(nodeId)
+}
+
 function extendRouteBeforeObjective(mission: Mission, cycle: MissionCycle, route: 'routeA' | 'routeB', idPrefix: string, labelPrefix: string, count: number): void {
   if (count <= 0) return
   const routeNodes = cycle[route]
@@ -110,6 +118,8 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
     'dramatic-arc': { ...base, realization: 'visible obstacle before the objective on one route', rewrite: (mission, cycle) => { const route = routeEdges(mission, cycle, cycle.routeA); const last = route[route.length - 1]; if (last) { last.blocked = true; last.visibleObstacle = true } } },
     'dangerous-route': { ...base, realization: 'every room on one route is dangerous and the alternate route is safer', rewrite: (mission, cycle) => {
       for (const route of routeEdges(mission, cycle, cycle.routeA)) route.dangerous = true
+      addDangerEntries(cycle, cycle.routeA.slice(1, -1))
+      markEmptyRooms(cycle, cycle.routeB.slice(1, -1))
     } },
     'lock-and-key': { ...base, realization: 'locked loop branch with its matching key on the open route', rewrite: (mission, cycle) => {
       const keyId = `key-${cycle.id}`
@@ -157,6 +167,12 @@ function makeContract(challenge: LoopChallenge): LoopChallengeContract {
       const routeIndex = cycle.routeEdgeIds.indexOf(safeFinal.id)
       if (routeIndex >= 0) cycle.routeEdgeIds.splice(routeIndex, 1, ...replacements.map(candidate => candidate.id))
       cycle.routeB = [...cycle.routeB.slice(0, -1), ...safeNodeIds, cycle.roles.objectiveNode]
+      addDangerEntries(cycle, cycle.routeB.slice(1, -1))
+      for (const [index, nodeId] of cycle.routeA.slice(1, -1).entries()) {
+        const remaining = targetSafeRoomCount - index * 2
+        if (remaining > 0) addDangerEntries(cycle, [nodeId], Math.min(2, remaining))
+        else markEmptyRooms(cycle, [nodeId])
+      }
     } },
     'hub-and-spoke': { ...base, realization: 'explicit hub and spoke connections', rewrite: (mission, cycle) => {
       const hub = mission.nodes.find(candidate => candidate.id === cycle.roles.anchorNode)
@@ -280,7 +296,7 @@ export function createMission(request: GenerationRequest, budget = createComplex
     const routeAEdges = addRoute(routeA, 'a')
     const routeBEdges = addRoute(routeB, 'b')
     mission.edges.push(...routeAEdges, ...routeBEdges)
-    const cycle: MissionCycle = { id: `cycle-${index + 1}`, routeA, routeB, roles: { anchorNode: anchor, routeANode, routeBNode, objectiveNode }, challenge: selected, routeEdgeIds: [...routeAEdges, ...routeBEdges].map(candidate => candidate.id), nonTrivial: true }
+    const cycle: MissionCycle = { id: `cycle-${index + 1}`, routeA, routeB, roles: { anchorNode: anchor, routeANode, routeBNode, objectiveNode }, challenge: selected, routeEdgeIds: [...routeAEdges, ...routeBEdges].map(candidate => candidate.id), nonTrivial: true, dangerEntries: [], emptyRoomIds: [] }
     mission.cycles.push(cycle)
     applyLoopChallenge(mission, cycle)
   }

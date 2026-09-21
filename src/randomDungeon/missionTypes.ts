@@ -1,6 +1,7 @@
 import type { StampType } from '../stamps'
 import type { AppSnapshotShape, Direction, Point } from './commonTypes'
 import type { TrapRecord } from './trapGenerator'
+import type { HazardRecord } from './hazardGenerator'
 
 export type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
 
@@ -135,6 +136,14 @@ export interface CycleRoles {
   keyNode?: string
 }
 
+export type DangerKind = 'monster' | 'trap' | 'hazard'
+
+export interface DangerEntry {
+  nodeId: string
+  count: number
+  kinds: 'all' | readonly DangerKind[]
+}
+
 export interface MissionCycle {
   id: string
   routeA: string[]
@@ -143,6 +152,8 @@ export interface MissionCycle {
   challenge: LoopChallenge
   routeEdgeIds: string[]
   nonTrivial: boolean
+  dangerEntries: DangerEntry[]
+  emptyRoomIds: string[]
 }
 
 export interface Mission {
@@ -168,7 +179,7 @@ export interface Port {
 }
 
 export type SpatialModuleType = 'room' | 'corridor' | 'branch' | 'junction' | 'cycle' | 'hub' | 'gate' | 'secret-connection' | 'blocked-return' | 'terminal-challenge'
-export type RoomEncounter = 'empty' | 'monster' | 'trap'
+export type RoomEncounter = 'empty' | DangerKind
 export type CorridorCondition = 'open' | 'flooded' | 'trap' | 'hazard'
 export type DoorwayStyle =
   | 'single' | 'double' | 'locked' | 'trapdoor' | 'portcullis'
@@ -203,6 +214,8 @@ export interface SpatialModule {
   generatedDetails?: string[]
   /** Structured generated room traps used to render their ledger prose. */
   trapDetails?: TrapRecord[]
+  /** Structured generated room hazards used to render their ledger prose. */
+  hazardDetails?: HazardRecord[]
   hasTreasure?: boolean
 }
 

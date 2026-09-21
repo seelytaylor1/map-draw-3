@@ -12,22 +12,28 @@ export function normalizeSeed(seed: number | string): number {
 export interface D6Random {
   readonly seed: number
   nextD6(): number
+  nextD10(): number
 }
 
 export function createD6Random(seed: number | string): D6Random {
   const normalized = normalizeSeed(seed)
   let state = normalized || 0x6d2b79f5
+  const nextUnit = () => {
+    // Mulberry32 is a small, reproducible PRNG. This is the only stream
+    // consumed by the pure generator; all table rerolls are explicit.
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
   return {
     seed: normalized,
     nextD6() {
-      // Mulberry32 is a small, reproducible PRNG. This is the only stream
-      // consumed by the pure generator; all table rerolls are explicit.
-      state = (state + 0x6d2b79f5) >>> 0
-      let t = state
-      t = Math.imul(t ^ (t >>> 15), t | 1)
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-      const value = ((t ^ (t >>> 14)) >>> 0) / 4294967296
-      return 1 + Math.floor(value * 6)
+      return 1 + Math.floor(nextUnit() * 6)
+    },
+    nextD10() {
+      return 1 + Math.floor(nextUnit() * 10)
     },
   }
 }
