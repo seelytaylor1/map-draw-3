@@ -432,6 +432,67 @@ describe('mission-first dungeon generation', () => {
     expect([...encounterTreasurePairs]).toEqual(expect.arrayContaining(['empty/false', 'empty/true', 'monster/false', 'monster/true', 'trap/false', 'trap/true']))
   })
 
+  it('documents the selected monster in its room ledger entry', () => {
+    let generated: ReturnType<typeof generateMissionDungeon> | undefined
+    let monsterModule: NonNullable<ReturnType<typeof generateMissionDungeon>['space']>['modules'][number] | undefined
+
+    for (let seed = 1; seed <= 100 && !monsterModule; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      const candidate = result.space?.modules.find(module => module.encounter === 'monster')
+      if (candidate) {
+        generated = result
+        monsterModule = candidate
+      }
+    }
+
+    expect(generated?.ok).toBe(true)
+    expect(monsterModule).toBeDefined()
+    const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${monsterModule!.id}`)
+    expect(label?.details).toMatch(/^Monster: .+ \(LV [\d*]+\)\n/)
+  })
+
+  it('documents the generated trap method in its room ledger entry', () => {
+    let generated: ReturnType<typeof generateMissionDungeon> | undefined
+    let trapModule: NonNullable<ReturnType<typeof generateMissionDungeon>['space']>['modules'][number] | undefined
+
+    for (let seed = 1; seed <= 100 && !trapModule; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      const candidate = result.space?.modules.find(module => module.encounter === 'trap')
+      if (candidate) {
+        generated = result
+        trapModule = candidate
+      }
+    }
+
+    expect(generated?.ok).toBe(true)
+    expect(trapModule).toBeDefined()
+    const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${trapModule!.id}`)
+    expect(label?.details).toMatch(/^Trap: (Hidden Trap|Trap with Tell|Obvious Trap)\./)
+    expect(label?.details).toContain('Attack: ')
+    expect(label?.details).toContain('Effect: ')
+  })
+
+  it('records one shared hallway hazard variety in general notes', () => {
+    let generated: ReturnType<typeof generateMissionDungeon> | undefined
+    let hazardConnections: NonNullable<ReturnType<typeof generateMissionDungeon>['space']>['connections'] = []
+
+    for (let seed = 1; seed <= 100 && hazardConnections.length === 0; seed++) {
+      const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
+      const candidates = result.space?.connections.filter(connection => connection.condition === 'trap' || connection.condition === 'hazard') ?? []
+      if (candidates.length > 0) {
+        generated = result
+        hazardConnections = candidates
+      }
+    }
+
+    expect(generated?.ok).toBe(true)
+    expect(hazardConnections.length).toBeGreaterThan(0)
+    expect(new Set(hazardConnections.map(connection => connection.conditionDetails)).size).toBe(1)
+    const sharedDetails = hazardConnections[0]?.conditionDetails
+    expect(sharedDetails).toBeTruthy()
+    expect(generated?.space?.generalNotes).toEqual([expect.stringContaining(sharedDetails!)])
+  })
+
   it('rolls hallway conditions and marks flooded, trapped, and hazardous passages', () => {
     const conditions = new Set<string>()
 

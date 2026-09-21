@@ -1,5 +1,6 @@
 import type { StampType } from '../stamps'
 import type { AppSnapshotShape, Direction, Point } from './commonTypes'
+import type { TrapRecord } from './trapGenerator'
 
 export type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
 
@@ -198,6 +199,10 @@ export interface SpatialModule {
   /** Forced or rolled encounter payload. A room may deliberately hold more
    * than one encounter when a mission contract needs concentrated danger. */
   encounters?: RoomEncounter[]
+  /** Generated encounter prose shown in the room ledger and copied to labels. */
+  generatedDetails?: string[]
+  /** Structured generated room traps used to render their ledger prose. */
+  trapDetails?: TrapRecord[]
   hasTreasure?: boolean
 }
 
@@ -217,6 +222,7 @@ export interface SpatialConnection {
   apertureFrom: Point
   apertureTo: Point
   condition?: CorridorCondition
+  conditionDetails?: string
   doorways?: GeneratedDoorway[]
 }
 
@@ -225,6 +231,7 @@ export interface SpacePlan {
   modules: SpatialModule[]
   connections: SpatialConnection[]
   anchors: Record<string, string>
+  generalNotes: string[]
   diagnostics: GenerationDiagnostic[]
 }
 

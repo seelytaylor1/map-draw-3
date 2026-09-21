@@ -13,6 +13,8 @@ import type { RampRun } from '../ramps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
+import { pickRandomMonster } from './monsterCatalog'
+import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
@@ -222,7 +224,7 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
   const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
   if (dramaticGoalInStart) anchors[mission.goalNodeId] = anchors.start!
-  const plan = { style: request.style, modules, connections, anchors, diagnostics }
+  const plan = { style: request.style, modules, connections, anchors, generalNotes: [], diagnostics }
   rollGeneratedContent(request, mission, plan)
   return plan
 }
@@ -267,6 +269,25 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     if (goal) goal.hasTreasure = true
   }
   applyChallengeEncounters(mission, plan)
+  for (const module of plan.modules) {
+    module.trapDetails = (module.encounters ?? []).flatMap(encounter => encounter === 'trap' ? [createTrapRecord(random)] : [])
+    let trapIndex = 0
+    module.generatedDetails = (module.encounters ?? []).flatMap(encounter => {
+      if (encounter === 'monster') {
+        const monster = pickRandomMonster(random)
+        return [`Monster: ${monster.name} (LV ${monster.level})\n${monster.flavor}`]
+      }
+      if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]
+      return []
+    })
+  }
+  const hallwayHazardConnections = plan.connections.filter(connection => connection.condition === 'trap' || connection.condition === 'hazard')
+  if (hallwayHazardConnections.length > 0) {
+    const hallwayHazard = createTrapRecord(random)
+    const details = formatTrapRecord(hallwayHazard)
+    for (const connection of hallwayHazardConnections) connection.conditionDetails = details
+    plan.generalNotes.push(`Hallway hazards: all trapped and hazardous hallways share one variety. ${details}`)
+  }
 }
 
 function applyChallengeEncounters(mission: Mission, plan: SpacePlan): void {
@@ -459,10 +480,10 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       .sort((a, b) => distance(a) - distance(b) || a.row - b.row || a.col - b.col)
       .find(point => isFloor(point) && !occupied.has(keyOf(point)))
   }
-  const addRoomLabel = (id: string, text: string, module: SpatialModule, color?: string, number?: number, numberOnly = false) => {
+  const addRoomLabel = (id: string, text: string, module: SpatialModule, color?: string, number?: number, numberOnly = false, details?: string) => {
     const point = roomDecorationPoint(module)
     if (!point) return
-    labels.push({ id, col: point.col, row: point.row, text, ...(number === undefined ? {} : { number }), ...(numberOnly ? { numberOnly: true } : {}), ...(color ? { color } : {}) })
+    labels.push({ id, col: point.col, row: point.row, text, ...(number === undefined ? {} : { number }), ...(numberOnly ? { numberOnly: true } : {}), ...(color ? { color } : {}), ...(details ? { details } : {}) })
     occupied.add(keyOf(point))
   }
   const addRequired = (semantic: GeneratedMarkerSemantic, id: string, point: Point, direction: Direction, color?: string) => {
@@ -514,7 +535,7 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       : module.missionNodeId === mission.goalNodeId
         ? 'Goal'
         : missionNode?.label ?? 'Support Room'
-    addRoomLabel(`label-${module.id}`, text, module, undefined, index + 1, true)
+    addRoomLabel(`label-${module.id}`, text, module, undefined, index + 1, true, module.generatedDetails?.join('\n\n'))
   }
   if (dramaticCycle && dramaticGoalInStart) {
     const start = plan.modules.find(module => module.missionNodeId === 'start')

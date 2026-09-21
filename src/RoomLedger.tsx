@@ -6,6 +6,8 @@ export interface RoomLedgerProps {
   modules: readonly SpatialModule[]
   mission: Mission
   labels: readonly Label[]
+  generalNotes: readonly string[]
+  onCommitGeneralNotes: (notes: string[]) => void
   onCommitRoomName: (moduleId: string, text: string) => void
   onCommitRoomDetails: (moduleId: string, details: string) => void
   onClose: () => void
@@ -75,17 +77,20 @@ function WindowHeader({ count, onClose }: { count: number; onClose: () => void }
   )
 }
 
-export function RoomLedger({ modules, mission, labels, onCommitRoomName, onCommitRoomDetails, onClose }: RoomLedgerProps) {
+export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGeneralNotes, onCommitRoomName, onCommitRoomDetails, onClose }: RoomLedgerProps) {
   const rooms = useMemo(() => buildRooms(modules, mission, labels), [labels, mission, modules])
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
   const [detailsDrafts, setDetailsDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
-  const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.module.id ?? '')
+  const [generalNotesDraft, setGeneralNotesDraft] = useState(() => generalNotes.join('\n'))
+  const [selectedEntryId, setSelectedEntryId] = useState<'general-notes' | string>('general-notes')
 
   useEffect(() => {
     setDrafts(Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
     setDetailsDrafts(Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
-    setSelectedRoomId(previous => rooms.some(room => room.module.id === previous) ? previous : rooms[0]?.module.id ?? '')
+    setSelectedEntryId(previous => previous === 'general-notes' || rooms.some(room => room.module.id === previous) ? previous : 'general-notes')
   }, [rooms.length, rooms.map(room => room.module.id).join('|')])
+
+  useEffect(() => { setGeneralNotesDraft(generalNotes.join('\n')) }, [generalNotes])
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -95,8 +100,9 @@ export function RoomLedger({ modules, mission, labels, onCommitRoomName, onCommi
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const selectedRoom = rooms.find(room => room.module.id === selectedRoomId) ?? rooms[0]
-  if (!selectedRoom) return null
+  const selectedRoom = rooms.find(room => room.module.id === selectedEntryId) ?? rooms[0]
+  const generalNotesSelected = selectedEntryId === 'general-notes'
+  if (!selectedRoom && !generalNotesSelected) return null
 
   const updateDraft = (room: RoomEntry, value: string) => {
     setDrafts(previous => ({ ...previous, [room.module.id]: value }))
@@ -117,39 +123,71 @@ export function RoomLedger({ modules, mission, labels, onCommitRoomName, onCommi
     if (value !== room.details) onCommitRoomDetails(room.module.id, value)
   }
 
+  const commitGeneralNotes = () => {
+    const notes = generalNotesDraft.split('\n').map(note => note.trim()).filter(Boolean)
+    if (notes.join('\n') !== generalNotes.join('\n')) onCommitGeneralNotes(notes)
+  }
+
   return (
     <div className="room-ledger-overlay" role="complementary" aria-label="Generated room ledger">
       <div className="room-ledger-backdrop" aria-hidden="true" />
       <div className="room-window room-ledger-panel">
         <WindowHeader count={rooms.length} onClose={onClose} />
         <div className="room-ledger-list">
+          <button className={`room-ledger-row${generalNotesSelected ? ' selected' : ''}`} type="button" onClick={() => setSelectedEntryId('general-notes')}>
+            <span className="room-number">00</span>
+            <span className="room-ledger-row-name">General notes</span>
+            <span className="room-ledger-row-arrow">{generalNotesSelected ? '●' : '›'}</span>
+          </button>
           {rooms.map(room => (
-            <button className={`room-ledger-row${room.module.id === selectedRoom.module.id ? ' selected' : ''}`} type="button" key={room.module.id} onClick={() => setSelectedRoomId(room.module.id)}>
+            <button className={`room-ledger-row${room.module.id === selectedEntryId ? ' selected' : ''}`} type="button" key={room.module.id} onClick={() => setSelectedEntryId(room.module.id)}>
               <span className="room-number">{String(room.number).padStart(2, '0')}</span>
               <span className="room-ledger-row-name">{drafts[room.module.id] ?? room.name}</span>
-              <span className="room-ledger-row-arrow">{room.module.id === selectedRoom.module.id ? '●' : '›'}</span>
+              <span className="room-ledger-row-arrow">{room.module.id === selectedEntryId ? '●' : '›'}</span>
             </button>
           ))}
         </div>
-        <div className="room-ledger-editor">
-          <div className="room-ledger-editor-kicker">ROOM {String(selectedRoom.number).padStart(2, '0')} / ENCOUNTER</div>
-          <label className="room-editor-field">
-            <span>Name</span>
-            <RoomNameInput room={selectedRoom} value={drafts[selectedRoom.module.id] ?? selectedRoom.name} onChange={value => updateDraft(selectedRoom, value)} onCommit={() => commit(selectedRoom)} />
-          </label>
-          <label className="room-editor-field room-details-field">
-            <span>Details</span>
+        {generalNotesSelected ? (
+          <div className="room-ledger-editor">
+            <div className="room-ledger-editor-kicker">ROOM 00 / GENERAL NOTES</div>
+            <label className="room-editor-field">
+              <span>Name</span>
+              <input className="room-name-input" value="General notes" aria-label="Room 0 name" readOnly />
+            </label>
+            <label className="room-editor-field room-details-field">
+              <span>Details</span>
             <textarea
               className="room-details-input"
-              aria-label={`Room ${selectedRoom.number} details`}
-              value={detailsDrafts[selectedRoom.module.id] ?? selectedRoom.details}
+              aria-label="Room 0 details"
+              value={generalNotesDraft}
               placeholder="Describe what happens here, what the players notice, or what this room is for…"
-              onChange={event => updateDetails(selectedRoom, event.target.value)}
-              onBlur={() => commitDetails(selectedRoom)}
+              onChange={event => setGeneralNotesDraft(event.target.value)}
+              onBlur={commitGeneralNotes}
             />
-          </label>
-          <div className="room-editor-hint">Details save to the room record when you leave the field.</div>
-        </div>
+            </label>
+            <div className="room-editor-hint">Details save to the room record when you leave the field. One note per line.</div>
+          </div>
+        ) : selectedRoom && (
+          <div className="room-ledger-editor">
+            <div className="room-ledger-editor-kicker">ROOM {String(selectedRoom.number).padStart(2, '0')} / ENCOUNTER</div>
+            <label className="room-editor-field">
+              <span>Name</span>
+              <RoomNameInput room={selectedRoom} value={drafts[selectedRoom.module.id] ?? selectedRoom.name} onChange={value => updateDraft(selectedRoom, value)} onCommit={() => commit(selectedRoom)} />
+            </label>
+            <label className="room-editor-field room-details-field">
+              <span>Details</span>
+              <textarea
+                className="room-details-input"
+                aria-label={`Room ${selectedRoom.number} details`}
+                value={detailsDrafts[selectedRoom.module.id] ?? selectedRoom.details}
+                placeholder="Describe what happens here, what the players notice, or what this room is for…"
+                onChange={event => updateDetails(selectedRoom, event.target.value)}
+                onBlur={() => commitDetails(selectedRoom)}
+              />
+            </label>
+            <div className="room-editor-hint">Details save to the room record when you leave the field.</div>
+          </div>
+        )}
       </div>
     </div>
   )

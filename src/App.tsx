@@ -1700,6 +1700,12 @@ export default function App() {
     })
   }, [])
 
+  const handleCommitGeneralNotes = useCallback((generalNotes: string[]) => {
+    setGenerationResult(result => result?.space
+      ? { ...result, space: { ...result.space, generalNotes } }
+      : result)
+  }, [])
+
   const isDirtyRef = useRef(isDirty)
   isDirtyRef.current = isDirty
 
@@ -2543,6 +2549,8 @@ export default function App() {
           modules={generationResult.space.modules}
           mission={generationResult.mission}
           labels={labels}
+          generalNotes={generationResult.space.generalNotes}
+          onCommitGeneralNotes={handleCommitGeneralNotes}
           onCommitRoomName={handleCommitRoomName}
           onCommitRoomDetails={handleCommitRoomDetails}
           onClose={() => setRoomListOpen(false)}
