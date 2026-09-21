@@ -65,8 +65,8 @@ export function minimumMonsterEncounterCost(monsterLevel: number, encounterBudge
 }
 
 /**
- * Roll a single monster group. A D6 adds monsters in batches until the
- * encounter target is reached, so the group's total may exceed the target.
+ * Roll a single monster group. The group contains the fewest whole monsters
+ * needed to reach the encounter target, so its total may exceed the target.
  * The remaining dungeon budget is the hard ceiling for the actual group.
  */
 export function rollMonsterEncounter(

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { generateMissionDungeon, getDungeonLevelBudget, monsterFitsLevelBudget, rollMonsterEncounter } from './missionFirst'
+import { generateMissionDungeon, getDungeonLevelBudget, rollMonsterEncounter } from './missionFirst'
+import { createD6Random } from './random'
+import { MONSTER_CATALOG, createMonsterEncounterTable } from './monsterCatalog'
 import type { MonsterRecord } from './monsterCatalog'
 
 const request = (playerLevel: number) => ({
@@ -53,14 +55,21 @@ describe('monster level budgets', () => {
     expect(rollMonsterEncounter(badger, 4, 3)).toBeNull()
   })
 
-  it('filters the encounter table and room groups to the selected level band', () => {
+  it('samples the full catalog before applying budgets to room groups', () => {
     const low = generateMissionDungeon(request(1))
     const high = generateMissionDungeon(request(10))
 
     expect(low.ok).toBe(true)
     expect(high.ok).toBe(true)
-    expect(low.space?.monsterEncounterTable.every(monster => monsterFitsLevelBudget(monster, getDungeonLevelBudget(1)))).toBe(true)
-    expect(high.space?.monsterEncounterTable.every(monster => monsterFitsLevelBudget(monster, getDungeonLevelBudget(10)))).toBe(true)
+    expect(low.space?.monsterEncounterTable).toHaveLength(5)
+    expect(new Set(low.space?.monsterEncounterTable.map(monster => monster.name)).size).toBe(5)
+    expect(low.space?.monsterEncounterTable.every(monster => MONSTER_CATALOG.includes(monster))).toBe(true)
+    let tableWithHighLevelMonster = false
+    for (let seed = 1; seed <= 20 && !tableWithHighLevelMonster; seed += 1) {
+      const table = createMonsterEncounterTable(createD6Random(seed))
+      tableWithHighLevelMonster = table.some(monster => monster.level === '*' || (typeof monster.level === 'number' && monster.level > 3))
+    }
+    expect(tableWithHighLevelMonster).toBe(true)
     expect(low.space?.monsterLevelsUsed).toBeLessThanOrEqual(low.space!.dungeonLevelBudget.dungeonBudget)
     expect(high.space?.monsterLevelsUsed).toBeLessThanOrEqual(high.space!.dungeonLevelBudget.dungeonBudget)
     expect(low.space?.modules.flatMap(module => module.monsterEncounterGroups ?? []).every(group => group.levelTotal >= low.space!.dungeonLevelBudget.encounterBudget)).toBe(true)

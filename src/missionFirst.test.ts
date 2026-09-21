@@ -250,12 +250,15 @@ describe('mission-first dungeon generation', () => {
     const dangerous = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['dangerous-route'] }))
     const dangerousCycle = dangerous.mission.cycles[0]!
     const encounters = (nodeId: string) => dangerous.space!.modules.find(module => module.missionNodeId === nodeId)?.encounters ?? []
+    const dangerousRouteGroups = dangerousCycle.routeA.slice(1, -1).flatMap(nodeId => dangerous.space!.modules.find(module => module.missionNodeId === nodeId)?.monsterEncounterGroups ?? [])
     expect(dangerousCycle.dangerEntries.map(entry => entry.nodeId)).toEqual(dangerousCycle.routeA.slice(1, -1))
     expect(dangerousCycle.dangerEntries.every(entry => entry.count === 1 && entry.kinds === 'all')).toBe(true)
     expect(dangerousCycle.emptyRoomIds).toEqual(dangerousCycle.routeB.slice(1, -1))
     expect(dangerousCycle.routeA.slice(1, -1).every(nodeId => encounters(nodeId).length > 0)).toBe(true)
     expect(dangerousCycle.routeB.slice(1, -1).every(nodeId => encounters(nodeId).length === 0)).toBe(true)
     expect(dangerousCycle.routeA.slice(1, -1).flatMap(nodeId => encounters(nodeId))).toEqual(expect.arrayContaining(['monster', 'trap', 'hazard']))
+    expect(dangerous.space!.monsterEncounterTable.some(monster => typeof monster.level === 'number' && monster.level >= 10)).toBe(true)
+    expect(dangerousRouteGroups.some(group => group.monsterLevel >= 10)).toBe(true)
 
     const gambit = generateMissionDungeon(request({ loopCount: 1, loopChallenges: ['gambit'] }))
     const gambitCycle = gambit.mission.cycles[0]!

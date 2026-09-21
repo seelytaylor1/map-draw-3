@@ -13,8 +13,8 @@ import type { RampRun } from '../ramps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
-import { createMonsterEncounterTableForBudget, pickRandomMonsterFromTable } from './monsterCatalog'
-import { minimumMonsterEncounterCost, numericMonsterLevel, resolveDungeonLevelBudget, rollMonsterEncounter } from './monsterBudget'
+import { createMonsterEncounterTable, MONSTER_CATALOG, pickRandomMonsterFromTable, type MonsterRecord } from './monsterCatalog'
+import { minimumMonsterEncounterCost, numericMonsterLevel, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -232,10 +232,50 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   return plan
 }
 
+const DANGEROUS_ROUTE_MONSTER_LEVEL = 10
+
+function roomPlaceableDangerousRouteMonsters(table: readonly MonsterRecord[], budget: DungeonLevelBudget): MonsterRecord[] {
+  const candidates = table.filter(monster => {
+    const level = numericMonsterLevel(monster)
+    return level !== null && level >= DANGEROUS_ROUTE_MONSTER_LEVEL && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.dungeonBudget
+  })
+  if (candidates.length === 0) return []
+  const lowestCost = Math.min(...candidates.map(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget)))
+  return candidates.filter(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget) === lowestCost)
+}
+
+function ensureDangerousRouteMonsterOnTable(random: ReturnType<typeof createD6Random>, table: MonsterRecord[], budget: DungeonLevelBudget): MonsterRecord[] {
+  let candidates = roomPlaceableDangerousRouteMonsters(table, budget)
+  if (candidates.length > 0) return candidates
+
+  // A dangerous-route contract is allowed to add its required entry to the
+  // otherwise unrestricted table. Prefer the lowest-level qualifying catalog
+  // entry so the contract can fit every dungeon-level budget band.
+  const catalogCandidates = MONSTER_CATALOG.filter(monster => {
+    const level = numericMonsterLevel(monster)
+    return !table.includes(monster) && level !== null && level >= DANGEROUS_ROUTE_MONSTER_LEVEL && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.dungeonBudget
+  })
+  if (catalogCandidates.length === 0) return []
+  const lowestCost = Math.min(...catalogCandidates.map(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget)))
+  const qualifyingCatalogCandidates = catalogCandidates.filter(monster => minimumMonsterEncounterCost(numericMonsterLevel(monster)!, budget.encounterBudget) === lowestCost)
+  const requiredMonster = pickRandomMonsterFromTable(random, qualifyingCatalogCandidates)
+  table[table.length - 1] = requiredMonster
+  candidates = roomPlaceableDangerousRouteMonsters(table, budget)
+  return candidates
+}
+
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
   plan.dungeonLevelBudget = resolveDungeonLevelBudget(request.playerLevel)
-  plan.monsterEncounterTable = createMonsterEncounterTableForBudget(random, plan.dungeonLevelBudget)
+  // The table is an unrestricted sample from the catalog. Dungeon and
+  // encounter budgets are applied only when a table entry is assigned to a
+  // room, so high-level entries can still appear and be documented as
+  // rejected when they cannot fit the generated dungeon.
+  plan.monsterEncounterTable = createMonsterEncounterTable(random)
+  const dangerousRouteCycles = mission.cycles.filter(cycle => cycle.challenge === 'dangerous-route')
+  const dangerousRouteMonsterCandidates = dangerousRouteCycles.length > 0
+    ? ensureDangerousRouteMonsterOnTable(random, plan.monsterEncounterTable, plan.dungeonLevelBudget)
+    : []
   plan.generalNotes.push([
     'Random Encounter Table:',
     '1. Torch extinguished',
@@ -280,17 +320,37 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     if (goal) goal.hasTreasure = true
   }
   applyMissionRoomDirectives(mission, plan)
+  const contractMonsterAssignments = new Map<string, MonsterRecord[]>()
+  if (dangerousRouteCycles.length > 0) {
+    for (const cycle of dangerousRouteCycles) {
+      const nodeId = cycle.routeA.slice(1, -1)[0]
+      const module = nodeId ? plan.modules.find(candidate => candidate.missionNodeId === nodeId) : undefined
+      const selectedMonster = dangerousRouteMonsterCandidates.length > 0 ? pickRandomMonsterFromTable(random, dangerousRouteMonsterCandidates) : undefined
+      if (!module || !selectedMonster) continue
+      const assignments = contractMonsterAssignments.get(nodeId) ?? []
+      assignments.push(selectedMonster)
+      contractMonsterAssignments.set(nodeId, assignments)
+      // Put the required contract encounter ahead of any ambient result that
+      // was already rolled for this room.
+      module.encounters = ['monster', ...(module.encounters ?? [])]
+      module.encounter = 'monster'
+    }
+  }
   let monsterLevelsUsed = 0
   const forcedDangerNodes = new Set(mission.cycles.flatMap(cycle => cycle.dangerEntries.map(entry => entry.nodeId)))
   const modulesByMonsterPriority = [...plan.modules].sort((left, right) => {
-    const leftPriority = left.encounters?.includes('monster') && forcedDangerNodes.has(left.missionNodeId ?? '') ? 0 : 1
-    const rightPriority = right.encounters?.includes('monster') && forcedDangerNodes.has(right.missionNodeId ?? '') ? 0 : 1
+    const leftNodeId = left.missionNodeId ?? ''
+    const rightNodeId = right.missionNodeId ?? ''
+    const leftPriority = contractMonsterAssignments.has(leftNodeId) ? 0 : left.encounters?.includes('monster') && forcedDangerNodes.has(leftNodeId) ? 1 : 2
+    const rightPriority = contractMonsterAssignments.has(rightNodeId) ? 0 : right.encounters?.includes('monster') && forcedDangerNodes.has(rightNodeId) ? 1 : 2
     return leftPriority - rightPriority
   })
   for (const module of modulesByMonsterPriority) {
     const resolvedEncounters: RoomEncounter[] = []
     const monsterGroups = [] as NonNullable<SpatialModule['monsterEncounterGroups']>
     const monsterDetails = [] as NonNullable<SpatialModule['monsterDetails']>
+    const contractMonsters = contractMonsterAssignments.get(module.missionNodeId ?? '') ?? []
+    let contractMonsterIndex = 0
     for (const encounter of module.encounters ?? []) {
       if (encounter !== 'monster') {
         resolvedEncounters.push(encounter)
@@ -301,11 +361,12 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       // encounter even when ambient rooms have already spent the dungeon pool.
       // Ordinary random monster rooms remain hard-capped by that pool.
       const remainingDungeonBudget = isForcedDangerMonster ? Number.MAX_SAFE_INTEGER : plan.dungeonLevelBudget.dungeonBudget - monsterLevelsUsed
+      const contractMonster = contractMonsterIndex < contractMonsters.length ? contractMonsters[contractMonsterIndex++] : undefined
       const affordableMonsters = plan.monsterEncounterTable.filter(monster => {
         const level = numericMonsterLevel(monster)
         return level !== null && minimumMonsterEncounterCost(level, plan.dungeonLevelBudget.encounterBudget) <= remainingDungeonBudget
       })
-      const selectedMonster = affordableMonsters.length > 0 ? pickRandomMonsterFromTable(random, affordableMonsters) : undefined
+      const selectedMonster = contractMonster ?? (affordableMonsters.length > 0 ? pickRandomMonsterFromTable(random, affordableMonsters) : undefined)
       const group = selectedMonster
         ? rollMonsterEncounter(selectedMonster, plan.dungeonLevelBudget.encounterBudget, remainingDungeonBudget)
         : null
