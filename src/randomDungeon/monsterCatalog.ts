@@ -1,4 +1,5 @@
 import type { D6Random } from './random'
+import type { DungeonLevelBudget } from './monsterBudget'
 export interface MonsterRecord {
   name: string
   flavor: string
@@ -1212,6 +1213,16 @@ function nextCatalogIndex(random: D6Random, count: number): number {
   } while (value >= limit)
   return value % count
 }
+
+function nextStableCatalogIndex(random: D6Random, count: number): number {
+  // Keep level-filtered table construction on the same four-D6 cadence as
+  // the complete catalog, so changing the eligible pool does not shift later
+  // room, trap, or hazard rolls in the shared deterministic stream.
+  const digits = Math.ceil(Math.log(MONSTER_CATALOG.length) / Math.log(6))
+  let value = 0
+  for (let index = 0; index < digits; index++) value = value * 6 + random.nextD6() - 1
+  return value % count
+}
 export function pickRandomMonster(random: D6Random): MonsterRecord {
   return MONSTER_CATALOG[nextCatalogIndex(random, MONSTER_CATALOG.length)]!
 }
@@ -1224,6 +1235,19 @@ export function createMonsterEncounterTable(random: D6Random, size = MONSTER_ENC
   const remaining = [...MONSTER_CATALOG]
   const table: MonsterRecord[] = []
   while (table.length < size) table.push(remaining.splice(nextCatalogIndex(random, remaining.length), 1)[0]!)
+  return table
+}
+
+/** Build a table from monsters appropriate for the selected party level. */
+export function createMonsterEncounterTableForBudget(random: D6Random, budget: DungeonLevelBudget, size = MONSTER_ENCOUNTER_TABLE_SIZE): MonsterRecord[] {
+  const eligible = MONSTER_CATALOG.filter(monster => {
+    const level = typeof monster.level === 'number' && Number.isFinite(monster.level) ? monster.level : null
+    return level !== null && level >= budget.monsterLevelMin && (budget.monsterLevelMax === null || level <= budget.monsterLevelMax)
+  })
+  if (eligible.length < size) throw new RangeError(`Monster catalog has fewer than ${size} entries for monster level ${budget.monsterLevelLabel}.`)
+  const remaining = [...eligible]
+  const table: MonsterRecord[] = []
+  while (table.length < size) table.push(remaining.splice(nextStableCatalogIndex(random, remaining.length), 1)[0]!)
   return table
 }
 

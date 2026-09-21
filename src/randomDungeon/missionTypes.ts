@@ -3,6 +3,7 @@ import type { AppSnapshotShape, Direction, Point } from './commonTypes'
 import type { TrapRecord } from './trapGenerator'
 import type { HazardRecord } from './hazardGenerator'
 import type { MonsterRecord } from './monsterCatalog'
+import type { DungeonLevelBudget, MonsterEncounterGroup, MonsterRejection } from './monsterBudget'
 
 export type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
 
@@ -34,6 +35,8 @@ export interface GenerationRequest {
   complexity: ComplexityPreset
   loopCount: number
   loopPreference: LoopPreference
+  /** Party level used to select the monster and dungeon budgets. */
+  playerLevel?: number
   loopChallenges?: readonly (LoopPreference | undefined)[]
   availableStampTypes?: readonly StampType[]
 }
@@ -85,6 +88,7 @@ export interface PreflightResult {
   status: 'fit' | 'warning' | 'impossible'
   request: GenerationRequest
   budget: ComplexityBudget
+  levelBudget: DungeonLevelBudget
   capacity: PageCapacity
   diagnostics: GenerationDiagnostic[]
   estimatedRooms: number
@@ -215,6 +219,8 @@ export interface SpatialModule {
   generatedDetails?: string[]
   /** Structured monster assignments selected from the dungeon encounter table. */
   monsterDetails?: MonsterRecord[]
+  /** Rolled quantities and level totals for each monster group in this room. */
+  monsterEncounterGroups?: MonsterEncounterGroup[]
   /** Structured generated room traps used to render their ledger prose. */
   trapDetails?: TrapRecord[]
   /** Structured generated room hazards used to render their ledger prose. */
@@ -248,6 +254,9 @@ export interface SpacePlan {
   connections: SpatialConnection[]
   anchors: Record<string, string>
   monsterEncounterTable: MonsterRecord[]
+  dungeonLevelBudget: DungeonLevelBudget
+  monsterLevelsUsed: number
+  monsterRejections: MonsterRejection[]
   generalNotes: string[]
   diagnostics: GenerationDiagnostic[]
 }

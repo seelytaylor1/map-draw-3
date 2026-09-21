@@ -1,5 +1,6 @@
 import { normalizeSeed } from './random'
 import { dependencyCounts, isLoopPreference, resolveLoopChallenges } from './loopChallenges'
+import { resolveDungeonLevelBudget } from './monsterBudget'
 import type { ComplexityBudget, ComplexityPreset, GenerationDiagnostic, GenerationRequest, PageCapacity, PreflightResult } from './missionTypes'
 
 const PRESET_TARGETS: Record<ComplexityPreset, Omit<ComplexityBudget, 'preset' | 'requestedLoops' | 'seed' | 'loopChallenges' | 'derivedKeys' | 'derivedLocks'>> = {
@@ -97,6 +98,7 @@ export function validateGenerationRequest(request: Partial<GenerationRequest>): 
   if (!Number.isInteger(request.rows) || (request.rows ?? 0) < 3) add('invalid-rows', 'Page height must be at least 3 tiles.')
   if (!Number.isFinite(request.tilesPerInch) || ![2, 4, 8].includes(request.tilesPerInch ?? 0)) add('invalid-tile-size', 'Tile size must use 2, 4, or 8 tiles per inch.')
   if (!request.complexity || !['compact', 'standard', 'dense'].includes(request.complexity)) add('invalid-complexity', 'Choose Compact, Standard, or Dense complexity.')
+  if (request.playerLevel !== undefined && (!Number.isInteger(request.playerLevel) || request.playerLevel < 1 || request.playerLevel > 10)) add('invalid-player-level', 'Dungeon level must be an integer from 1 to 10.')
   if (request.orientation !== undefined && !['landscape', 'portrait'].includes(request.orientation)) add('invalid-orientation', 'Orientation must be landscape or portrait.')
   if (!Number.isSafeInteger(request.loopCount) || (request.loopCount ?? -1) < 0) add('invalid-loop-count', 'Loop count must be a non-negative integer.')
   if (!isLoopPreference(request.loopPreference)) add('invalid-loop-preference', 'Choose a valid loop preference.')
@@ -122,6 +124,7 @@ export function validateGenerationRequest(request: Partial<GenerationRequest>): 
 export function preflightGeneration(request: GenerationRequest): PreflightResult {
   const inputIssues = validateGenerationRequest(request)
   const budget = createComplexityBudget(request)
+  const levelBudget = resolveDungeonLevelBudget(request.playerLevel)
   const capacity = derivePageCapacity(request)
   const diagnostics = [...inputIssues]
   const loopCount = Number.isInteger(request.loopCount) && request.loopCount >= 0 ? request.loopCount : 0
@@ -131,7 +134,7 @@ export function preflightGeneration(request: GenerationRequest): PreflightResult
   const estimatedRooms = budget.missionNodes + loopCount * 3 + budget.derivedKeys + budget.derivedLocks
   const estimatedCells = estimatedRooms * 9 + Math.max(0, estimatedRooms - 1) * 5 + budget.supportingSpace + loopCount * 8
   const hasInvalidInput = inputIssues.length > 0
-  if (hasInvalidInput) return { status: 'impossible', request, budget, capacity, diagnostics, estimatedRooms, estimatedCells }
+  if (hasInvalidInput) return { status: 'impossible', request, budget, levelBudget, capacity, diagnostics, estimatedRooms, estimatedCells }
 
   if (capacity.usableCols < 3 || capacity.usableRows < 3) {
     diagnostics.push(diagnostic(request, 'page-too-small', 'The page cannot contain the required 3×3 room footprint inside its one-cell border.', 'minimum room footprint'))
@@ -147,13 +150,13 @@ export function preflightGeneration(request: GenerationRequest): PreflightResult
   }
   const ratio = capacity.usableCells === 0 ? Infinity : estimatedCells / capacity.usableCells
   if (ratio > 1 || diagnostics.some(item => item.code === 'capacity-impossible' || item.code === 'loops-do-not-fit' || item.code === 'loop-grammar-limit' || item.code === 'page-too-small' || item.code === 'locks-without-keys')) {
-    return { status: 'impossible', request, budget, capacity, diagnostics, estimatedRooms, estimatedCells }
+    return { status: 'impossible', request, budget, levelBudget, capacity, diagnostics, estimatedRooms, estimatedCells }
   }
   if (ratio > 0.6 || loopCount > budget.presetLoopTarget + 1) {
     diagnostics.push(diagnostic(request, 'capacity-warning', 'This fixed request is likely to be dense on the selected page; Generate will try a bounded placement and will not reduce its targets.', 'readability'))
-    return { status: 'warning', request, budget, capacity, diagnostics, estimatedRooms, estimatedCells }
+    return { status: 'warning', request, budget, levelBudget, capacity, diagnostics, estimatedRooms, estimatedCells }
   }
-  return { status: 'fit', request, budget, capacity, diagnostics, estimatedRooms, estimatedCells }
+  return { status: 'fit', request, budget, levelBudget, capacity, diagnostics, estimatedRooms, estimatedCells }
 }
 
 export function createGenerationRequest(input: Partial<GenerationRequest> & Pick<GenerationRequest, 'cols' | 'rows'>): GenerationRequest {
@@ -167,6 +170,7 @@ export function createGenerationRequest(input: Partial<GenerationRequest> & Pick
     complexity: input.complexity ?? 'standard',
     loopCount: input.loopCount ?? 0,
     loopPreference: input.loopPreference ?? 'varied',
+    playerLevel: input.playerLevel ?? 1,
     ...(input.loopChallenges ? { loopChallenges: input.loopChallenges } : {}),
     ...(input.availableStampTypes ? { availableStampTypes: input.availableStampTypes } : {}),
   }

@@ -13,7 +13,8 @@ import type { RampRun } from '../ramps'
 import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
-import { createMonsterEncounterTable, pickRandomMonsterFromTable } from './monsterCatalog'
+import { createMonsterEncounterTableForBudget, pickRandomMonsterFromTable } from './monsterCatalog'
+import { minimumMonsterEncounterCost, numericMonsterLevel, resolveDungeonLevelBudget, rollMonsterEncounter } from './monsterBudget'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -226,19 +227,21 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
   const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
   if (dramaticGoalInStart) anchors[mission.goalNodeId] = anchors.start!
-  const plan = { style: request.style, modules, connections, anchors, monsterEncounterTable: [], generalNotes: [], diagnostics }
+  const plan: SpacePlan = { style: request.style, modules, connections, anchors, monsterEncounterTable: [], dungeonLevelBudget: resolveDungeonLevelBudget(request.playerLevel), monsterLevelsUsed: 0, monsterRejections: [], generalNotes: [], diagnostics }
   rollGeneratedContent(request, mission, plan)
   return plan
 }
 
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
-  plan.monsterEncounterTable = createMonsterEncounterTable(random)
+  plan.dungeonLevelBudget = resolveDungeonLevelBudget(request.playerLevel)
+  plan.monsterEncounterTable = createMonsterEncounterTableForBudget(random, plan.dungeonLevelBudget)
   plan.generalNotes.push([
     'Random Encounter Table:',
     '1. Torch extinguished',
     ...plan.monsterEncounterTable.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
   ].join('\n'))
+  plan.generalNotes.push(`Monster budget: dungeon level ${request.playerLevel ?? 1} · encounters ${plan.dungeonLevelBudget.encounterBudget} levels · dungeon ${plan.dungeonLevelBudget.dungeonBudget} levels.`)
   const hasMissionReward = mission.nodes.some(node => node.kind === 'reward') || mission.cycles.some(cycle => cycle.roles.objectiveNode === mission.goalNodeId)
   const roomHazardNames = new Set<string>()
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
@@ -277,11 +280,62 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     if (goal) goal.hasTreasure = true
   }
   applyMissionRoomDirectives(mission, plan)
-  for (const module of plan.modules) {
-    let monsterIndex = 0
-    module.trapDetails = (module.encounters ?? []).flatMap(encounter => encounter === 'trap' ? [createTrapRecord(random)] : [])
-    module.monsterDetails = (module.encounters ?? []).flatMap(encounter => encounter === 'monster' ? [pickRandomMonsterFromTable(random, plan.monsterEncounterTable)] : [])
-    module.hazardDetails = (module.encounters ?? []).flatMap(encounter => {
+  let monsterLevelsUsed = 0
+  const forcedDangerNodes = new Set(mission.cycles.flatMap(cycle => cycle.dangerEntries.map(entry => entry.nodeId)))
+  const modulesByMonsterPriority = [...plan.modules].sort((left, right) => {
+    const leftPriority = left.encounters?.includes('monster') && forcedDangerNodes.has(left.missionNodeId ?? '') ? 0 : 1
+    const rightPriority = right.encounters?.includes('monster') && forcedDangerNodes.has(right.missionNodeId ?? '') ? 0 : 1
+    return leftPriority - rightPriority
+  })
+  for (const module of modulesByMonsterPriority) {
+    const resolvedEncounters: RoomEncounter[] = []
+    const monsterGroups = [] as NonNullable<SpatialModule['monsterEncounterGroups']>
+    const monsterDetails = [] as NonNullable<SpatialModule['monsterDetails']>
+    for (const encounter of module.encounters ?? []) {
+      if (encounter !== 'monster') {
+        resolvedEncounters.push(encounter)
+        continue
+      }
+      const isForcedDangerMonster = forcedDangerNodes.has(module.missionNodeId ?? '')
+      // Mission-directed danger is a required contract, so it gets a complete
+      // encounter even when ambient rooms have already spent the dungeon pool.
+      // Ordinary random monster rooms remain hard-capped by that pool.
+      const remainingDungeonBudget = isForcedDangerMonster ? Number.MAX_SAFE_INTEGER : plan.dungeonLevelBudget.dungeonBudget - monsterLevelsUsed
+      const affordableMonsters = plan.monsterEncounterTable.filter(monster => {
+        const level = numericMonsterLevel(monster)
+        return level !== null && minimumMonsterEncounterCost(level, plan.dungeonLevelBudget.encounterBudget) <= remainingDungeonBudget
+      })
+      const selectedMonster = affordableMonsters.length > 0 ? pickRandomMonsterFromTable(random, affordableMonsters) : undefined
+      const group = selectedMonster
+        ? rollMonsterEncounter(selectedMonster, plan.dungeonLevelBudget.encounterBudget, remainingDungeonBudget)
+        : null
+      if (!group) {
+        const minimumRequiredLevel = Math.min(...plan.monsterEncounterTable.map(monster => {
+          const level = numericMonsterLevel(monster)
+          return level === null ? Number.MAX_SAFE_INTEGER : minimumMonsterEncounterCost(level, plan.dungeonLevelBudget.encounterBudget)
+        }))
+        plan.monsterRejections.push({
+          moduleId: module.id,
+          ...(module.missionNodeId ? { missionNodeId: module.missionNodeId } : {}),
+          candidateMonsters: (affordableMonsters.length > 0 ? [selectedMonster?.name ?? 'Selected monster'] : plan.monsterEncounterTable.map(monster => monster.name)),
+          remainingDungeonBudget: Math.max(0, remainingDungeonBudget),
+          encounterBudget: plan.dungeonLevelBudget.encounterBudget,
+          minimumRequiredLevel,
+          reason: 'insufficient-dungeon-budget',
+        })
+        continue
+      }
+      resolvedEncounters.push('monster')
+      monsterGroups.push(group)
+      monsterDetails.push(group.monster)
+      monsterLevelsUsed += group.levelTotal
+    }
+    module.encounters = resolvedEncounters
+    module.encounter = resolvedEncounters[0] ?? 'empty'
+    module.trapDetails = resolvedEncounters.flatMap(encounter => encounter === 'trap' ? [createTrapRecord(random)] : [])
+    module.monsterDetails = monsterDetails
+    module.monsterEncounterGroups = monsterGroups
+    module.hazardDetails = resolvedEncounters.flatMap(encounter => {
       if (encounter !== 'hazard') return []
       const hazard = createUniqueHazardRecord(random, roomHazardNames)
       roomHazardNames.add(hazard.name)
@@ -289,18 +343,31 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     })
     let trapIndex = 0
     let hazardIndex = 0
+    let monsterIndex = 0
     const encounterDetails = module.encounter === 'empty'
       ? ['Empty room.']
-      : (module.encounters ?? []).flatMap(encounter => {
+      : resolvedEncounters.flatMap(encounter => {
         if (encounter === 'monster') {
-          const monster = module.monsterDetails![monsterIndex++]!
-          return [`Monster: ${monster.name} (LV ${monster.level})\n${monster.flavor}`]
+          const group = module.monsterEncounterGroups![monsterIndex++]!
+          return [`Monster: ${group.count} ${group.monster.name.toLowerCase()} (LV ${group.monster.level})\n${group.monster.flavor}`]
         }
         if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]
         if (encounter === 'hazard') return [formatHazardRecord(module.hazardDetails![hazardIndex++]!)]
         return []
       })
     module.generatedDetails = module.hasTreasure ? [...encounterDetails, 'Treasure: present.'] : encounterDetails
+  }
+  plan.monsterLevelsUsed = monsterLevelsUsed
+  plan.generalNotes.push(`Monster levels used: ${monsterLevelsUsed} / ${plan.dungeonLevelBudget.dungeonBudget}.`)
+  if (plan.monsterRejections.length > 0) {
+    plan.generalNotes.push([
+      'Rejected monster encounters:',
+      ...plan.monsterRejections.map(rejection => {
+        const room = rejection.missionNodeId ?? rejection.moduleId
+        const candidates = rejection.candidateMonsters.join(', ')
+        return `${room}: ${candidates} rejected; ${rejection.remainingDungeonBudget} dungeon levels remained, but at least ${rejection.minimumRequiredLevel} were needed for a ${rejection.encounterBudget}-level encounter.`
+      }),
+    ].join('\n'))
   }
   const hallwayTrapConnections = plan.connections.filter(connection => connection.condition === 'trap')
   if (hallwayTrapConnections.length > 0) {

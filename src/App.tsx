@@ -40,7 +40,7 @@ import {
 import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
-import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, LOOP_CHALLENGE_DESCRIPTIONS, preflightGeneration } from './randomDungeon/missionFirst'
+import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, getDungeonLevelBudget, LOOP_CHALLENGE_DESCRIPTIONS, preflightGeneration } from './randomDungeon/missionFirst'
 import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
@@ -66,6 +66,13 @@ const ENVIRONMENT_OPTIONS: { value: TileState; label: string }[] = [
   { value: RUBBLE,      label: 'Rubble' },
   { value: SNOW,        label: 'Snow' },
 ]
+
+const DUNGEON_LEVEL_OPTIONS = [
+  { value: 1, label: 'Levels 1-3' },
+  { value: 4, label: 'Levels 4-6' },
+  { value: 7, label: 'Levels 7-9' },
+  { value: 10, label: 'Level 10' },
+] as const
 
 function hexToRgba(hex: string, alpha: number): string {
   if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return `rgba(0,0,0,${alpha})`
@@ -191,6 +198,7 @@ export default function App() {
   const generationSeedLockedRef = useRef(false)
   const [generationStyle, setGenerationStyle] = useState<GenerationStyle>('spine-shortcuts')
   const [generationComplexity, setGenerationComplexity] = useState<ComplexityPreset>('standard')
+  const [generationDungeonLevel, setGenerationDungeonLevel] = useState(1)
   const [generationLoopCount, setGenerationLoopCount] = useState(1)
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
   const [roomListOpen, setRoomListOpen] = useState(false)
@@ -206,11 +214,13 @@ export default function App() {
     tilesPerInch,
     orientation: cols >= rows ? 'landscape' : 'portrait',
     complexity: generationComplexity,
+    playerLevel: generationDungeonLevel,
     loopCount: generationLoopCount,
     loopPreference: 'varied',
     loopChallenges: generationLoopChallenges.slice(0, Math.max(0, generationLoopCount)),
   }
   const generationPreflight = preflightGeneration(generationRequest)
+  const generationLevelBudget = getDungeonLevelBudget(generationDungeonLevel)
 
   const setRequestedLoopCount = (value: number) => {
     const next = Number.isFinite(value) ? Math.min(20, Math.max(0, Math.floor(value))) : 0
@@ -2211,6 +2221,20 @@ export default function App() {
                   <option value="dense">Dense</option>
                 </select>
               </div>
+              <div className="field-row">
+                <div className="field-label-with-tooltip">
+                  <label htmlFor="generation-dungeon-level">Dungeon level</label>
+                  <button type="button" className="tooltip-trigger" aria-label="Dungeon level information" aria-describedby="dungeon-level-tooltip">
+                    <IconInfo size={12} />
+                  </button>
+                  <span id="dungeon-level-tooltip" className="tooltip-content" role="tooltip">
+                    Sets the monster levels and the total encounter and dungeon budgets.
+                  </span>
+                </div>
+                <select id="generation-dungeon-level" className="num-field" value={generationDungeonLevel} onChange={e => setGenerationDungeonLevel(Number(e.target.value))} aria-label="Dungeon level">
+                  {DUNGEON_LEVEL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
             </div>
           </Section>
 
@@ -2252,6 +2276,7 @@ export default function App() {
             <details className="generation-details">
               <summary>Capacity details</summary>
               <div>{generationPreflight.budget.missionNodes} mission nodes · {generationPreflight.budget.branches} branches · {generationPreflight.budget.challengeDensity} challenge density</div>
+              <div>Monster levels {generationLevelBudget.monsterLevelLabel} · {generationLevelBudget.encounterBudget}-level encounters · {generationLevelBudget.dungeonBudget}-level dungeon</div>
               <div>{generationPreflight.capacity.usableCols}×{generationPreflight.capacity.usableRows} usable cells · {generationPreflight.capacity.roomSlots} buffered room slots</div>
               <div>Derived dependencies: {generationPreflight.budget.derivedKeys} key{generationPreflight.budget.derivedKeys === 1 ? '' : 's'} · {generationPreflight.budget.derivedLocks} lock{generationPreflight.budget.derivedLocks === 1 ? '' : 's'}</div>
               {generationPreflight.diagnostics.slice(0, 3).map(diagnostic => <div key={`${diagnostic.code}-${diagnostic.message}`} className="diagnostic-line">{diagnostic.message}</div>)}

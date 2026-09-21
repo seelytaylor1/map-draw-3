@@ -487,6 +487,9 @@ describe('mission-first dungeon generation', () => {
     expect(monsterModule).toBeDefined()
     const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${monsterModule!.id}`)
     expect(label?.details).toMatch(/^Monster: .+ \(LV [\d*]+\)\n/)
+    expect(label?.details).not.toContain('Quantity:')
+    expect(label?.details).not.toContain('monster levels against')
+    expect(label?.details).toMatch(/\n.+$/)
   })
 
   it('documents the generated trap method in its room ledger entry', () => {
