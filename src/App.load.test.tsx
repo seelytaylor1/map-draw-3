@@ -165,6 +165,14 @@ describe('App load lifecycle', () => {
     expect(screen.getByText('Room numbers, trap, hazard and chest icons hidden; secret doors become walls; locked doors become regular doors')).toBeInTheDocument()
   })
 
+  it('exposes HTML and Markdown map exports on the File tab', () => {
+    render(<App />)
+    openWorkspace('File')
+
+    expect(screen.getByRole('button', { name: 'Export HTML' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export MD' })).toBeInTheDocument()
+  })
+
   it('supports keyboard step adjustments for canvas size fields', () => {
     render(<App />)
     openWorkspace('File')

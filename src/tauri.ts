@@ -55,20 +55,48 @@ export async function saveJsonFileAs(defaultName: string, content: string): Prom
   return path
 }
 
-export async function savePngFile(defaultName: string, dataUrl: string): Promise<void> {
+export async function writePngFile(path: string, dataUrl: string): Promise<void> {
   if (!isTauri()) return
-  const path = await save({
-    defaultPath: defaultName,
-    filters: [{ name: 'PNG Image', extensions: ['png'] }],
-  })
-  if (!path) return
   const base64 = dataUrl.split(',')[1]
+  if (!base64) throw new Error('Invalid PNG data URL')
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i)
   }
   await writeFile(path, bytes)
+}
+
+export async function savePngFile(defaultName: string, dataUrl: string): Promise<string | null> {
+  if (!isTauri()) return null
+  const path = await save({
+    defaultPath: defaultName,
+    filters: [{ name: 'PNG Image', extensions: ['png'] }],
+  })
+  if (!path) return null
+  await writePngFile(path, dataUrl)
+  return path
+}
+
+export async function saveTextFile(path: string, content: string): Promise<void> {
+  if (!isTauri()) return
+  await writeTextFile(path, content)
+}
+
+export async function chooseSavePath(defaultName: string, filterName: string, extension: string): Promise<string | null> {
+  if (!isTauri()) return null
+  const path = await save({
+    defaultPath: defaultName,
+    filters: [{ name: filterName, extensions: [extension.replace(/^\./, '')] }],
+  })
+  return path || null
+}
+
+export async function saveTextFileAs(defaultName: string, content: string, filterName: string, extension: string): Promise<string | null> {
+  const path = await chooseSavePath(defaultName, filterName, extension)
+  if (!path) return null
+  await writeTextFile(path, content)
+  return path
 }
 
 export async function setWindowTitle(title: string): Promise<void> {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { Label } from './labels'
 import type { Mission, SpatialModule } from './randomDungeon/missionTypes'
+import { buildRoomLedgerEntries, type RoomLedgerEntry } from './roomLedgerData'
 
 export interface RoomLedgerProps {
   modules: readonly SpatialModule[]
@@ -12,41 +13,12 @@ export interface RoomLedgerProps {
   onCommitRoomDetails: (moduleId: string, details: string) => void
 }
 
-interface RoomEntry {
-  module: SpatialModule
-  number: number
-  name: string
-  details: string
-}
-
 function formatGeneralNotes(notes: readonly string[]): string {
   return notes.join('\n\n')
 }
 
-function roomName(module: SpatialModule, mission: Mission, labels: readonly Label[]): string {
-  const generatedLabel = labels.find(label => label.id === `label-${module.id}`)
-  if (generatedLabel) return generatedLabel.text
-  const missionNode = module.missionNodeId ? mission.nodes.find(node => node.id === module.missionNodeId) : undefined
-  return missionNode?.label ?? (module.type === 'hub' ? 'Hub' : 'Room')
-}
-
-function buildRooms(modules: readonly SpatialModule[], mission: Mission, labels: readonly Label[]): RoomEntry[] {
-  return modules
-    .filter(module => module.footprint.length > 0)
-    .map((module, index) => {
-      const generatedLabel = labels.find(label => label.id === `label-${module.id}`)
-      return {
-        module,
-        number: generatedLabel?.number ?? index + 1,
-        name: roomName(module, mission, labels),
-        details: generatedLabel?.details ?? '',
-      }
-    })
-    .sort((a, b) => a.number - b.number)
-}
-
 function RoomNameInput({ room, value, onChange, onCommit }: {
-  room: RoomEntry
+  room: RoomLedgerEntry
   value: string
   onChange: (value: string) => void
   onCommit: () => void
@@ -66,7 +38,7 @@ function RoomNameInput({ room, value, onChange, onCommit }: {
 }
 
 export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGeneralNotes, onCommitRoomName, onCommitRoomDetails }: RoomLedgerProps) {
-  const rooms = useMemo(() => buildRooms(modules, mission, labels), [labels, mission, modules])
+  const rooms = useMemo(() => buildRoomLedgerEntries(modules, mission, labels), [labels, mission, modules])
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
   const [detailsDrafts, setDetailsDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
   const [generalNotesDraft, setGeneralNotesDraft] = useState(() => formatGeneralNotes(generalNotes))
@@ -104,21 +76,21 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
   const generalNotesSelected = selectedEntryId === 'general-notes'
   if (!selectedRoom && !generalNotesSelected) return null
 
-  const updateDraft = (room: RoomEntry, value: string) => {
+  const updateDraft = (room: RoomLedgerEntry, value: string) => {
     setDrafts(previous => ({ ...previous, [room.module.id]: value }))
   }
 
-  const commit = (room: RoomEntry) => {
+  const commit = (room: RoomLedgerEntry) => {
     const value = (drafts[room.module.id] ?? room.name).trim()
     if (value && value !== room.name) onCommitRoomName(room.module.id, value)
     if (!value) setDrafts(previous => ({ ...previous, [room.module.id]: room.name }))
   }
 
-  const updateDetails = (room: RoomEntry, value: string) => {
+  const updateDetails = (room: RoomLedgerEntry, value: string) => {
     setDetailsDrafts(previous => ({ ...previous, [room.module.id]: value }))
   }
 
-  const commitDetails = (room: RoomEntry) => {
+  const commitDetails = (room: RoomLedgerEntry) => {
     const value = detailsDrafts[room.module.id] ?? room.details
     if (value !== room.details) onCommitRoomDetails(room.module.id, value)
   }

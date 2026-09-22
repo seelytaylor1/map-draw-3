@@ -37,7 +37,7 @@ import {
   IconStampFloor, IconSave, IconFolder, IconImage,
   IconInfo,
 } from './ui/icons'
-import { isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch } from './tauri'
+import { chooseSavePath, isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, saveTextFile, saveTextFileAs, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch, writePngFile } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
 import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, getDungeonLevelBudget, LOOP_CHALLENGE_DESCRIPTIONS, preflightGeneration } from './randomDungeon/missionFirst'
@@ -46,7 +46,9 @@ import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreferen
 import { formatTileCoordinate } from './coordinates'
 import { MapLegend } from './MapLegend'
 import { RoomLedger } from './RoomLedger'
-import { applyPlayerViewSecretDoors } from './playerView'
+import { applyPlayerViewSecretDoors, buildPlayerViewExport } from './playerView'
+import { formatRoomLedgerText } from './roomLedgerData'
+import { buildHtmlExport, buildMarkdownExport, fileName, siblingFilePath } from './exportFormats'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -1457,14 +1459,18 @@ export default function App() {
     }
   }
 
-  const handleExport = useCallback(() => {
-    if (!stampImages) return
+  const renderExportImage = useCallback((forPlayerView: boolean): Promise<string> => {
+    if (!stampImages) return Promise.reject(new Error('Stamp images are not ready'))
 
+    const activeStamps = stamps.filter(s => s.z === activeZ)
+    const exportState = forPlayerView
+      ? buildPlayerViewExport(activeGrid, cols, rows, activeZ, activeStamps)
+      : { grid: activeGrid, stamps: activeStamps }
     const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
     const layout = buildExportShapes({
-      grid: activeGrid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
+      grid: exportState.grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
       frontFaceColor, eastFaceColor,
-      stamps: stamps.filter(s => s.z === activeZ),
+      stamps: exportState.stamps,
       showHatching,
       hatchColor,
       showWallOutline,
@@ -1478,86 +1484,158 @@ export default function App() {
       environmentalColors: environmentalColors as Map<TileState, string>,
     })
 
-    const container = document.createElement('div')
-    container.style.cssText = 'position:absolute;left:-99999px;top:-99999px;visibility:hidden;'
-    document.body.appendChild(container)
+    return new Promise((resolve, reject) => {
+      const container = document.createElement('div')
+      container.style.cssText = 'position:absolute;left:-99999px;top:-99999px;visibility:hidden;'
+      document.body.appendChild(container)
 
-    const offStage = new Konva.Stage({ container, width: layout.canvasW, height: layout.canvasH })
-    const offLayer = new Konva.Layer()
-    if (layout.offsetX !== 0) offLayer.x(layout.offsetX)
-    offStage.add(offLayer)
+      try {
+        const offStage = new Konva.Stage({ container, width: layout.canvasW, height: layout.canvasH })
+        const offLayer = new Konva.Layer()
+        if (layout.offsetX !== 0) offLayer.x(layout.offsetX)
+        offStage.add(offLayer)
 
-    for (const shape of layout.shapes) {
-      if (shape.kind === 'rect') {
-        offLayer.add(new Konva.Rect({
-          x: shape.x, y: shape.y, width: shape.w, height: shape.h,
-          fill: shape.fill, opacity: shape.opacity,
-          stroke: shape.stroke, strokeWidth: shape.strokeWidth,
-        }))
-      } else if (shape.kind === 'polygon') {
-        offLayer.add(new Konva.Line({
-          points: shape.points, closed: true,
-          fill: shape.fill, opacity: shape.opacity,
-          stroke: shape.stroke, strokeWidth: shape.strokeWidth,
-        }))
-      } else if (shape.kind === 'canvas') {
-        offLayer.add(new Konva.Image({
-          image: shape.canvas as unknown as HTMLImageElement,
-          x: shape.x, y: shape.y, width: shape.w, height: shape.h,
-          listening: false,
-        }))
-      } else if (shape.kind === 'line') {
-        offLayer.add(new Konva.Line({
-          points: shape.points,
-          stroke: shape.stroke, strokeWidth: shape.strokeWidth,
-          opacity: shape.opacity, lineCap: shape.lineCap, lineJoin: shape.lineJoin,
-          listening: false,
-        }))
-      } else if (shape.kind === 'image') {
-        const imgEl = stampImages.get(shape.stampType as any)
-        if (imgEl) {
-          if (shape.scaleX !== undefined) {
-            // iso mode: Group with no offset so skewX is applied before translate
-            const group = new Konva.Group({
-              x: shape.x, y: shape.y,
-              rotation: shape.rotation,
-              scaleX: shape.scaleX, scaleY: shape.scaleY,
-              skewX: shape.skewX,
-            })
-            group.add(new Konva.Image({ image: colorizeStampImage(imgEl, shape.color), x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h }))
-            offLayer.add(group)
-          } else {
-            offLayer.add(new Konva.Image({
-              image: colorizeStampImage(imgEl, shape.color),
-              x: shape.x, y: shape.y,
-              width: shape.w, height: shape.h,
-              offsetX: shape.offsetX, offsetY: shape.offsetY,
-              rotation: shape.rotation,
-              scaleX: shape.mirrored ? -1 : 1,
+        for (const shape of layout.shapes) {
+          if (shape.kind === 'rect') {
+            offLayer.add(new Konva.Rect({
+              x: shape.x, y: shape.y, width: shape.w, height: shape.h,
+              fill: shape.fill, opacity: shape.opacity,
+              stroke: shape.stroke, strokeWidth: shape.strokeWidth,
             }))
+          } else if (shape.kind === 'polygon') {
+            offLayer.add(new Konva.Line({
+              points: shape.points, closed: true,
+              fill: shape.fill, opacity: shape.opacity,
+              stroke: shape.stroke, strokeWidth: shape.strokeWidth,
+            }))
+          } else if (shape.kind === 'canvas') {
+            offLayer.add(new Konva.Image({
+              image: shape.canvas as unknown as HTMLImageElement,
+              x: shape.x, y: shape.y, width: shape.w, height: shape.h,
+              listening: false,
+            }))
+          } else if (shape.kind === 'line') {
+            offLayer.add(new Konva.Line({
+              points: shape.points,
+              stroke: shape.stroke, strokeWidth: shape.strokeWidth,
+              opacity: shape.opacity, lineCap: shape.lineCap, lineJoin: shape.lineJoin,
+              listening: false,
+            }))
+          } else if (shape.kind === 'image') {
+            const imgEl = stampImages.get(shape.stampType as any)
+            if (!imgEl) continue
+            if (shape.scaleX !== undefined) {
+              // iso mode: Group with no offset so skewX is applied before translate
+              const group = new Konva.Group({
+                x: shape.x, y: shape.y,
+                rotation: shape.rotation,
+                scaleX: shape.scaleX, scaleY: shape.scaleY,
+                skewX: shape.skewX,
+              })
+              group.add(new Konva.Image({ image: colorizeStampImage(imgEl, shape.color), x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h }))
+              offLayer.add(group)
+            } else {
+              offLayer.add(new Konva.Image({
+                image: colorizeStampImage(imgEl, shape.color),
+                x: shape.x, y: shape.y,
+                width: shape.w, height: shape.h,
+                offsetX: shape.offsetX, offsetY: shape.offsetY,
+                rotation: shape.rotation,
+                scaleX: shape.mirrored ? -1 : 1,
+              }))
+            }
           }
         }
-      }
-    }
 
-    offLayer.draw()
-    offStage.toDataURL({
-      mimeType: 'image/png',
-      callback: async (dataUrl: string) => {
+        offLayer.draw()
+        offStage.toDataURL({
+          mimeType: 'image/png',
+          callback: (dataUrl: string) => {
+            document.body.removeChild(container)
+            offStage.destroy()
+            resolve(dataUrl)
+          },
+        })
+      } catch (error) {
         document.body.removeChild(container)
-        offStage.destroy()
-        const ts = new Date().toISOString().replace(/[:.]/g, '-')
-        if (isTauri()) {
-          await savePngFile(`dungeon-map-${ts}.png`, dataUrl)
-        } else {
-          const a = document.createElement('a')
-          a.download = `dungeon-map-${ts}.png`
-          a.href = dataUrl
-          a.click()
-        }
-      },
+        reject(error)
+      }
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, floorColor, waterColor, lavaColor, darknessColor])
+  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, tilesPerInch, floorColor, waterColor, lavaColor, darknessColor, environmentalColors])
+
+  const getRoomLedgerText = useCallback(() => {
+    if (!generationResult?.ok || !generationResult.space) return null
+    return formatRoomLedgerText({
+      modules: generationResult.space.modules,
+      mission: generationResult.mission,
+      labels,
+      generalNotes: generationResult.space.generalNotes,
+    })
+  }, [generationResult, labels])
+
+  const downloadText = (name: string, content: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }))
+    const anchor = document.createElement('a')
+    anchor.download = name
+    anchor.href = url
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExport = useCallback(async () => {
+    if (!stampImages) return
+    const dataUrl = await renderExportImage(playerView)
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const pngName = `dungeon-map-${ts}.png`
+    const ledgerText = getRoomLedgerText()
+    if (isTauri()) {
+      const path = await savePngFile(pngName, dataUrl)
+      if (path && ledgerText) await saveTextFile(siblingFilePath(path, '.txt'), ledgerText)
+      return
+    }
+    const anchor = document.createElement('a')
+    anchor.download = pngName
+    anchor.href = dataUrl
+    anchor.click()
+    if (ledgerText) downloadText(siblingFilePath(pngName, '.txt'), ledgerText)
+  }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
+
+  const handleExportHtml = useCallback(async () => {
+    if (!stampImages) return
+    const [mapImage, playerMapImage] = await Promise.all([renderExportImage(false), renderExportImage(true)])
+    const ledgerText = getRoomLedgerText()
+    const html = buildHtmlExport({ mapImage, playerMapImage, ledgerText: ledgerText ?? undefined, initialPlayerView: playerView })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const defaultName = `dungeon-map-${ts}.html`
+    if (isTauri()) {
+      await saveTextFileAs(defaultName, html, 'HTML Document', 'html')
+    } else {
+      downloadText(defaultName, html)
+    }
+  }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!stampImages) return
+    const dataUrl = await renderExportImage(playerView)
+    const ledgerText = getRoomLedgerText()
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const markdownName = `dungeon-map-${ts}.md`
+    const pngName = `dungeon-map-${ts}.png`
+    if (isTauri()) {
+      const markdownPath = await chooseSavePath(markdownName, 'Markdown Document', 'md')
+      if (markdownPath) {
+        const pngPath = siblingFilePath(markdownPath, '.png')
+        await saveTextFile(markdownPath, buildMarkdownExport({ pngFileName: fileName(pngPath), ledgerText: ledgerText ?? undefined }))
+        await writePngFile(pngPath, dataUrl)
+      }
+      return
+    }
+    const anchor = document.createElement('a')
+    anchor.download = pngName
+    anchor.href = dataUrl
+    anchor.click()
+    downloadText(markdownName, buildMarkdownExport({ pngFileName: pngName, ledgerText: ledgerText ?? undefined }))
+  }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
 
   const getSerializedMap = () => {
     const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
@@ -2335,7 +2413,7 @@ export default function App() {
         </div>
 
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'document'}>
-          <div className="panel-intro"><strong>Canvas & file</strong><span>Set the printed page, save your work, or export a high-resolution PNG.</span></div>
+          <div className="panel-intro"><strong>Canvas & file</strong><span>Set the printed page, save your work, or export the map as PNG, HTML, or Markdown.</span></div>
 
         <Section title="Canvas size" icon={<IconImage size={14} />} defaultOpen>
           <div className="canvas-size-stack">
@@ -2412,6 +2490,10 @@ export default function App() {
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export PNG
           </button>
+          <div className="row">
+            <Btn onClick={handleExportHtml}>Export HTML</Btn>
+            <Btn onClick={handleExportMarkdown}>Export MD</Btn>
+          </div>
 
           <div className="subsection-label">View</div>
           <ToolButton

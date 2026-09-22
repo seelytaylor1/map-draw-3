@@ -1,5 +1,5 @@
 import { WALL } from './constants'
-import { isSecretDoorStamp, stampSize, type Stamp } from './stamps'
+import { isChestStamp, isHazardStamp, isLockedDoorStamp, isSecretDoorStamp, stampSize, type Stamp } from './stamps'
 
 /** Returns a render-only grid with secret-door footprints concealed as walls. */
 export function applyPlayerViewSecretDoors(
@@ -24,4 +24,20 @@ export function applyPlayerViewSecretDoors(
   }
 
   return rendered
+}
+
+/** Returns the map layers that should be visible in a player-facing export. */
+export function buildPlayerViewExport(
+  grid: Uint8Array,
+  cols: number,
+  rows: number,
+  z: number,
+  stamps: readonly Stamp[],
+): { grid: Uint8Array; stamps: Stamp[] } {
+  return {
+    grid: applyPlayerViewSecretDoors(grid, cols, rows, z, stamps),
+    stamps: stamps
+      .filter(stamp => !isSecretDoorStamp(stamp) && !isHazardStamp(stamp) && !isChestStamp(stamp))
+      .map(stamp => isLockedDoorStamp(stamp) ? { ...stamp, type: 'Door1x1' as const } : stamp),
+  }
 }
