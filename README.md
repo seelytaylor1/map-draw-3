@@ -1,10 +1,8 @@
-# Torch & Tile
+![Torch & Tile title art](docs/brand/torch-and-tile-title.png)
 
 *From blank grid to deadly delve.*
 
 Torch & Tile is a modern dungeon map studio for Shadowdark RPG adventures. Start from a hand-drawn map, or generate a seeded mission-first dungeon with rooms, routes, loops, challenges, entrances, and goals, then refine it with the editor.
-
-![Torch & Tile title art](docs/brand/torch-and-tile-title.png)
 
 ![Torch & Tile screenshot](docs/v1-screenshot.png)
 
