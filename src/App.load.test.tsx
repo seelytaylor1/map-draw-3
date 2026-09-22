@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { onMenuEventMock, onCloseRequestedMock, randomSeed } = vi.hoisted(() => ({
@@ -111,6 +111,16 @@ describe('App load lifecycle', () => {
     expect(openAssetFolder).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps dungeon import on the File tab', () => {
+    render(<App />)
+    openWorkspace('Assets')
+    expect(screen.queryByRole('button', { name: 'Import dungeon' })).not.toBeInTheDocument()
+
+    openWorkspace('File')
+    fireEvent.click(screen.getByRole('button', { name: 'Import dungeon' }))
+    expect(screen.getByRole('button', { name: 'Choose dungeon JSON' })).toBeInTheDocument()
+  })
+
   it('returns to paint mode when Draw is clicked after selecting a structure tool', () => {
     render(<App />)
 
@@ -126,7 +136,9 @@ describe('App load lifecycle', () => {
   it('exposes a selection mode for object drag-selection', () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Selection' }))
+    expect(screen.queryByRole('button', { name: 'Select objects' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Assets' }))
+    expect(screen.queryByRole('button', { name: 'Selection' })).not.toBeInTheDocument()
     const select = screen.getByRole('button', { name: 'Select objects' })
     expect(select).not.toHaveClass('active')
     fireEvent.click(select)
@@ -134,6 +146,41 @@ describe('App load lifecycle', () => {
     expect(select).toHaveClass('active')
     expect(screen.getByText('Select', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText(/drag across visible objects on this level/i)).toBeInTheDocument()
+  })
+
+  it('removes an uploaded image with its trash button', async () => {
+    const { saveJsonFileAs } = await import('./tauri')
+    vi.mocked(saveJsonFileAs).mockResolvedValue('map.json')
+    class PreviewImage {
+      naturalWidth = 100
+      naturalHeight = 50
+      onload: (() => void) | null = null
+      set src(_value: string) { this.onload?.() }
+    }
+    vi.stubGlobal('Image', PreviewImage)
+    try {
+      const { container } = render(<App />)
+      openWorkspace('Assets')
+      const input = container.querySelector<HTMLInputElement>('input[accept^="image/png"]')!
+      fireEvent.change(input, { target: { files: [new File(['image'], 'map.png', { type: 'image/png' })] } })
+
+      const remove = await screen.findByRole('button', { name: 'Remove map.png' })
+      expect(screen.getByRole('button', { name: 'map.png' })).toBeInTheDocument()
+      fireEvent.click(remove)
+
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove map.png' })).not.toBeInTheDocument())
+      expect(screen.getByText('Paint', { selector: 'strong' })).toBeInTheDocument()
+      expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+      openWorkspace('File')
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(saveJsonFileAs).toHaveBeenCalledOnce())
+      const saved = JSON.parse(vi.mocked(saveJsonFileAs).mock.calls[0][1])
+      expect(saved.customImages).toEqual([])
+      expect(saved.stamps).toEqual([])
+    } finally {
+      vi.mocked(saveJsonFileAs).mockReset()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('keeps level navigation without exposing layer controls', () => {

@@ -34,7 +34,7 @@ import {
   IconCompass, IconLayers, IconMinus, IconPlus, IconHash, IconCube,
   IconSquareBrush, IconCircleBrush, IconFloor, IconDroplet, IconFlame, IconCave,
   IconStairs, IconRamp, IconRotate, IconMirror, IconTag, IconHatch, IconFrame,
-  IconStampFloor, IconSave, IconFolder, IconImage,
+  IconStampFloor, IconSave, IconFolder, IconImage, IconTrash,
   IconInfo,
 } from './ui/icons'
 import { chooseSavePath, isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, saveImageFile, saveTextFile, saveTextFileAs, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch, writePngFile } from './tauri'
@@ -2647,6 +2647,30 @@ export default function App() {
     reader.readAsDataURL(file)
   }
 
+  const removeCustomImage = (type: string) => {
+    const removedIds = new Set(stamps.filter(stamp => stamp.type === type).map(stamp => stamp.id))
+    setCustomImages(previous => previous.filter(asset => asset.type !== type))
+    setHistory(previous => {
+      const withoutImage = (snapshot: AppSnapshot) => ({
+        ...snapshot,
+        stamps: snapshot.stamps.filter(stamp => stamp.type !== type),
+      })
+      return {
+        past: previous.past.map(withoutImage),
+        present: withoutImage(previous.present),
+        future: [],
+      }
+    })
+    setSavedHistoryLength(-1)
+    setObjectSelection(previous => previous.filter(item => item.kind !== 'stamp' || !removedIds.has(item.id)))
+    if (objectClipboardRef.current) {
+      objectClipboardRef.current.stamps = objectClipboardRef.current.stamps.filter(stamp => stamp.type !== type)
+    }
+    if (drawingState.tool === 'stamp' && drawingState.stampType === type) {
+      dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+    }
+  }
+
   const handleFileLoad = (file: File) => {
     const reader = new FileReader()
     reader.onload = e => applyLoad(e.target?.result as string)
@@ -2969,51 +2993,6 @@ export default function App() {
           </div>
         </Section>
 
-        <Section title="Selection" icon={<IconFrame size={14} />}>
-          <ToolButton
-            icon={<IconFrame size={14} />}
-            label="Select objects"
-            active={selectionMode}
-            onClick={() => {
-              setSelectionMode(active => !active)
-              setShapeTool(null)
-              setLightPlacement(false)
-              setCropMode(false)
-              setObjectSelection([])
-              selectionDragRef.current = null
-              setSelectionDrag(null)
-            }}
-          />
-          {selectionMode && <div className="hint">Drag across visible objects on this level. Arrow keys move; Ctrl/Cmd+C/V copies and pastes; Ctrl/Cmd+D duplicates; Ctrl/Cmd+G groups; Ctrl/Cmd+Shift+G ungroups; Delete removes {objectSelection.length || 'the'} selected object{objectSelection.length === 1 ? '' : 's'}.</div>}
-          {selectionMode && objectSelection.length > 0 && (
-            <div className="field-stack">
-              {objectSelection.length > 1 && (
-                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...groupSelectedMapObjects({ ...h.present, selection: objectSelection, groupId: crypto.randomUUID() }) }))}>
-                  <IconLayers size={13} /> Group selected
-                </Btn>
-              )}
-              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...ungroupSelectedMapObjects({ ...h.present, selection: objectSelection }) }))}>
-                <IconLayers size={13} /> Ungroup selected
-              </Btn>
-              <div className="button-row">
-                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...reorderSelectedMapObjects({ ...h.present, selection: objectSelection, direction: 'backward' }) }))}>Send backward</Btn>
-                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...reorderSelectedMapObjects({ ...h.present, selection: objectSelection, direction: 'forward' }) }))}>Bring forward</Btn>
-              </div>
-              <div className="hint">Draw order changes only within each object type; structures stay beneath stamps and labels stay above them.</div>
-              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...rotateSelectedMapObjects({ ...h.present, selection: objectSelection }) }))}>
-                <IconRotate size={13} /> Rotate selected
-              </Btn>
-              {selectedStamps.length > 0 && (
-                <label className="field-row">
-                  <span>Stamp scale</span>
-                  <input aria-label="Selected stamp scale" type="range" min={0.5} max={4} step={0.25} value={selectedStampScale}
-                    onChange={e => setHistory(h => push(h, { ...h.present, stamps: scaleSelectedStamps({ stamps: h.present.stamps, selection: objectSelection, scale: Number(e.target.value) }) }))} />
-                </label>
-              )}
-            </div>
-          )}
-        </Section>
-
         <Section title="Lighting" icon={<IconFlame size={14} />}>
           <div className="button-row">
             <ToolButton
@@ -3150,10 +3129,15 @@ export default function App() {
           </div>
           {imageImportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{imageImportError}</div>}
           {customImages.length > 0 && <div className="field-stack">
-            {customImages.map(asset => <Btn key={asset.type} onClick={() => {
-              setSelectionMode(false)
-              dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: asset.type, selectedId: null } })
-            }}>{asset.name}</Btn>)}
+            {customImages.map(asset => <div className="row" key={asset.type}>
+              <button className="btn" style={{ flex: 1, textAlign: 'left' }} onClick={() => {
+                setSelectionMode(false)
+                dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: asset.type, selectedId: null } })
+              }}>{asset.name}</button>
+              <button className="btn btn-danger" aria-label={`Remove ${asset.name}`} title={`Remove ${asset.name} and its placed copies`} onClick={() => removeCustomImage(asset.type)}>
+                <IconTrash size={13} />
+              </button>
+            </div>)}
           </div>}
           <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style={{ display: 'none' }} onChange={e => {
             const file = e.target.files?.[0]
@@ -3163,22 +3147,52 @@ export default function App() {
           <div className="hint">Images are embedded in the map file. Drag an image onto the canvas to place it at that spot.</div>
         </Section>
 
-        <Section title="Import dungeon" icon={<IconFolder size={14} />}>
-          <Btn onClick={() => dungeonInputRef.current?.click()}><IconFolder size={13} /> Choose dungeon JSON</Btn>
-          <input ref={dungeonInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={e => {
-            const file = e.target.files?.[0]
-            if (file) handleDungeonImportFile(file)
-            e.target.value = ''
-          }} />
-          {dungeonImportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{dungeonImportError}</div>}
-          {dungeonImportNotice && <div role="status" className="hint">{dungeonImportNotice}</div>}
-          <div className="hint">Accepts Watabou One Page Dungeon JSON with room/corridor geometry and donjon Random Dungeon JSON cell matrices. Import replaces the open map after confirmation.</div>
-        </Section>
-
         <Section title="Stamps" icon={<IconStampFloor size={14} />} defaultOpen>
           <div className="row" style={{ marginBottom: 8 }}>
             <Btn onClick={handleOpenAssetFolder} title="Open the folder with floor and object assets"><IconFolder size={13} /> Open Asset Folder</Btn>
           </div>
+          <ToolButton
+            icon={<IconFrame size={14} />}
+            label="Select objects"
+            active={selectionMode}
+            onClick={() => {
+              setSelectionMode(active => !active)
+              setShapeTool(null)
+              setLightPlacement(false)
+              setCropMode(false)
+              setObjectSelection([])
+              selectionDragRef.current = null
+              setSelectionDrag(null)
+            }}
+          />
+          {selectionMode && <div className="hint">Drag across visible objects on this level. Arrow keys move; Ctrl/Cmd+C/V copies and pastes; Ctrl/Cmd+D duplicates; Ctrl/Cmd+G groups; Ctrl/Cmd+Shift+G ungroups; Delete removes {objectSelection.length || 'the'} selected object{objectSelection.length === 1 ? '' : 's'}.</div>}
+          {selectionMode && objectSelection.length > 0 && (
+            <div className="field-stack">
+              {objectSelection.length > 1 && (
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...groupSelectedMapObjects({ ...h.present, selection: objectSelection, groupId: crypto.randomUUID() }) }))}>
+                  <IconLayers size={13} /> Group selected
+                </Btn>
+              )}
+              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...ungroupSelectedMapObjects({ ...h.present, selection: objectSelection }) }))}>
+                <IconLayers size={13} /> Ungroup selected
+              </Btn>
+              <div className="button-row">
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...reorderSelectedMapObjects({ ...h.present, selection: objectSelection, direction: 'backward' }) }))}>Send backward</Btn>
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...reorderSelectedMapObjects({ ...h.present, selection: objectSelection, direction: 'forward' }) }))}>Bring forward</Btn>
+              </div>
+              <div className="hint">Draw order changes only within each object type; structures stay beneath stamps and labels stay above them.</div>
+              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...rotateSelectedMapObjects({ ...h.present, selection: objectSelection }) }))}>
+                <IconRotate size={13} /> Rotate selected
+              </Btn>
+              {selectedStamps.length > 0 && (
+                <label className="field-row">
+                  <span>Stamp scale</span>
+                  <input aria-label="Selected stamp scale" type="range" min={0.5} max={4} step={0.25} value={selectedStampScale}
+                    onChange={e => setHistory(h => push(h, { ...h.present, stamps: scaleSelectedStamps({ stamps: h.present.stamps, selection: objectSelection, scale: Number(e.target.value) }) }))} />
+                </label>
+              )}
+            </div>
+          )}
           <StampPicker
             mode={mode}
             onModeChange={newMode => {
@@ -3633,6 +3647,18 @@ export default function App() {
               e.target.value = ''
             }}
           />
+        </Section>
+
+        <Section title="Import dungeon" icon={<IconFolder size={14} />}>
+          <Btn onClick={() => dungeonInputRef.current?.click()}><IconFolder size={13} /> Choose dungeon JSON</Btn>
+          <input ref={dungeonInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) handleDungeonImportFile(file)
+            e.target.value = ''
+          }} />
+          {dungeonImportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{dungeonImportError}</div>}
+          {dungeonImportNotice && <div role="status" className="hint">{dungeonImportNotice}</div>}
+          <div className="hint">Accepts Watabou One Page Dungeon JSON with room/corridor geometry and donjon Random Dungeon JSON cell matrices. Import replaces the open map after confirmation.</div>
         </Section>
 
         <Section title="Style" icon={<IconHatch size={14} />} defaultOpen>
