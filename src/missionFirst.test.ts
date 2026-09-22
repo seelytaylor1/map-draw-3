@@ -311,7 +311,7 @@ describe('mission-first dungeon generation', () => {
 
     expect(result.space!.anchors[result.mission.goalNodeId]).toBe(start.id)
     expect(result.space!.modules.some(module => module.missionNodeId === result.mission.goalNodeId)).toBe(false)
-    expect(result.snapshot!.labels.some(label => label.id === 'label-dramatic-goal')).toBe(true)
+    expect(result.snapshot!.labels.some(label => label.id === 'label-dramatic-goal')).toBe(false)
     expect(start.width).toBeGreaterThanOrEqual(7)
     expect(start.height).toBeGreaterThanOrEqual(7)
     expect(start.footprint).toHaveLength(start.width * start.height)
@@ -331,6 +331,36 @@ describe('mission-first dungeon generation', () => {
     expect(side(entryTile!.row)).not.toBe('darkness')
     expect(side(chest.row)).not.toBe('darkness')
     expect(side(entryTile!.row)).not.toBe(side(chest.row))
+  })
+
+  it('keeps the Dramatic Arc descent on a side with an open Start connection', () => {
+    const result = generateMissionDungeon(request({ seed: 9, loopCount: 1, loopChallenges: ['dramatic-arc'] }))
+    const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
+    const run = result.snapshot!.steps[0] ?? result.snapshot!.ramps[0]!
+    const [stair] = runTiles(run)
+    const cycleConnections = result.space!.connections.filter(connection => connection.fromModuleId === start.id || connection.toModuleId === start.id)
+    const grid = result.snapshot!.grids.get(0)!
+    const bandLength = Math.min(6, Math.max(3, Math.min(4, Math.max(start.width, start.height) - 2)))
+    const bandStart = Math.floor((Math.max(start.width, start.height) - bandLength) / 2)
+    const side = (point: { col: number; row: number }) => {
+      const position = start.width >= start.height ? point.row - start.origin.row : point.col - start.origin.col
+      return position < bandStart ? 'before' : position >= bandStart + bandLength ? 'after' : 'darkness'
+    }
+    const openSides = cycleConnections
+      .filter(connection => connection.traversable !== 'blocked')
+      .map(connection => connection.fromModuleId === start.id ? connection.path[0]! : connection.path[connection.path.length - 1]!)
+      .map(side)
+
+    expect(result.ok).toBe(true)
+    expect(grid[stair!.row * result.request.cols + stair!.col]).not.toBe(DARKNESS)
+    expect(openSides).toContain(side(stair!))
+  })
+
+  it('does not add a deprecated free-floating Goal label for the reported Dramatic Arc seed', () => {
+    const result = generateMissionDungeon(request({ seed: 624140615, loopCount: 1, loopChallenges: ['dramatic-arc'] }))
+
+    expect(result.ok).toBe(true)
+    expect(result.snapshot!.labels.some(label => label.text === 'Goal' && label.id === 'label-dramatic-goal')).toBe(false)
   })
 
   it('realizes Hub and Spoke as a central hub with two declared cycle spokes', () => {

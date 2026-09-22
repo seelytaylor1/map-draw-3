@@ -622,7 +622,6 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
   const diagnostics: GenerationDiagnostic[] = []
   const grid = createGrid(request.cols, request.rows)
   const dramaticCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc')
-  const dramaticGoalInStart = Boolean(dramaticCycle && dramaticCycle.roles.objectiveNode === mission.goalNodeId)
   let dramaticLayout: { start: SpatialModule; axis: 'vertical' | 'horizontal'; bandStart: number; bandLength: number; goalSide?: 'before' | 'after' } | undefined
   for (const module of plan.modules) for (const point of module.footprint) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
   for (const connection of plan.connections) for (const point of connectionFootprint(connection)) if (point.col >= 0 && point.row >= 0 && point.col < request.cols && point.row < request.rows) grid[point.row * request.cols + point.col] = FLOOR
@@ -715,13 +714,6 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
         : missionNode?.label ?? 'Support Room'
     addRoomLabel(`label-${module.id}`, text, module, undefined, index + 1, true, module.generatedDetails?.join('\n\n'))
   }
-  if (dramaticCycle && dramaticGoalInStart) {
-    const start = plan.modules.find(module => module.missionNodeId === 'start')
-    if (start) {
-      const point = [...start.footprint].find(point => isFloor(point) && !occupied.has(keyOf(point)))
-      if (point) { labels.push({ id: 'label-dramatic-goal', col: point.col, row: point.row, text: 'Goal' }); occupied.add(keyOf(point)) }
-    }
-  }
   const addOptional = (types: readonly StampType[], id: string, point: Point, direction: Direction = 'E') => {
     const type = types.find(candidate => available.includes(candidate))
     if (!type || occupied.has(keyOf(point))) return
@@ -769,6 +761,25 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
         if (axisPosition >= dramaticLayout.bandStart && axisPosition < dramaticLayout.bandStart + dramaticLayout.bandLength) continue
       }
       outwardCandidates.push({ run: { id: 'generated-start-descent', col: inside.col, row: inside.row, z: 0, direction: outward, ascending: true }, outward, inside })
+    }
+    const dramaticSide = (point: Point): 'before' | 'after' | 'darkness' | undefined => {
+      if (dramaticLayout?.start !== start) return undefined
+      const axisPosition = dramaticLayout.axis === 'vertical' ? point.row - start.origin.row : point.col - start.origin.col
+      if (axisPosition < dramaticLayout.bandStart) return 'before'
+      if (axisPosition >= dramaticLayout.bandStart + dramaticLayout.bandLength) return 'after'
+      return 'darkness'
+    }
+    const openStartSides = new Set(plan.connections
+      .filter(connection => connection.traversable !== 'blocked' && (connection.fromModuleId === start.id || connection.toModuleId === start.id))
+      .map(connection => connection.fromModuleId === start.id ? connection.path[0]! : connection.path[connection.path.length - 1]!)
+      .map(dramaticSide)
+      .filter((side): side is 'before' | 'after' => side === 'before' || side === 'after'))
+    if (openStartSides.size > 0) {
+      const connectedCandidates = outwardCandidates.filter(candidate => {
+        const side = dramaticSide(candidate.inside)
+        return side === undefined || (side !== 'darkness' && openStartSides.has(side))
+      })
+      if (connectedCandidates.length > 0) outwardCandidates.splice(0, outwardCandidates.length, ...connectedCandidates)
     }
     const preferredOutward = oppositeDirection[directionForPath(firstConnection.path.slice(0, 2))]
     outwardCandidates.sort((a, b) => Number(b.outward === preferredOutward) - Number(a.outward === preferredOutward)
