@@ -50,3 +50,6 @@ npm run diagnose:iso
 The diagnostic drives deterministic 1/5/10/20-level fixtures in a browser and
 prints JSON for cached and uncached render paths. Set `ISO_DIAGNOSTIC_URL` to
 measure another local server.
+
+## About Me
+I'm Taylor, and I write adventures and supplements for Shadowdark RPG. https://www.drivethrurpg.com/en/publisher/16706/taylor-seely-wright
