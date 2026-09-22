@@ -44,11 +44,11 @@ import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, getDu
 import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
-import { createDefaultLayer, moveLayer, removeLayer, type MapLayer } from './layers'
+import { createDefaultLayer, type MapLayer } from './layers'
 import { composeLayerGrid, composeLayerTileColors, createLayerGrids, getLayerGrid, resizeLayerGrids, setLayerGrid, type LayerGrids } from './layerGrids'
 import { exportCropRect, exportDimensions, normalizeExportRegion, wholeMapRegion, type ExportRegion } from './exportRegion'
 import { copySelectedMapObjects, duplicateSelectedMapObjects, expandSelectionToGroups, groupSelectedMapObjects, moveSelectedMapObjects, pasteMapObjects, reorderSelectedMapObjects, rotateSelectedMapObjects, scaleSelectedStamps, selectMapObjects, ungroupSelectedMapObjects, type MapObjectClipboard, type MapObjectSelection } from './selection'
-import { getShapePreviewPoints, rasterizeShape, snapShapePoint, type ShapeDraft, type ShapePoint, type ShapeToolKind } from './shapeTools'
+import { getShapePreviewPoints, isClosedShapePath, rasterizeShape, snapShapePoint, type ShapeDraft, type ShapePoint, type ShapeToolKind } from './shapeTools'
 import { importExternalDungeon } from './dungeonImport'
 import { BUILT_IN_STYLE_PRESETS, DEFAULT_TEXTURE_SETTINGS, normalizeCustomStylePresets, type StylePreset, type TextureSettings, type VisualStyle } from './styles'
 import { createTextureCanvas } from './texture'
@@ -171,9 +171,9 @@ export default function App() {
   const [selectionMode, setSelectionMode] = useState(false)
   const [objectSelection, setObjectSelection] = useState<MapObjectSelection[]>([])
   const [shapeTool, setShapeTool] = useState<ShapeToolKind | null>(null)
-  const [shapeSnap, setShapeSnap] = useState<number | null>(1)
-  const [polygonSides, setPolygonSides] = useState(6)
-  const [pathSimplification, setPathSimplification] = useState(0.5)
+  const shapeSnap = 1
+  const polygonSides = 6
+  const pathSimplification = 0.5
   const shapeDraftRef = useRef<ShapeDraft | null>(null)
   const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null)
 
@@ -217,7 +217,6 @@ export default function App() {
     const restored = layers.find(layer => layer.id === history.present.activeLayerId) ?? layers[0]
     if (!restored) return
     if (activeLayerId !== restored.id) setActiveLayerId(restored.id)
-    setActiveZ(restored.targetZ)
   }, [activeLayerId, history.present.activeLayerId, layers])
   const renderGrids = new Map<number, Uint8Array>()
   const renderedZs = new Set<number>([activeZ])
@@ -225,7 +224,7 @@ export default function App() {
   for (const z of renderedZs) renderGrids.set(z, composeLayerGrid(layers, layerGrids, z, cols, rows))
   const isLayerObjectVisible = (item: { layerId?: string; z: number }) => {
     const layer = layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))
-    return layer?.visible === true && layer.targetZ === item.z
+    return layer?.visible === true
   }
   const layerOpacityFor = (item: { layerId?: string }) => (layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))?.opacity ?? 100) / 100
   const visibleStamps = stamps.filter(isLayerObjectVisible)
@@ -234,31 +233,8 @@ export default function App() {
   const visibleLabels = labels.filter(label => isLayerObjectVisible({ ...label, z: label.z ?? 0 }))
   const visibleLights = lights.filter(light => {
     const layer = layers.find(candidate => candidate.id === (light.layerId ?? createDefaultLayer().id))
-    return layer?.visible === true && layer.targetZ === light.z
+    return layer?.visible === true
   })
-
-  const selectLayer = (layer: MapLayer) => {
-    setActiveLayerId(layer.id)
-    setActiveZ(layer.targetZ)
-    setHistory(h => h.present.activeLayerId === layer.id ? h : push(h, { ...h.present, activeLayerId: layer.id }))
-  }
-  const updateLayer = (id: string, update: Partial<MapLayer>) => {
-    setHistory(h => push(h, { ...h.present, layers: h.present.layers.map(layer => layer.id === id ? { ...layer, ...update } : layer) }))
-  }
-  const setActiveLayerZ = (targetZ: number) => {
-    if (!activeLayer) return
-    const layerId = activeLayer.id
-    setHistory(h => push(h, {
-      ...h.present,
-      layers: h.present.layers.map(layer => layer.id === layerId ? { ...layer, targetZ } : layer),
-      stamps: h.present.stamps.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
-      steps: h.present.steps.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
-      ramps: h.present.ramps.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
-      labels: h.present.labels.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
-      lights: (h.present.lights ?? []).map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
-    }))
-    setActiveZ(targetZ)
-  }
 
   const withActiveLayerGrid = (snapshot: AppSnapshot, z: number, grid: Uint8Array): AppSnapshot => {
     const layerId = activeLayer?.id ?? createDefaultLayer().id
@@ -1761,6 +1737,7 @@ export default function App() {
 
     if (shapeDraft) {
       const points = getShapePreviewPoints(shapeDraft, polygonSides, pathSimplification)
+      const closed = shapeDraft.tool !== 'path' || isClosedShapePath(points)
       const projected = points.flatMap(point => {
         const world = showIso
           ? isoProjectAtZ(point.col, point.row, TILE_PX * 2, TILE_PX, activeZ)
@@ -1770,11 +1747,11 @@ export default function App() {
       if (projected.length >= 2) {
         layer.add(new Konva.Line({
           points: projected,
-          closed: shapeDraft.tool !== 'path',
+          closed,
           stroke: '#e4bd77',
           strokeWidth: 2,
           dash: shapeDraft.tool === 'path' ? undefined : [5, 3],
-          fill: shapeDraft.tool === 'path' ? undefined : 'rgba(228,189,119,0.16)',
+          fill: closed ? 'rgba(228,189,119,0.16)' : undefined,
           lineCap: 'round',
           lineJoin: 'round',
           listening: false,
@@ -2769,6 +2746,18 @@ export default function App() {
   const editingItem = editingLabel && !showIso
     ? buildLabelScene([editingLabel], editingLabelId, TILE_PX)[0]
     : null
+  const activateDrawingMode = () => {
+    setSelectionMode(false)
+    setObjectSelection([])
+    setShapeTool(null)
+    setShapeDraft(null)
+    shapeDraftRef.current = null
+    setLightPlacement(false)
+    setCropMode(false)
+  }
+  const activatePaintSetting = () => {
+    if (shapeTool !== 'path') activateDrawingMode()
+  }
   const labelEditorStyle = editingItem && stageRef.current && containerRef.current
     ? (() => {
         const stage = stageRef.current!
@@ -2841,9 +2830,146 @@ export default function App() {
 
         <div className="toolbar-content">
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
-          <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deletes objects, or deselects on blank space.</span></div>
+          <div className="panel-intro"><strong>Draw on the map</strong><span>Paint tiles, work across levels, then add paths, objects, and light.</span></div>
 
-        <Section title="Selection" icon={<IconFrame size={14} />} defaultOpen>
+        <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
+          <Segmented
+            value={shapeTool === 'path' ? 'path' : drawingState.tool === 'rough' ? 'cave' : brushShape}
+            onChange={(s: BrushShape | 'cave' | 'path') => {
+              if (s === 'path') {
+                setShapeTool('path')
+                setSelectionMode(false)
+                setLightPlacement(false)
+                setCropMode(false)
+                setObjectSelection([])
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+                return
+              }
+              activateDrawingMode()
+              if (s === 'cave') {
+                const ds = drawingState
+                if (ds.tool === 'rough') {
+                  if (ds.phase === 'placed2') {
+                    setHistory(h => ({ ...h, present: withActiveLayerGrid(h.present, activeZ, ds.baseGrid) }))
+                  }
+                  dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+                } else {
+                  dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
+                }
+                return
+              }
+              dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })
+            }}
+            options={[
+              { value: 'square' as const, label: 'Square', icon: <IconSquareBrush size={13} /> },
+              { value: 'circle' as const, label: 'Circle', icon: <IconCircleBrush size={13} /> },
+              { value: 'cave' as const, label: 'Cave', icon: <IconCave size={13} /> },
+              { value: 'path' as const, label: 'Path', icon: <IconFrame size={13} /> },
+            ]}
+          />
+          <Segmented
+            value={selectedPaintState === WALL ? 'erase' : 'draw'}
+            onChange={(v: 'draw' | 'erase') => {
+              activatePaintSetting()
+              if (v === 'erase') {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: WALL, brushShape } })
+              } else {
+                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState === WALL ? FLOOR : selectedPaintState, brushShape } })
+              }
+            }}
+            options={[
+              { value: 'draw' as const, label: 'Draw' },
+              { value: 'erase' as const, label: 'Erase' },
+            ]}
+          />
+          {selectedPaintState !== WALL && (
+            <>
+              <Segmented
+                value={selectedPaintState}
+                onChange={(v: TileState) => { activatePaintSetting(); dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: v, brushShape: brushShape } }) }}
+                tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
+                options={[
+                  { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} />, style: { backgroundColor: floorColor, color: getAccessibleTextColor(floorColor) } },
+                  { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} />, style: { backgroundColor: waterColor, color: getAccessibleTextColor(waterColor) } },
+                  { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} />, style: { backgroundColor: lavaColor, color: getAccessibleTextColor(lavaColor) } },
+                  { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} />, style: { backgroundColor: darknessColor, color: getAccessibleTextColor(darknessColor) } },
+                ]}
+              />
+              {selectedPaintState === FLOOR && (
+                <ColorField label="Floor color" value={floorColor} onChange={setFloorColor} onReset={() => setFloorColor(FLOOR_COLOR)} />
+              )}
+              {selectedPaintState === WATER && (
+                <ColorField label="Water color" value={waterColor} onChange={setWaterColor} onReset={() => setWaterColor(WATER_COLOR)} />
+              )}
+              {selectedPaintState === LAVA && (
+                <ColorField label="Lava color" value={lavaColor} onChange={setLavaColor} onReset={() => setLavaColor(LAVA_COLOR)} />
+              )}
+              {selectedPaintState === DARKNESS && (
+                <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} onReset={() => setDarknessColor(DARKNESS_COLOR)} />
+              )}
+              <div className="environment-grid">
+                {ENVIRONMENT_OPTIONS.map((env) => {
+                  const color = environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] ?? FLOOR_COLOR
+                  return (
+                    <ToolButton
+                      key={env.value}
+                      active={drawingState.tool === 'paint' && selectedPaintState === env.value}
+                      label={env.label}
+                      onClick={() => { activatePaintSetting(); dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } }) }}
+                      style={{ backgroundColor: color, color: getAccessibleTextColor(color) }}
+                    />
+                  )
+                })}
+              </div>
+              {selectedEnvironment && (
+                <ColorField
+                  label={`${selectedEnvironment.label} color`}
+                  value={environmentalColors.get(selectedEnvironment.value) ?? ENVIRONMENTAL_DEFAULTS[selectedEnvironment.value] ?? '#000000'}
+                  onChange={(color) => {
+                    setHistory(h => push(h, {
+                      ...h.present,
+                      environmentalColors: new Map(h.present.environmentalColors).set(selectedEnvironment.value, color),
+                    }))
+                  }}
+                  onReset={() => {
+                    setHistory(h => {
+                      if (!h.present.environmentalColors.has(selectedEnvironment.value)) return h
+                      const colors = new Map(h.present.environmentalColors)
+                      colors.delete(selectedEnvironment.value)
+                      return push(h, { ...h.present, environmentalColors: colors })
+                    })
+                  }}
+                />
+              )}
+            </>
+          )}
+          {drawingState.tool === 'rough' && (
+            <div className="hint">
+              {roughPhase === 'idle' && 'Click 1: set start corner'}
+              {roughPhase === 'placed1' && 'Click 2: set end corner'}
+              {roughPhase === 'placed2' && 'Move to adjust edges · Click 3: commit · Esc: cancel'}
+            </div>
+          )}
+          {shapeTool === 'path' && <div className="hint">Drag a path. Return to its start to fill the enclosed area; release elsewhere for a line.</div>}
+        </Section>
+
+        <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
+          <div className="stepper">
+            <button aria-label="Previous level" onClick={() => setActiveZ(z => z - 1)}><IconMinus size={13} /></button>
+            <span className="z-value">Z{activeZ}</span>
+            <button aria-label="Next level" onClick={() => setActiveZ(z => z + 1)}><IconPlus size={13} /></button>
+          </div>
+          <div className="row">
+            <div style={{ flex: 1 }}>
+              <ToolButton icon={<IconHash size={14} />} label="Grid" active={showGrid} onClick={() => setShowGrid(v => !v)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Selection" icon={<IconFrame size={14} />}>
           <ToolButton
             icon={<IconFrame size={14} />}
             label="Select objects"
@@ -2851,12 +2977,14 @@ export default function App() {
             onClick={() => {
               setSelectionMode(active => !active)
               setShapeTool(null)
+              setLightPlacement(false)
+              setCropMode(false)
               setObjectSelection([])
               selectionDragRef.current = null
               setSelectionDrag(null)
             }}
           />
-          {selectionMode && <div className="hint">Drag across active-level objects to select them. Arrow keys move; Ctrl/Cmd+C/V copies and pastes; Ctrl/Cmd+D duplicates; Ctrl/Cmd+G groups; Ctrl/Cmd+Shift+G ungroups; Delete removes {objectSelection.length || 'the'} selected object{objectSelection.length === 1 ? '' : 's'}.</div>}
+          {selectionMode && <div className="hint">Drag across visible objects on this level. Arrow keys move; Ctrl/Cmd+C/V copies and pastes; Ctrl/Cmd+D duplicates; Ctrl/Cmd+G groups; Ctrl/Cmd+Shift+G ungroups; Delete removes {objectSelection.length || 'the'} selected object{objectSelection.length === 1 ? '' : 's'}.</div>}
           {selectionMode && objectSelection.length > 0 && (
             <div className="field-stack">
               {objectSelection.length > 1 && (
@@ -2949,222 +3077,6 @@ export default function App() {
             })()}
             <div className="hint">Walls block light in both projections. Universal VTT stores one range per light (the dim radius); bright/dim falloff stays in raster exports.</div>
           </div>}
-        </Section>
-
-        <Section title="Shapes & paths" icon={<IconSquareBrush size={14} />}>
-          <div className="button-row">
-            {([
-              ['rectangle', 'Rectangle', <IconSquareBrush size={13} />],
-              ['circle', 'Circle', <IconCircleBrush size={13} />],
-              ['polygon', 'Polygon', <IconHatch size={13} />],
-              ['path', 'Path', <IconFrame size={13} />],
-            ] as const).map(([kind, label, icon]) => (
-              <ToolButton key={kind} icon={icon} label={label} active={shapeTool === kind} onClick={() => {
-                setShapeTool(current => current === kind ? null : kind)
-                setSelectionMode(false)
-                setCropMode(false)
-                setObjectSelection([])
-                if (drawingState.tool !== 'paint') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
-              }} />
-            ))}
-          </div>
-          {shapeTool && <div className="field-stack">
-            <label className="field-row">
-              <span>Snap increment</span>
-              <select aria-label="Shape snap increment" className="num-field" value={shapeSnap ?? 0} onChange={e => setShapeSnap(Number(e.target.value) || null)}>
-                <option value={1}>1 cell</option>
-                <option value={0.5}>½ cell</option>
-                <option value={0.25}>¼ cell</option>
-                <option value={0}>Off</option>
-              </select>
-            </label>
-            {shapeTool === 'polygon' && <label className="field-row">
-              <span>Sides</span>
-              <input aria-label="Polygon sides" className="num-field" type="number" min={3} max={16} value={polygonSides} onChange={e => setPolygonSides(Math.max(3, Math.min(16, Number(e.target.value) || 3)))} />
-            </label>}
-            {shapeTool === 'path' && <label className="field-row">
-              <span>Path simplification</span>
-              <input aria-label="Path simplification" type="range" min={0} max={4} step={0.1} value={pathSimplification} onChange={e => setPathSimplification(Number(e.target.value))} />
-            </label>}
-            <div className="hint">Drag on the map to preview and commit. Escape cancels. The active paint or erase setting fills the covered cells.</div>
-          </div>}
-        </Section>
-
-        <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
-          <Segmented
-            value={drawingState.tool === 'rough' ? 'cave' : brushShape}
-            onChange={(s: BrushShape | 'cave') => {
-              if (s === 'cave') {
-                const ds = drawingState
-                if (ds.tool === 'rough') {
-                  if (ds.phase === 'placed2') {
-                    setHistory(h => ({ ...h, present: withActiveLayerGrid(h.present, activeZ, ds.baseGrid) }))
-                  }
-                  dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
-                } else {
-                  dispatch({ type: 'SET_TOOL', to: { tool: 'rough', phase: 'idle' } })
-                }
-                return
-              }
-              dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape: s } })
-            }}
-            options={[
-              { value: 'square' as const, label: 'Square', icon: <IconSquareBrush size={13} /> },
-              { value: 'circle' as const, label: 'Circle', icon: <IconCircleBrush size={13} /> },
-              { value: 'cave' as const, label: 'Cave', icon: <IconCave size={13} /> },
-            ]}
-          />
-          <Segmented
-            value={selectedPaintState === WALL ? 'erase' : 'draw'}
-            onChange={(v: 'draw' | 'erase') => {
-              if (v === 'erase') {
-                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: WALL, brushShape } })
-              } else {
-                dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState === WALL ? FLOOR : selectedPaintState, brushShape } })
-              }
-            }}
-            options={[
-              { value: 'draw' as const, label: 'Draw' },
-              { value: 'erase' as const, label: 'Erase' },
-            ]}
-          />
-          {selectedPaintState !== WALL && (
-            <>
-              <Segmented
-                value={selectedPaintState}
-                onChange={(v: TileState) => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: v, brushShape: brushShape } })}
-                tones={{ [WATER]: 'water', [LAVA]: 'lava', [DARKNESS]: 'darkness' } as Partial<Record<TileState, 'water' | 'lava' | 'darkness' | 'erase'>>}
-                options={[
-                  { value: FLOOR     as TileState, label: 'Floor',    icon: <IconFloor   size={13} />, style: { backgroundColor: floorColor, color: getAccessibleTextColor(floorColor) } },
-                  { value: WATER     as TileState, label: 'Water',    icon: <IconDroplet size={13} />, style: { backgroundColor: waterColor, color: getAccessibleTextColor(waterColor) } },
-                  { value: LAVA      as TileState, label: 'Lava',     icon: <IconFlame   size={13} />, style: { backgroundColor: lavaColor, color: getAccessibleTextColor(lavaColor) } },
-                  { value: DARKNESS  as TileState, label: 'Dark',     icon: <IconCave    size={13} />, style: { backgroundColor: darknessColor, color: getAccessibleTextColor(darknessColor) } },
-                ]}
-              />
-              {selectedPaintState === FLOOR && (
-                <ColorField label="Floor color" value={floorColor} onChange={setFloorColor} onReset={() => setFloorColor(FLOOR_COLOR)} />
-              )}
-              {selectedPaintState === WATER && (
-                <ColorField label="Water color" value={waterColor} onChange={setWaterColor} onReset={() => setWaterColor(WATER_COLOR)} />
-              )}
-              {selectedPaintState === LAVA && (
-                <ColorField label="Lava color" value={lavaColor} onChange={setLavaColor} onReset={() => setLavaColor(LAVA_COLOR)} />
-              )}
-              {selectedPaintState === DARKNESS && (
-                <ColorField label="Darkness color" value={darknessColor} onChange={setDarknessColor} onReset={() => setDarknessColor(DARKNESS_COLOR)} />
-              )}
-              <div className="environment-grid">
-                {ENVIRONMENT_OPTIONS.map((env) => {
-                  const color = environmentalColors.get(env.value) ?? ENVIRONMENTAL_DEFAULTS[env.value] ?? FLOOR_COLOR
-                  return (
-                    <ToolButton
-                      key={env.value}
-                      active={drawingState.tool === 'paint' && selectedPaintState === env.value}
-                      label={env.label}
-                      onClick={() => dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: env.value, brushShape: brushShape } })}
-                      style={{ backgroundColor: color, color: getAccessibleTextColor(color) }}
-                    />
-                  )
-                })}
-              </div>
-              {selectedEnvironment && (
-                <ColorField
-                  label={`${selectedEnvironment.label} color`}
-                  value={environmentalColors.get(selectedEnvironment.value) ?? ENVIRONMENTAL_DEFAULTS[selectedEnvironment.value] ?? '#000000'}
-                  onChange={(color) => {
-                    setHistory(h => push(h, {
-                      ...h.present,
-                      environmentalColors: new Map(h.present.environmentalColors).set(selectedEnvironment.value, color),
-                    }))
-                  }}
-                  onReset={() => {
-                    setHistory(h => {
-                      if (!h.present.environmentalColors.has(selectedEnvironment.value)) return h
-                      const colors = new Map(h.present.environmentalColors)
-                      colors.delete(selectedEnvironment.value)
-                      return push(h, { ...h.present, environmentalColors: colors })
-                    })
-                  }}
-                />
-              )}
-            </>
-          )}
-          {drawingState.tool === 'rough' && (
-            <div className="hint">
-              {roughPhase === 'idle' && 'Click 1: set start corner'}
-              {roughPhase === 'placed1' && 'Click 2: set end corner'}
-              {roughPhase === 'placed2' && 'Move to adjust edges · Click 3: commit · Esc: cancel'}
-            </div>
-          )}
-        </Section>
-
-        <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
-          <div className="stepper">
-            <button aria-label="Previous level" onClick={() => setActiveLayerZ(activeZ - 1)}><IconMinus size={13} /></button>
-            <span className="z-value">Z{activeZ}</span>
-            <button aria-label="Next level" onClick={() => setActiveLayerZ(activeZ + 1)}><IconPlus size={13} /></button>
-          </div>
-          <div className="row">
-            <div style={{ flex: 1 }}>
-              <ToolButton icon={<IconHash size={14} />} label="Grid" active={showGrid} onClick={() => setShowGrid(v => !v)} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
-            </div>
-          </div>
-        </Section>
-
-        <Section title="Layers" icon={<IconLayers size={14} />} defaultOpen>
-          <div className="field-stack">
-            <label className="field-row">
-              <span>Active layer</span>
-              <select aria-label="Active layer" className="num-field" value={activeLayer?.id ?? ''} onChange={e => {
-                const layer = layers.find(candidate => candidate.id === e.target.value)
-                if (layer) selectLayer(layer)
-              }}>
-                {layers.map(layer => <option key={layer.id} value={layer.id}>{layer.name}{layer.locked ? ' (locked)' : ''}</option>)}
-              </select>
-            </label>
-            {activeLayer && <>
-              <label className="field-row">
-                <span>Name</span>
-                <input aria-label="Layer name" className="text-field" value={activeLayer.name} onChange={e => updateLayer(activeLayer.id, { name: e.target.value || 'Untitled layer' })} />
-              </label>
-              <label className="field-row">
-                <span>Target level</span>
-                <input aria-label="Layer target Z level" className="num-field" type="number" value={activeLayer.targetZ} onChange={e => setActiveLayerZ(Number(e.target.value))} />
-              </label>
-              <label className="field-row">
-                <span>Opacity</span>
-                <input aria-label="Layer opacity" type="range" min={0} max={100} value={activeLayer.opacity} onChange={e => updateLayer(activeLayer.id, { opacity: Number(e.target.value) })} />
-              </label>
-              <div className="row">
-                <div style={{ flex: 1 }}><ToolButton label="Visible" active={activeLayer.visible} onClick={() => updateLayer(activeLayer.id, { visible: !activeLayer.visible })} /></div>
-                <div style={{ flex: 1 }}><ToolButton label="Locked" active={activeLayer.locked} onClick={() => updateLayer(activeLayer.id, { locked: !activeLayer.locked })} /></div>
-              </div>
-              <div className="row">
-                <Btn onClick={() => setHistory(h => push(h, { ...h.present, layers: moveLayer(h.present.layers, activeLayer.id, 'back') }))}>Send backward</Btn>
-                <Btn onClick={() => setHistory(h => push(h, { ...h.present, layers: moveLayer(h.present.layers, activeLayer.id, 'forward') }))}>Bring forward</Btn>
-              </div>
-              {layers.length > 1 && <Btn variant="danger" onClick={() => {
-                const remaining = removeLayer(layers, activeLayer.id)
-                const nextActiveLayer = remaining[0]
-                setHistory(h => {
-                  const nextLayerGrids = new Map(h.present.layerGrids)
-                  nextLayerGrids.delete(activeLayer.id)
-                  return push(h, { ...h.present, activeLayerId: nextActiveLayer.id, layers: remaining, layerGrids: nextLayerGrids })
-                })
-                setActiveLayerId(nextActiveLayer.id)
-                setActiveZ(nextActiveLayer.targetZ)
-              }}>Delete layer</Btn>}
-            </>}
-            <Btn onClick={() => {
-              const layer: MapLayer = { id: crypto.randomUUID(), name: `Layer ${layers.length + 1}`, targetZ: activeZ, visible: true, opacity: 100, locked: false }
-              setHistory(h => push(h, { ...h.present, activeLayerId: layer.id, layers: [...h.present.layers, layer] }))
-              setActiveLayerId(layer.id)
-            }}><IconPlus size={13} /> Add layer</Btn>
-            <div className="hint">Layers target a Z Level. Layer content, visibility, opacity, and locking are saved with the map.</div>
-          </div>
         </Section>
 
         <Section title="Structures" icon={<IconStairs size={14} />} defaultOpen>
@@ -3854,7 +3766,7 @@ export default function App() {
         <MapLegend />
       </div>
       <div className="canvas-status" aria-live="polite">
-        <strong>{cropMode ? 'Export crop' : shapeDraft?.tool ?? (shapeTool ? `Shape: ${shapeTool}` : selectionMode ? 'Select' : drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label')}</strong>
+        <strong>{cropMode ? 'Export crop' : shapeDraft?.tool === 'path' || shapeTool === 'path' ? 'Path' : shapeDraft?.tool ?? (shapeTool ? `Shape: ${shapeTool}` : selectionMode ? 'Select' : drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label')}</strong>
         <span>Z{activeZ}</span>
         <span>{showIso ? 'Isometric preview' : 'Top-down editing'}</span>
       </div>

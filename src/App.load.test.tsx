@@ -126,25 +126,44 @@ describe('App load lifecycle', () => {
   it('exposes a selection mode for object drag-selection', () => {
     render(<App />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Selection' }))
     const select = screen.getByRole('button', { name: 'Select objects' })
     expect(select).not.toHaveClass('active')
     fireEvent.click(select)
 
     expect(select).toHaveClass('active')
     expect(screen.getByText('Select', { selector: 'strong' })).toBeInTheDocument()
-    expect(screen.getByText(/drag across active-level objects/i)).toBeInTheDocument()
+    expect(screen.getByText(/drag across visible objects on this level/i)).toBeInTheDocument()
   })
 
-  it('provides persistent named-layer controls with visibility, opacity, and locking', () => {
+  it('keeps level navigation without exposing layer controls', () => {
     render(<App />)
 
-    expect(screen.getByLabelText('Active layer')).toHaveValue('map')
-    expect(screen.getByLabelText('Layer target Z level')).toHaveValue(0)
-    expect(screen.getByLabelText('Layer opacity')).toHaveValue('100')
-    fireEvent.click(screen.getByRole('button', { name: 'Locked' }))
-    expect(screen.getByRole('button', { name: 'Locked' })).toHaveClass('active')
-    fireEvent.click(screen.getByRole('button', { name: /add layer/i }))
-    expect(screen.getByRole('option', { name: 'Layer 2' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next level' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Layers' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Map layers')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add layer' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next level' }))
+    expect(screen.getByText('Z1', { selector: '.z-value' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Water' }))
+    expect(screen.getByText('Z1', { selector: '.z-value' })).toBeInTheDocument()
+  })
+
+  it('offers Path with the draw brushes and keeps it selected when paint changes', () => {
+    render(<App />)
+
+    expect(screen.queryByRole('button', { name: 'Shapes & paths' })).not.toBeInTheDocument()
+    const path = screen.getByRole('button', { name: 'Path' })
+    expect(path.parentElement).toContainElement(screen.getByRole('button', { name: 'Square' }))
+    expect(path.parentElement).toContainElement(screen.getByRole('button', { name: 'Circle' }))
+    expect(path.parentElement).toContainElement(screen.getByRole('button', { name: 'Cave' }))
+
+    fireEvent.click(path)
+    expect(path).toHaveClass('active')
+    fireEvent.click(screen.getByRole('button', { name: 'Water' }))
+    expect(path).toHaveClass('active')
+    fireEvent.click(screen.getByRole('button', { name: 'Square' }))
+    expect(path).not.toHaveClass('active')
   })
 
   it('launches with one-eighth-inch squares and uses that as the canvas dimension step', () => {

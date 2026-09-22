@@ -31,8 +31,21 @@ export function simplifyShapePath(points: readonly ShapePoint[], tolerance: numb
   return [...left.slice(0, -1), ...right]
 }
 
+export function isClosedShapePath(points: readonly ShapePoint[]): boolean {
+  if (points.length < 4) return false
+  const first = points[0]
+  const last = points[points.length - 1]
+  const width = Math.max(...points.map(point => point.col)) - Math.min(...points.map(point => point.col))
+  const height = Math.max(...points.map(point => point.row)) - Math.min(...points.map(point => point.row))
+  return width >= 1 && height >= 1 && Math.hypot(last.col - first.col, last.row - first.row) <= 0.75
+}
+
 export function getShapePreviewPoints(draft: ShapeDraft, sides: number, pathSimplification: number): ShapePoint[] {
-  if (draft.tool === 'path') return simplifyShapePath(draft.points, pathSimplification)
+  if (draft.tool === 'path') {
+    if (!isClosedShapePath(draft.points)) return simplifyShapePath(draft.points, pathSimplification)
+    const loop = simplifyShapePath(draft.points.slice(0, -1), pathSimplification)
+    return [...(loop.length >= 3 ? loop : draft.points.slice(0, -1)), draft.points[0]]
+  }
   const left = Math.min(draft.start.col, draft.end.col)
   const right = Math.max(draft.start.col, draft.end.col)
   const top = Math.min(draft.start.row, draft.end.row)
@@ -85,7 +98,7 @@ function rasterizePath(points: readonly ShapePoint[], cols: number, rows: number
 }
 
 export function rasterizeShape(tool: ShapeToolKind, points: readonly ShapePoint[], cols: number, rows: number): TilePosition[] {
-  if (tool === 'path') return rasterizePath(points, cols, rows)
+  if (tool === 'path' && !isClosedShapePath(points)) return rasterizePath(points, cols, rows)
   if (points.length < 3) return rasterizePath(points, cols, rows)
   const minCol = Math.max(0, Math.floor(Math.min(...points.map(point => point.col))))
   const maxCol = Math.min(cols - 1, Math.ceil(Math.max(...points.map(point => point.col))))
@@ -97,5 +110,8 @@ export function rasterizeShape(tool: ShapeToolKind, points: readonly ShapePoint[
       if (pointInPolygon({ col: col + 0.5, row: row + 0.5 }, points)) tiles.push({ col, row })
     }
   }
-  return tiles.length > 0 ? tiles : rasterizePath(points, cols, rows)
+  if (tool !== 'path') return tiles.length > 0 ? tiles : rasterizePath(points, cols, rows)
+  const covered = new Map<number, TilePosition>()
+  for (const tile of [...tiles, ...rasterizePath(points, cols, rows)]) covered.set(tile.row * cols + tile.col, tile)
+  return [...covered.values()]
 }
