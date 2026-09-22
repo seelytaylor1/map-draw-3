@@ -10,15 +10,6 @@ Torch & Tile is a modern dungeon map studio for Shadowdark RPG adventures. Start
 </p>
 ![Torch & Tile screenshot](docs/v1-screenshot.png)
 
-## Use It
-
-- **Live in browser**: [seelytaylor1.github.io/map-draw-3](https://seelytaylor1.github.io/map-draw-3/) — always the latest build
-- **Desktop app**: download the installer for your platform from the [latest release](../../releases/latest)
-  - Windows: `.msi` or `.exe`
-  - macOS: `.dmg`
-  - Linux: `.AppImage` or `.deb`
-- **Standalone HTML**: grab `index.html` from the release and open it in any browser — no install needed
-
 ## Features
 
 - **Dungeon generation**: Choose Spine, Hub, or Branches; tune complexity, seed, loops, and challenges; then review capacity before replacing the canvas.
