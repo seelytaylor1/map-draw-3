@@ -37,6 +37,8 @@ export interface GenerationRequest {
   loopPreference: LoopPreference
   /** Party level used to select the monster and dungeon budgets. */
   playerLevel?: number
+  /** Enabled magic-item source modules. Omitted means Shadowdark Core. */
+  magicItemSources?: readonly MagicItemSourceId[]
   loopChallenges?: readonly (LoopPreference | undefined)[]
   availableStampTypes?: readonly StampType[]
 }
@@ -186,6 +188,43 @@ export interface Port {
 export type SpatialModuleType = 'room' | 'corridor' | 'branch' | 'junction' | 'cycle' | 'hub' | 'gate' | 'secret-connection' | 'blocked-return' | 'terminal-challenge'
 export type RoomEncounter = 'empty' | DangerKind
 export type CorridorCondition = 'open' | 'flooded' | 'trap' | 'hazard'
+export type TreasureTier = 'poor' | 'normal' | 'fabulous' | 'legend'
+export type TreasureDisposition = 'unattended' | 'owned' | 'protected' | 'hidden'
+export type MagicItemSourceId = 'shadowdark-core' | 'custom'
+
+export interface MagicItemTrait {
+  name: string
+  description: string
+}
+
+export interface MagicItemRecord {
+  name: string
+  slug: string
+  description: string
+  traits: MagicItemTrait[]
+  source: MagicItemSourceId
+}
+
+export interface TreasureFind {
+  id: string
+  tier: TreasureTier
+  moduleId: string
+  gp?: number
+  /** Fabulous and Legend finds may become a magic item in a future table roll. */
+  magicItemPossible?: boolean
+  magicItemRange?: readonly [number, number]
+  magicItems?: MagicItemRecord[]
+  magicItemUnavailable?: boolean
+  disposition: TreasureDisposition
+}
+
+export interface TreasurePlan {
+  levelLabel: string
+  gpTotal: number
+  goldRoomId: string
+  finds: TreasureFind[]
+  notes: string[]
+}
 export type DoorwayStyle =
   | 'single' | 'double' | 'locked' | 'trapdoor' | 'portcullis'
   | 'revolving' | 'secret' | 'magic' | 'ladder-down' | 'ladder-up'
@@ -226,6 +265,7 @@ export interface SpatialModule {
   /** Structured generated room hazards used to render their ledger prose. */
   hazardDetails?: HazardRecord[]
   hasTreasure?: boolean
+  treasureFinds?: TreasureFind[]
 }
 
 export type SpatialConnectionSemantic = 'corridor' | 'spoke' | 'secret' | 'locked' | 'dangerous' | 'blocked-return' | 'one-way' | 'junction'
@@ -257,6 +297,7 @@ export interface SpacePlan {
   dungeonLevelBudget: DungeonLevelBudget
   monsterLevelsUsed: number
   monsterRejections: MonsterRejection[]
+  treasurePlan: TreasurePlan
   generalNotes: string[]
   diagnostics: GenerationDiagnostic[]
 }

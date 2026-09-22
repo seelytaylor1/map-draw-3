@@ -204,6 +204,7 @@ export default function App() {
   const [generationStyle, setGenerationStyle] = useState<GenerationStyle>('spine-shortcuts')
   const [generationComplexity, setGenerationComplexity] = useState<ComplexityPreset>('standard')
   const [generationDungeonLevel, setGenerationDungeonLevel] = useState(1)
+  const [generationShadowdarkCoreMagicItems, setGenerationShadowdarkCoreMagicItems] = useState(true)
   const [generationLoopCount, setGenerationLoopCount] = useState(1)
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
@@ -221,6 +222,7 @@ export default function App() {
     playerLevel: generationDungeonLevel,
     loopCount: generationLoopCount,
     loopPreference: 'varied',
+    magicItemSources: generationShadowdarkCoreMagicItems ? ['shadowdark-core'] : [],
     loopChallenges: generationLoopChallenges.slice(0, Math.max(0, generationLoopCount)),
   }
   const generationPreflight = preflightGeneration(generationRequest)
@@ -2322,6 +2324,18 @@ export default function App() {
                 <select id="generation-dungeon-level" className="num-field" value={generationDungeonLevel} onChange={e => setGenerationDungeonLevel(Number(e.target.value))} aria-label="Dungeon level">
                   {DUNGEON_LEVEL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
+              </div>
+              <div className="field-row">
+                <span>Shadowdark Core magic items</span>
+                <button
+                  type="button"
+                  className={`btn${generationShadowdarkCoreMagicItems ? ' btn-primary' : ''}`}
+                  aria-label="Shadowdark Core magic items"
+                  aria-pressed={generationShadowdarkCoreMagicItems}
+                  onClick={() => setGenerationShadowdarkCoreMagicItems(value => !value)}
+                >
+                  {generationShadowdarkCoreMagicItems ? 'On' : 'Off'}
+                </button>
               </div>
             </div>
           </Section>

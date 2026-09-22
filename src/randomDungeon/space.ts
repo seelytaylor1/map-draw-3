@@ -18,6 +18,7 @@ import { minimumMonsterEncounterCost, monsterFitsLevelBudget, numericMonsterLeve
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
+import { formatTreasureFind, generateTreasurePlan } from './treasureGenerator'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
@@ -245,7 +246,20 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
   const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
   if (dramaticGoalInStart) anchors[mission.goalNodeId] = anchors.start!
-  const plan: SpacePlan = { style: request.style, modules, connections, anchors, monsterEncounterTable: [], dungeonLevelBudget: resolveDungeonLevelBudget(request.playerLevel), monsterLevelsUsed: 0, monsterRejections: [], generalNotes: [], diagnostics }
+  const dungeonLevelBudget = resolveDungeonLevelBudget(request.playerLevel)
+  const plan: SpacePlan = {
+    style: request.style,
+    modules,
+    connections,
+    anchors,
+    monsterEncounterTable: [],
+    dungeonLevelBudget,
+    monsterLevelsUsed: 0,
+    monsterRejections: [],
+    treasurePlan: { levelLabel: dungeonLevelBudget.monsterLevelLabel === '10' ? '10+' : dungeonLevelBudget.monsterLevelLabel, gpTotal: 0, goldRoomId: '', finds: [], notes: [] },
+    generalNotes: [],
+    diagnostics,
+  }
   rollGeneratedContent(request, mission, plan)
   return plan
 }
@@ -309,12 +323,10 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     ...plan.monsterEncounterTable.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
   ].join('\n'))
   plan.generalNotes.push(`Monster budget: dungeon level ${request.playerLevel ?? 1} · encounters ${plan.dungeonLevelBudget.encounterBudget} levels · dungeon ${plan.dungeonLevelBudget.dungeonBudget} levels.`)
-  const hasMissionReward = mission.nodes.some(node => node.kind === 'reward') || mission.cycles.some(cycle => cycle.roles.objectiveNode === mission.goalNodeId)
   const roomHazardNames = new Set<string>()
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
     module.encounter = rollRoomEncounter(random)
     module.encounters = module.encounter === 'empty' ? [] : [module.encounter]
-    module.hasTreasure = random.nextD6() <= 2
   }
   for (const connection of plan.connections) {
     const roll = random.nextD6()
@@ -341,10 +353,6 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       doorways.push({ point, direction: directionForPath([connection.path[index - 1]!, point]), style: rollDoorwayStyle(random), location: 'hallway' })
     }
     connection.doorways = doorways
-  }
-  if (hasMissionReward) {
-    const goal = plan.modules.find(module => module.id === plan.anchors[mission.goalNodeId])
-    if (goal) goal.hasTreasure = true
   }
   applyMissionRoomDirectives(mission, plan)
   const contractMonsterAssignments = new Map<string, MonsterRecord[]>()
@@ -467,6 +475,21 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       })
     module.generatedDetails = module.hasTreasure ? [...encounterDetails, 'Treasure: present.'] : encounterDetails
   }
+  const goldRoomId = plan.anchors[mission.goalNodeId] ?? plan.modules.find(module => module.footprint.length > 0)?.id ?? ''
+  plan.treasurePlan = generateTreasurePlan(
+    request.playerLevel,
+    random,
+    plan.modules.filter(module => module.footprint.length > 0),
+    goldRoomId,
+    request.magicItemSources,
+  )
+  for (const module of plan.modules) {
+    module.treasureFinds = plan.treasurePlan.finds.filter(find => find.moduleId === module.id)
+    module.hasTreasure = module.treasureFinds.length > 0
+    const treasureDetails = module.treasureFinds.map(formatTreasureFind)
+    if (treasureDetails.length > 0) module.generatedDetails = [...(module.generatedDetails ?? []), 'Treasure: present.', ...treasureDetails]
+  }
+  plan.generalNotes.push(...plan.treasurePlan.notes)
   plan.monsterLevelsUsed = monsterLevelsUsed
   plan.generalNotes.push(`Monster levels used: ${monsterLevelsUsed} / ${plan.dungeonLevelBudget.dungeonBudget}.`)
   if (plan.monsterRejections.length > 0) {
