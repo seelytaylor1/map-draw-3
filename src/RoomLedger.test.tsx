@@ -33,6 +33,11 @@ const mission: Mission = {
 describe('room ledger', () => {
   afterEach(cleanup)
 
+  const openLedger = () => {
+    const ledger = screen.getByRole('group', { name: 'Generated room ledger' })
+    fireEvent.click(ledger.querySelector('summary')!)
+  }
+
   it('shows generated general notes alongside room records', () => {
     render(
       <RoomLedger
@@ -43,11 +48,15 @@ describe('room ledger', () => {
         onCommitGeneralNotes={vi.fn()}
         onCommitRoomName={vi.fn()}
         onCommitRoomDetails={vi.fn()}
-        onClose={vi.fn()}
       />,
     )
 
+    openLedger()
     expect(screen.getByRole('button', { name: /00.*general notes/i })).toBeInTheDocument()
+    const resizer = screen.getByRole('separator', { name: 'Resize room ledger' })
+    expect(resizer).toHaveAttribute('aria-valuenow', '430')
+    fireEvent.keyDown(resizer, { key: 'ArrowLeft' })
+    expect(resizer).toHaveAttribute('aria-valuenow', '446')
     expect(screen.getByRole('textbox', { name: 'Room 0 name' })).toHaveValue('General notes')
     expect(screen.getByRole('textbox', { name: 'Room 0 details' })).toHaveValue('Hallway traps: all trapped hallways share one variety.')
   })
@@ -62,10 +71,10 @@ describe('room ledger', () => {
         onCommitGeneralNotes={vi.fn()}
         onCommitRoomName={vi.fn()}
         onCommitRoomDetails={vi.fn()}
-        onClose={vi.fn()}
       />,
     )
 
+    openLedger()
     expect(screen.getByRole('textbox', { name: 'Room 0 details' })).toHaveValue([
       'Random Encounter Table:\n1. Torch extinguished',
       'Hallway traps: all trapped hallways share one variety.',
@@ -84,10 +93,10 @@ describe('room ledger', () => {
         onCommitGeneralNotes={onCommitGeneralNotes}
         onCommitRoomName={vi.fn()}
         onCommitRoomDetails={vi.fn()}
-        onClose={vi.fn()}
       />,
     )
 
+    openLedger()
     const input = screen.getByRole('textbox', { name: 'Room 0 details' })
     fireEvent.change(input, { target: { value: 'Shared hazard\nBring a lantern' } })
     fireEvent.blur(input)

@@ -260,6 +260,25 @@ describe('App load lifecycle', () => {
     expect(reportedCount).toBe(placementDiagnostics.length)
   })
 
+  it('places the generated room ledger beside the dungeon legend', async () => {
+    render(<App />)
+    openWorkspace('Generate')
+
+    fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
+    await Promise.resolve()
+
+    const controls = document.querySelector('.map-reference-controls')
+    const ledger = controls?.querySelector('details.room-ledger')
+    expect(controls?.querySelector('details.map-legend')).toBeInTheDocument()
+    expect(ledger).toBeInTheDocument()
+    expect(ledger).not.toHaveAttribute('open')
+    expect(screen.queryByRole('button', { name: /edit room names/i })).not.toBeInTheDocument()
+
+    fireEvent.click(ledger!.querySelector('summary')!)
+    expect(ledger).toHaveAttribute('open')
+    expect(screen.getByRole('region', { name: 'Room ledger editor' })).toBeInTheDocument()
+  })
+
   it('reports the resolved type for randomly selected loops', async () => {
     randomSeed.value = 1
     render(<App />)

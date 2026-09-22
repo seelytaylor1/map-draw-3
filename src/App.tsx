@@ -203,7 +203,6 @@ export default function App() {
   const [generationDungeonLevel, setGenerationDungeonLevel] = useState(1)
   const [generationLoopCount, setGenerationLoopCount] = useState(1)
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
-  const [roomListOpen, setRoomListOpen] = useState(false)
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
   const isDirty = history.past.length !== savedHistoryLength
@@ -2320,13 +2319,6 @@ export default function App() {
                     ))}
                   </span>
                 )}
-                {generationResult.ok && generationResult.space && (
-                  <button className="room-list-launch" type="button" onClick={() => setRoomListOpen(true)}>
-                    <span className="room-list-launch-mark">01</span>
-                    <span><strong>Edit room names</strong></span>
-                    <span className="room-list-launch-arrow">↗</span>
-                  </button>
-                )}
                 {generationResult.failedAttempts.length > 0 && (
                   <details><summary>Rejected attempts</summary>{generationResult.failedAttempts.map((attempt, index) => <div key={`${attempt.code}-${index}`}>{attempt.message}</div>)}</details>
                 )}
@@ -2527,7 +2519,21 @@ export default function App() {
         />
       </aside>
 
-      <MapLegend />
+      <div className="map-reference-controls">
+        {generationResult?.ok && generationResult.space && (
+          <RoomLedger
+            key={generationResult.summary.seed}
+            modules={generationResult.space.modules}
+            mission={generationResult.mission}
+            labels={labels}
+            generalNotes={generationResult.space.generalNotes}
+            onCommitGeneralNotes={handleCommitGeneralNotes}
+            onCommitRoomName={handleCommitRoomName}
+            onCommitRoomDetails={handleCommitRoomDetails}
+          />
+        )}
+        <MapLegend />
+      </div>
       <div className="canvas-status" aria-live="polite">
         <strong>{drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label'}</strong>
         <span>Z{activeZ}</span>
@@ -2582,18 +2588,6 @@ export default function App() {
             }
           }}
           onBlur={() => setEditingLabelId(null)}
-        />
-      )}
-      {roomListOpen && generationResult?.ok && generationResult.space && (
-        <RoomLedger
-          modules={generationResult.space.modules}
-          mission={generationResult.mission}
-          labels={labels}
-          generalNotes={generationResult.space.generalNotes}
-          onCommitGeneralNotes={handleCommitGeneralNotes}
-          onCommitRoomName={handleCommitRoomName}
-          onCommitRoomDetails={handleCommitRoomDetails}
-          onClose={() => setRoomListOpen(false)}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { Label } from './labels'
 import type { Mission, SpatialModule } from './randomDungeon/missionTypes'
 
@@ -10,7 +10,6 @@ export interface RoomLedgerProps {
   onCommitGeneralNotes: (notes: string[]) => void
   onCommitRoomName: (moduleId: string, text: string) => void
   onCommitRoomDetails: (moduleId: string, details: string) => void
-  onClose: () => void
 }
 
 interface RoomEntry {
@@ -66,27 +65,14 @@ function RoomNameInput({ room, value, onChange, onCommit }: {
   )
 }
 
-function WindowHeader({ count, onClose }: { count: number; onClose: () => void }) {
-  return (
-    <header className="room-window-header">
-      <div>
-        <div className="room-window-eyebrow">Room records</div>
-        <h2>Room ledger</h2>
-      </div>
-      <div className="room-window-header-actions">
-        <span className="room-count">{count} rooms</span>
-        <button className="room-window-close" type="button" onClick={onClose} aria-label="Close room ledger">×</button>
-      </div>
-    </header>
-  )
-}
-
-export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGeneralNotes, onCommitRoomName, onCommitRoomDetails, onClose }: RoomLedgerProps) {
+export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGeneralNotes, onCommitRoomName, onCommitRoomDetails }: RoomLedgerProps) {
   const rooms = useMemo(() => buildRooms(modules, mission, labels), [labels, mission, modules])
   const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
   const [detailsDrafts, setDetailsDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
   const [generalNotesDraft, setGeneralNotesDraft] = useState(() => formatGeneralNotes(generalNotes))
   const [selectedEntryId, setSelectedEntryId] = useState<'general-notes' | string>('general-notes')
+  const [panelWidth, setPanelWidth] = useState(430)
+  const resizingPanelRef = useRef(false)
 
   useEffect(() => {
     setDrafts(Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
@@ -97,12 +83,22 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
   useEffect(() => { setGeneralNotesDraft(formatGeneralNotes(generalNotes)) }, [generalNotes])
 
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!resizingPanelRef.current) return
+      setPanelWidth(Math.min(640, Math.max(320, window.innerWidth - event.clientX - 12)))
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+    const stopResize = () => {
+      resizingPanelRef.current = false
+      document.body.classList.remove('resizing-panel')
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResize)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      document.body.classList.remove('resizing-panel')
+    }
+  }, [])
 
   const selectedRoom = rooms.find(room => room.module.id === selectedEntryId) ?? rooms[0]
   const generalNotesSelected = selectedEntryId === 'general-notes'
@@ -133,11 +129,44 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
     if (formatGeneralNotes(notes) !== formatGeneralNotes(generalNotes)) onCommitGeneralNotes(notes)
   }
 
+  const resizeByKeyboard = (direction: 'wider' | 'narrower') => {
+    setPanelWidth(width => Math.min(640, Math.max(320, width + (direction === 'wider' ? 16 : -16))))
+  }
+
   return (
-    <div className="room-ledger-overlay" role="complementary" aria-label="Generated room ledger">
-      <div className="room-ledger-backdrop" aria-hidden="true" />
-      <div className="room-window room-ledger-panel">
-        <WindowHeader count={rooms.length} onClose={onClose} />
+    <details className="room-ledger" aria-label="Generated room ledger" style={{ '--room-ledger-width': `${panelWidth}px` } as CSSProperties}>
+      <summary className="room-ledger-summary">
+        <span className="room-ledger-summary-copy">
+          <span className="room-ledger-summary-eyebrow">Room records</span>
+          <strong>Room ledger</strong>
+        </span>
+        <span className="room-count">{rooms.length} rooms</span>
+      </summary>
+      <div
+        className="room-ledger-resizer"
+        role="separator"
+        aria-label="Resize room ledger"
+        aria-orientation="vertical"
+        aria-valuemin={320}
+        aria-valuemax={640}
+        aria-valuenow={panelWidth}
+        tabIndex={0}
+        onPointerDown={event => {
+          event.preventDefault()
+          resizingPanelRef.current = true
+          document.body.classList.add('resizing-panel')
+        }}
+        onKeyDown={event => {
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault()
+            resizeByKeyboard('wider')
+          } else if (event.key === 'ArrowRight') {
+            event.preventDefault()
+            resizeByKeyboard('narrower')
+          }
+        }}
+      />
+      <div className="room-window room-ledger-panel" role="region" aria-label="Room ledger editor">
         <div className="room-ledger-list">
           <button className={`room-ledger-row${generalNotesSelected ? ' selected' : ''}`} type="button" onClick={() => setSelectedEntryId('general-notes')}>
             <span className="room-number">00</span>
@@ -194,6 +223,6 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
           </div>
         )}
       </div>
-    </div>
+    </details>
   )
 }
