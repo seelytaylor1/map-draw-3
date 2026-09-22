@@ -5,7 +5,7 @@
 
 ## Overview
 
-Add automatic update checking and one-click install to Map Draw desktop builds using `tauri-plugin-updater`. End users who installed via the packaged installer see a notification when a new version is available and can install it without leaving the app.
+Add automatic update checking and one-click install to Torch & Tile desktop builds using `tauri-plugin-updater`. End users who installed via the packaged installer see a notification when a new version is available and can install it without leaving the app.
 
 ## Section 1: Release Pipeline
 
@@ -26,7 +26,7 @@ npm run tauri signer generate
 | Field | Before | After |
 |---|---|---|
 | `tagName` | `build-${{ github.sha }}` | `app-v__VERSION__` |
-| `releaseName` | `Map Draw ${{ github.sha }}` | `Map Draw v__VERSION__` |
+| `releaseName` | `Torch & Tile ${{ github.sha }}` | `Torch & Tile v__VERSION__` |
 | env | — | `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` |
 
 `tauri-action` resolves `__VERSION__` from `tauri.conf.json` at build time and automatically includes a signed `latest.json` in the release assets.

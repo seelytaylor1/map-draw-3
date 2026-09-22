@@ -323,7 +323,7 @@ export function MetroidvaniaLab() {
   return (
     <div className={`mv-lab mv-${variant}`} style={{ '--variant-accent': meta.color } as CSSProperties}>
       <header className="mv-header">
-        <div className="mv-brand"><span className="brand-mark">⌁</span><span>MAP DRAW</span><span className="brand-slash">/</span><span className="brand-lab">GENERATION LAB</span></div>
+        <div className="mv-brand"><span className="brand-mark">⌁</span><span>TORCH &amp; TILE</span><span className="brand-slash">/</span><span className="brand-lab">GENERATION LAB</span></div>
         <div className="mv-header-right"><span className="prototype-badge">THROWAWAY PROTOTYPE</span><a className="back-link" href="/">Back to editor</a></div>
       </header>
 

@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Map Draw",
+  "productName": "Torch & Tile",
   "version": "1.0.0",
   "identifier": "com.seelydesigns.mapdraw",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Map Draw",
+        "title": "Torch & Tile",
         "width": 1280,
         "height": 800,
         "minWidth": 800,

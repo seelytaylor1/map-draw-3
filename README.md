@@ -1,8 +1,14 @@
-# Map Draw 3 v1
+# Torch & Tile
 
-Map Draw 3 is a browser and desktop dungeon-map editor for tabletop RPG battle maps. Start from a hand-drawn map, or generate a seeded mission-first dungeon with rooms, routes, loops, challenges, entrances, and goals, then refine it with the editor.
+*From blank grid to deadly delve.*
 
-![Map Draw 3 v1 screenshot](docs/v1-screenshot.png)
+Torch & Tile is a modern dungeon map studio for Shadowdark RPG adventures. Start from a hand-drawn map, or generate a seeded mission-first dungeon with rooms, routes, loops, challenges, entrances, and goals, then refine it with the editor.
+
+<img src="docs/brand/torch-and-tile-logo.png" alt="Torch & Tile logo" width="144" />
+
+![Torch & Tile title art](docs/brand/torch-and-tile-title.png)
+
+![Torch & Tile screenshot](docs/v1-screenshot.png)
 
 ## Use It
 

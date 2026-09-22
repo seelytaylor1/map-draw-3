@@ -49,6 +49,7 @@ import { RoomLedger } from './RoomLedger'
 import { applyPlayerViewSecretDoors, buildPlayerViewExport } from './playerView'
 import { formatRoomLedgerText } from './roomLedgerData'
 import { buildHtmlExport, buildMarkdownExport, fileName, siblingFilePath } from './exportFormats'
+import torchAndTileLogo from './assets/torch-and-tile-logo.png'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
 const DOT_RADIUS = 2
@@ -238,7 +239,7 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return
     const marker = isDirty ? '● ' : ''
-    setWindowTitle(`${marker}Map Draw — ${documentName}`)
+    setWindowTitle(`${marker}Torch & Tile — ${documentName}`)
   }, [documentName, isDirty])
 
   const [workspaceTab, setWorkspaceTab] = useState<'draw' | 'assets' | 'generate' | 'document'>('draw')
@@ -1934,8 +1935,12 @@ export default function App() {
       {/* Workspace inspector */}
       <aside className="toolbar" style={{ width: toolbarWidth, position: 'absolute', top: 12, left: 12, zIndex: 10, userSelect: 'none' }}>
         <header className="toolbar-title">
-          <span className="brand-mark"><IconCompass size={16} /></span>
-          <span className="brand-copy"><strong>Map Draw</strong><small>{isDirty ? 'Unsaved changes' : documentName}</small></span>
+          <span className="brand-mark"><img src={torchAndTileLogo} alt="" aria-hidden="true" draggable={false} /></span>
+          <span className="brand-copy">
+            <strong>Torch &amp; Tile</strong>
+            <small className="brand-tagline">From blank grid to deadly delve.</small>
+            <small className="brand-document">{isDirty ? 'Unsaved changes' : documentName}</small>
+          </span>
           <span className="map-size-badge">{+(cols / tilesPerInch).toFixed(2)} × {+(rows / tilesPerInch).toFixed(2)} in</span>
         </header>
         <nav className="workspace-tabs" role="tablist" aria-label="Workspace">

@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Map Draw will provide a random dungeon generator driven by the supplied dungeon-generation tables. The generator creates a playable, connected dungeon layout from the current canvas while retaining enough generation metadata to explain the result during the generation run.
+Torch & Tile will provide a random dungeon generator driven by the supplied dungeon-generation tables. The generator creates a playable, connected dungeon layout from the current canvas while retaining enough generation metadata to explain the result during the generation run.
 
 This ADR describes the desired generator behavior. It does not describe an existing implementation.
 

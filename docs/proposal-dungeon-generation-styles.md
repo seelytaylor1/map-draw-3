@@ -5,7 +5,7 @@
 
 ## Summary
 
-Map Draw should support several independent dungeon-generation styles. The user selects one style before generating a map. A generated page does not combine multiple styles unless a future style explicitly defines that behavior.
+Torch & Tile should support several independent dungeon-generation styles. The user selects one style before generating a map. A generated page does not combine multiple styles unless a future style explicitly defines that behavior.
 
 ## V1 implementation decision
 

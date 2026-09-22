@@ -1,7 +1,7 @@
 // THROWAWAY LOGIC PROTOTYPE
 //
 // Question: for the same semantic loop graph, which placement model feels more
-// useful for Map Draw—explicit readable lanes or flexible global packing?
+// useful for Torch & Tile—explicit readable lanes or flexible global packing?
 
 import readline from 'node:readline'
 import { createPlan, LOOP_NAMES, type LoopType } from './shared.ts'
@@ -64,4 +64,3 @@ function loop() {
 }
 
 loop()
-

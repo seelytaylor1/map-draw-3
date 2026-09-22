@@ -79,10 +79,17 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  color: #2a1d08;
-  background: var(--accent-strong);
+  background: #14100b;
+  border: 1px solid rgba(240, 192, 105, 0.62);
   border-radius: 8px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
+  overflow: hidden;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 .brand-copy { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .brand-copy strong {
@@ -99,6 +106,15 @@
   font: 10px/1.2 var(--font-body);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.brand-copy .brand-tagline {
+  color: var(--accent);
+  font-size: 8px;
+  letter-spacing: 0.02em;
+}
+.brand-copy .brand-document {
+  color: var(--text-dim);
+  font-size: 9px;
 }
 .map-size-badge {
   margin-left: auto;
