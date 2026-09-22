@@ -656,6 +656,23 @@ body.resizing-panel, body.resizing-panel * { cursor: ew-resize !important; user-
 .generation-result strong { color: var(--text); font-size: 11px; }
 .generation-result.success { border-left: 2px solid #6eaa78; }
 .generation-result.failure { border-left: 2px solid var(--danger); }
+.treasure-summary {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid rgba(207,155,70,0.24);
+  border-radius: 6px;
+  background: rgba(207,155,70,0.07);
+}
+.treasure-summary-heading { display: flex; flex-direction: column; gap: 3px; }
+.treasure-summary-heading > span { color: var(--text-dim); font-size: 9px; }
+.treasure-tier-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 7px; }
+.treasure-tier-count { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px; border-radius: 4px; background: rgba(0,0,0,0.15); color: var(--text-dim); font-size: 8px; }
+.treasure-tier-count strong { color: var(--text); font-size: 10px; }
+.treasure-find-list { display: flex; flex-direction: column; gap: 3px; margin: 7px 0 0; padding: 0; list-style: none; }
+.treasure-find-row { display: grid; grid-template-columns: 55px minmax(40px, 0.8fr) minmax(70px, 1.4fr); gap: 5px; align-items: start; padding-top: 3px; border-top: 1px solid rgba(255,255,255,0.055); font-size: 9px; }
+.treasure-find-tier { color: var(--accent-strong); text-transform: capitalize; }
+.treasure-find-room { overflow-wrap: anywhere; color: var(--text); }
+.treasure-find-value { overflow-wrap: anywhere; color: var(--text-dim); text-align: right; }
 .subsection-label {
   margin-top: 4px;
   padding-top: 9px;

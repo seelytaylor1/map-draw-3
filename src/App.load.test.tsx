@@ -399,6 +399,21 @@ describe('App load lifecycle', () => {
     expect(screen.getByText(/mission nodes/i)).toBeInTheDocument()
   })
 
+  it('shows the generated treasure allocation and room assignment in the generation result', () => {
+    render(<App />)
+    openWorkspace('Generate')
+
+    fireEvent.change(screen.getByLabelText(/dungeon seed/i), { target: { value: '123' } })
+    fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
+
+    const treasurePlan = screen.getByRole('region', { name: 'Generated treasure plan' })
+    expect(treasurePlan).toHaveTextContent(/GP reference: 300 gp \(manual method\)/)
+    expect(treasurePlan.querySelectorAll('li').length).toBeGreaterThanOrEqual(9)
+    expect(treasurePlan).toHaveTextContent(/Poor/)
+    expect(treasurePlan).toHaveTextContent(/Normal/)
+    expect(treasurePlan).toHaveTextContent(/Goal/)
+  })
+
   it('defaults each loop to random while preserving explicit overrides', () => {
     render(<App />)
     openWorkspace('Generate')

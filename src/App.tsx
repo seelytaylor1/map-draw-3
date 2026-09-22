@@ -2416,6 +2416,60 @@ export default function App() {
                     ))}
                   </span>
                 )}
+                {generationResult.ok && generationResult.space && (() => {
+                  const plan = generationResult.space.treasurePlan
+                  const generatedGp = plan.finds.reduce((total, find) => total + (find.gp ?? 0), 0)
+                  const magicItemCount = plan.finds.reduce((total, find) => total + (find.magicItems?.length ?? 0), 0)
+                  const tierLabels = [
+                    { tier: 'poor', label: 'Poor' },
+                    { tier: 'normal', label: 'Normal' },
+                    { tier: 'fabulous', label: 'Fabulous' },
+                    { tier: 'legend', label: 'Legend' },
+                  ] as const
+
+                  return (
+                    <section className="treasure-summary" aria-label="Generated treasure plan">
+                      <div className="treasure-summary-heading">
+                        <strong>Treasure allocation</strong>
+                        <span>Level {plan.levelLabel} · GP reference: {plan.gpTotal} gp (manual method) · {generatedGp} gp rolled · {magicItemCount} magic item{magicItemCount === 1 ? '' : 's'}</span>
+                      </div>
+                      <div className="treasure-tier-counts" aria-label="Treasure finds by tier">
+                        {tierLabels.map(({ tier, label }) => (
+                          <span className="treasure-tier-count" key={tier}>
+                            <strong>{plan.finds.filter(find => find.tier === tier).length}</strong>
+                            <span>{label}</span>
+                          </span>
+                        ))}
+                      </div>
+                      <ul className="treasure-find-list">
+                        {plan.finds.map(find => {
+                          const module = generationResult.space!.modules.find(candidate => candidate.id === find.moduleId)
+                          const roomLabel = labels.find(label => label.id === `label-${find.moduleId}`)
+                          const missionNode = module?.missionNodeId
+                            ? generationResult.mission.nodes.find(node => node.id === module.missionNodeId)
+                            : undefined
+                          const roomName = roomLabel?.text ?? missionNode?.label ?? (module?.type === 'hub' ? 'Hub' : 'Room')
+                          const value = find.magicItems?.length
+                            ? find.magicItems.map(item => item.name).join(', ')
+                            : `${find.gp ?? 0} gp`
+                          const note = find.magicItemUnavailable
+                            ? ' · no item source'
+                            : find.magicItemPossible && !find.magicItems?.length
+                              ? ' · rolled as GP'
+                              : ''
+
+                          return (
+                            <li className={`treasure-find-row tier-${find.tier}`} key={find.id}>
+                              <span className="treasure-find-tier">{find.tier}</span>
+                              <span className="treasure-find-room">{roomName}</span>
+                              <span className="treasure-find-value">{value}{note}</span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </section>
+                  )
+                })()}
                 {generationResult.failedAttempts.length > 0 && (
                   <details><summary>Rejected attempts</summary>{generationResult.failedAttempts.map((attempt, index) => <div key={`${attempt.code}-${index}`}>{attempt.message}</div>)}</details>
                 )}

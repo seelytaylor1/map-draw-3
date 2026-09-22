@@ -210,7 +210,7 @@ export interface TreasureFind {
   tier: TreasureTier
   moduleId: string
   gp?: number
-  /** Fabulous and Legend finds may become a magic item in a future table roll. */
+  /** Fabulous and Legend finds may roll magic items when an enabled source has items. */
   magicItemPossible?: boolean
   magicItemRange?: readonly [number, number]
   magicItems?: MagicItemRecord[]

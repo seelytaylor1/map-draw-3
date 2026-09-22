@@ -170,7 +170,7 @@ export function generateTreasurePlan(
     goldRoomId,
     finds,
     notes: [
-      `Treasure budget: dungeon level ${band.levelLabel} · ${band.gpTotal} gp total.`,
+      `Treasure GP reference: dungeon level ${band.levelLabel} · ${band.gpTotal} gp for manual distribution; generated find amounts are rolled individually.`,
       `Treasure finds: ${counts}.`,
       'Fabulous and Legend finds are in the gold room. Poor and Normal finds are distributed among the other rooms.',
       availableMagicItems.length > 0

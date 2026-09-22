@@ -49,6 +49,7 @@ describe('dungeon treasure generation', () => {
     expect(plan.finds.every(find => rooms.some(room => room.id === find.moduleId))).toBe(true)
     expect(goal.treasureFinds?.every(find => find.tier === 'fabulous' || find.tier === 'legend')).toBe(true)
     expect(rooms.filter(room => room.id !== goal.id).flatMap(room => room.treasureFinds ?? []).every(find => find.tier === 'poor' || find.tier === 'normal')).toBe(true)
+    expect(plan.notes).toContain('Treasure GP reference: dungeon level 0-3 · 300 gp for manual distribution; generated find amounts are rolled individually.')
   })
 
   it('records the encounter relationship and enabled magic-item source for each find', () => {
