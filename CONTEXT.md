@@ -15,6 +15,12 @@ An integer identifying a horizontal floor plane within the Map. Z=0 is the groun
 ## Active Z Level
 The Z Level currently selected for editing. All drawing tools (Brush, Rough Mode, Stamps) operate exclusively on the Active Z Level. The user changes the Active Z Level via +/− controls in the toolbar.
 
+## Named Layer
+A user-facing compositing and editing container that targets one Z Level but is distinct from the Level Stack. A Named Layer has a name, visibility, opacity, lock state, and draw order. The active unlocked Named Layer receives new painting and placed map elements. Layers with the same target Z Level compose in their draw order; Level Stack geometry still determines cross-level projection order.
+
+## Active Layer
+The Named Layer currently targeted by editing tools. Its target Z Level supplies the Z Level for new content. Locked layers cannot be made active for editing.
+
 ## Level Stack
 The full collection of Tile Grids across all Z Levels, stored as a sparse map keyed by Z Level integer. Only Z Levels with at least one painted Tile are present in the Level Stack.
 
@@ -143,6 +149,9 @@ A collapsed lower-right map control that explains generated map symbols using th
 
 ## Player View
 A File-tab view toggle that hides generated room-number labels, trap icons, hazard icons, and chest icons, renders secret-door stamp cells as Wall, and displays locked doors with the regular door image, while leaving the Map state, room ledger, and other generated markers unchanged. It is saved with the Map and defaults to off for older files.
+
+## Second-display Player View
+A future local-only presentation of Player View on a GM's second display. The local map file remains the only source of truth; there is no account, network session, remote synchronization, or separately editable player copy.
 
 ## Corridor Condition
 A seeded connection-content roll whose result is open, flooded, trap, or hazard. Flooded corridor interiors use Water tiles, which remain traversable. Trap and hazard conditions use their corresponding floor stamps.

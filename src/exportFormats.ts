@@ -12,6 +12,93 @@ export interface MarkdownExportInput {
   ledgerText?: string
 }
 
+export type MapExportFormat = 'png' | 'webp' | 'jpg' | 'uvtt'
+
+export function getMapExportMimeType(format: Exclude<MapExportFormat, 'uvtt'>): string {
+  return format === 'jpg' ? 'image/jpeg' : `image/${format}`
+}
+
+export function getMapExportExtension(format: MapExportFormat): string {
+  return format === 'uvtt' ? 'dd2vtt' : format
+}
+
+export interface UniversalVttExportInput {
+  title: string
+  imageDataUrl: string
+  cols: number
+  rows: number
+  pixelsPerGrid: number
+  region: { col: number; row: number; cols: number; rows: number }
+  grid: Uint8Array
+  stamps: Array<{ type: string; col: number; row: number; rotation: number; z?: number }>
+  lights?: Array<{ col: number; row: number; range: number; intensity: number; color: string }>
+}
+
+/** Builds the widely supported Dungeondraft/Universal VTT JSON interchange. */
+export function buildUniversalVttExport(input: UniversalVttExportInput): string {
+  const comma = input.imageDataUrl.indexOf(',')
+  const image = comma >= 0 ? input.imageDataUrl.slice(comma + 1) : input.imageDataUrl
+  if (!image || !/^[A-Za-z0-9+/=\r\n]+$/.test(image)) throw new Error('The rendered map image is not valid base64 data.')
+
+  const { region, grid, cols, pixelsPerGrid } = input
+  const lineOfSight: Array<Array<{ x: number; y: number }>> = []
+  const walkable = (col: number, row: number) => {
+    if (col < 0 || row < 0 || col >= cols || row >= input.rows) return false
+    return grid[row * cols + col] !== 0
+  }
+  for (let row = region.row; row < region.row + region.rows; row++) {
+    for (let col = region.col; col < region.col + region.cols; col++) {
+      if (!walkable(col, row)) continue
+      const x = col - region.col
+      const y = row - region.row
+      if (!walkable(col, row - 1)) lineOfSight.push([{ x, y }, { x: x + 1, y }])
+      if (!walkable(col + 1, row)) lineOfSight.push([{ x: x + 1, y }, { x: x + 1, y: y + 1 }])
+      if (!walkable(col, row + 1)) lineOfSight.push([{ x: x + 1, y: y + 1 }, { x, y: y + 1 }])
+      if (!walkable(col - 1, row)) lineOfSight.push([{ x, y: y + 1 }, { x, y }])
+    }
+  }
+
+  const portals = input.stamps.flatMap(stamp => {
+    if (stamp.z !== undefined && stamp.z !== 0) return []
+    if (/archway|stair|step/i.test(stamp.type)) return []
+    if (!/door/i.test(stamp.type)) return []
+    if (stamp.col < region.col || stamp.row < region.row || stamp.col >= region.col + region.cols || stamp.row >= region.row + region.rows) return []
+    const x = stamp.col - region.col + 0.5
+    const y = stamp.row - region.row + 0.5
+    const vertical = stamp.rotation % 180 === 0
+    return [{
+      position: { x, y },
+      bounds: vertical
+        ? [{ x, y: y - 0.5 }, { x, y: y + 0.5 }]
+        : [{ x: x - 0.5, y }, { x: x + 0.5, y }],
+      rotation: vertical ? Math.PI / 2 : 0,
+      closed: !/open/i.test(stamp.type),
+      freestanding: false,
+    }]
+  })
+
+  return JSON.stringify({
+    format: 0.3,
+    resolution: {
+      map_origin: { x: region.col, y: region.row },
+      map_size: { x: region.cols, y: region.rows },
+      pixels_per_grid: pixelsPerGrid,
+    },
+    line_of_sight: lineOfSight,
+    portals,
+    environment: { baked_lighting: false, ambient_light: 'ffffffff' },
+    lights: (input.lights ?? []).map(light => ({
+      position: { x: light.col, y: light.row },
+      range: light.range,
+      intensity: light.intensity,
+      color: light.color,
+      shadows: true,
+    })),
+    image,
+    metadata: { title: input.title },
+  }, null, 2)
+}
+
 function safeJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
 }

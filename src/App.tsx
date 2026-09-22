@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
 import { isoUnproject, isoUnprojectAtZ, isoProjectAtZ, isoFloorPointsAtZ } from './iso'
 import { buildIsoScene } from './isoScene'
 import { drawIsoBatch, getIsoShapeBounds, groupIsoShapes } from './isoRender'
@@ -11,8 +11,8 @@ import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTile
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
-  addStamp, colorStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampSize,
-  type Stamp,
+  addStamp, colorStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampFootprintSize,
+  type CustomImageAsset, type Stamp,
 } from './stamps'
 import { addStepRun, moveStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
 import { addRampRun, moveRampRun, removeRampRun, rotateRampRun, toggleRampRunAscending, type RampRun } from './ramps'
@@ -37,18 +37,27 @@ import {
   IconStampFloor, IconSave, IconFolder, IconImage,
   IconInfo,
 } from './ui/icons'
-import { chooseSavePath, isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, savePngFile, saveTextFile, saveTextFileAs, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch, writePngFile } from './tauri'
+import { chooseSavePath, isTauri, openAssetFolder, openJsonFile, saveJsonFile, saveJsonFileAs, saveImageFile, saveTextFile, saveTextFileAs, setWindowTitle, onMenuEvent, onCloseRequested, confirmDialog, closeWindow, relaunch, writePngFile } from './tauri'
 import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
 import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, getDungeonLevelBudget, LOOP_CHALLENGE_DESCRIPTIONS, preflightGeneration } from './randomDungeon/missionFirst'
 import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
+import { createDefaultLayer, moveLayer, removeLayer, type MapLayer } from './layers'
+import { composeLayerGrid, composeLayerTileColors, createLayerGrids, getLayerGrid, resizeLayerGrids, setLayerGrid, type LayerGrids } from './layerGrids'
+import { exportCropRect, exportDimensions, normalizeExportRegion, wholeMapRegion, type ExportRegion } from './exportRegion'
+import { copySelectedMapObjects, duplicateSelectedMapObjects, expandSelectionToGroups, groupSelectedMapObjects, moveSelectedMapObjects, pasteMapObjects, reorderSelectedMapObjects, rotateSelectedMapObjects, scaleSelectedStamps, selectMapObjects, ungroupSelectedMapObjects, type MapObjectClipboard, type MapObjectSelection } from './selection'
+import { getShapePreviewPoints, rasterizeShape, snapShapePoint, type ShapeDraft, type ShapePoint, type ShapeToolKind } from './shapeTools'
+import { importExternalDungeon } from './dungeonImport'
+import { BUILT_IN_STYLE_PRESETS, DEFAULT_TEXTURE_SETTINGS, normalizeCustomStylePresets, type StylePreset, type TextureSettings, type VisualStyle } from './styles'
+import { createTextureCanvas } from './texture'
+import { createLightingCanvas, DEFAULT_LIGHTING_SETTINGS, type LightingSettings, type MapLight } from './lighting'
 import { MapLegend } from './MapLegend'
 import { RoomLedger } from './RoomLedger'
 import { applyPlayerViewSecretDoors, buildPlayerViewExport } from './playerView'
 import { formatRoomLedgerText } from './roomLedgerData'
-import { buildHtmlExport, buildMarkdownExport, fileName, siblingFilePath } from './exportFormats'
+import { buildHtmlExport, buildMarkdownExport, buildUniversalVttExport, fileName, getMapExportExtension, getMapExportMimeType, siblingFilePath, type MapExportFormat } from './exportFormats'
 import torchAndTileLogo from './assets/torch-and-tile-logo.png'
 
 const GHOST_COLOR = 'rgba(255,255,100,0.45)'
@@ -97,12 +106,17 @@ function getAccessibleTextColor(hex: string): string {
 }
 
 type AppSnapshot = {
+  activeLayerId: string
   grids: Map<number, Uint8Array>
+  layerGrids: LayerGrids
   stamps: Stamp[]
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  layers: MapLayer[]
   environmentalColors: Map<number, string>
+  styleFrame?: VisualStyle | null
+  lights?: MapLight[]
 }
 
 type StructureKind = 'step' | 'ramp'
@@ -133,21 +147,35 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
-  const [history, setHistory] = useState<History<AppSnapshot>>(() =>
-    createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], environmentalColors: new Map() }),
-  )
-  const { grids, stamps, steps, ramps, labels, environmentalColors } = history.present
+  const [history, setHistory] = useState<History<AppSnapshot>>(() => {
+    const grid = createGrid(DEFAULT_COLS, DEFAULT_ROWS)
+    return createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() })
+  })
+  const { grids, layerGrids, stamps, steps, ramps, labels, layers, environmentalColors } = history.present
+  const lights = history.present.lights ?? []
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
+  const [exportRegion, setExportRegion] = useState<ExportRegion>(() => wholeMapRegion(DEFAULT_COLS, DEFAULT_ROWS))
+  const [exportPixelsPerCell, setExportPixelsPerCell] = useState(() => getExportTilePixels(DEFAULT_TILES_PER_INCH))
+  const [exportFormat, setExportFormat] = useState<MapExportFormat>('png')
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [cropMode, setCropMode] = useState(false)
+  const cropDragRef = useRef<{ start: Tile; end: Tile } | null>(null)
+  const [cropDrag, setCropDrag] = useState<{ start: Tile; end: Tile } | null>(null)
   const [tilesPerInch, setTilesPerInch] = useState(DEFAULT_TILES_PER_INCH)
 
   const [drawingState, dispatch] = useReducer(drawingReducer, INITIAL_DRAWING_STATE)
   const drawingStateRef = useRef<DrawingState>(INITIAL_DRAWING_STATE)
   useEffect(() => { drawingStateRef.current = drawingState }, [drawingState])
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
-
-  const gridsRef = useRef(grids)
-  useEffect(() => { gridsRef.current = grids }, [grids])
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [objectSelection, setObjectSelection] = useState<MapObjectSelection[]>([])
+  const [shapeTool, setShapeTool] = useState<ShapeToolKind | null>(null)
+  const [shapeSnap, setShapeSnap] = useState<number | null>(1)
+  const [polygonSides, setPolygonSides] = useState(6)
+  const [pathSimplification, setPathSimplification] = useState(0.5)
+  const shapeDraftRef = useRef<ShapeDraft | null>(null)
+  const [shapeDraft, setShapeDraft] = useState<ShapeDraft | null>(null)
 
   // Derived values from DrawingState — keep render code and layer effects clean
   const brushShape: BrushShape = drawingState.tool === 'paint' ? drawingState.brushShape : 'square'
@@ -159,6 +187,9 @@ export default function App() {
   const selectedStepId: string | null = drawingState.tool === 'steps' ? drawingState.selectedId : null
   const selectedRampId: string | null = drawingState.tool === 'ramps' ? drawingState.selectedId : null
   const selectedLabelId: string | null = drawingState.tool === 'label' && drawingState.phase === 'idle' ? drawingState.selectedId : null
+  const selectedObjectIds = (kind: MapObjectSelection['kind']) => objectSelection.filter(item => item.kind === kind).map(item => item.id)
+  const selectedStamps = stamps.filter(stamp => selectedObjectIds('stamp').includes(stamp.id))
+  const selectedStampScale = selectedStamps[0]?.scale ?? 1
   const labelMode: 'none' | 'place' = drawingState.tool === 'label' && drawingState.phase === 'placing' ? 'place' : 'none'
   const mode: Mode = drawingState.tool === 'stamp' ? drawingState.stampType
     : drawingState.tool === 'label' ? 'paint'
@@ -175,11 +206,72 @@ export default function App() {
   const [hoverPointer, setHoverPointer] = useState<{ x: number; y: number } | null>(null)
   const hoverTileRef = useRef<Tile | null>(null)
   const [activeZ, setActiveZ] = useState(0)
+  const [activeLayerId, setActiveLayerId] = useState(createDefaultLayer().id)
   const activeZRef = useRef(0)
   const isPanningRef = useRef(false)
   const panLastRef = useRef({ x: 0, y: 0 })
 
-  const activeGrid = getGrid(grids, activeZ, cols, rows)
+  const activeLayer = layers.find(layer => layer.id === activeLayerId) ?? layers[0]
+  const activeGrid = activeLayer ? getLayerGrid(layerGrids, activeLayer, activeZ, cols, rows) : getGrid(grids, activeZ, cols, rows)
+  useEffect(() => {
+    const restored = layers.find(layer => layer.id === history.present.activeLayerId) ?? layers[0]
+    if (!restored) return
+    if (activeLayerId !== restored.id) setActiveLayerId(restored.id)
+    setActiveZ(restored.targetZ)
+  }, [activeLayerId, history.present.activeLayerId, layers])
+  const renderGrids = new Map<number, Uint8Array>()
+  const renderedZs = new Set<number>([activeZ])
+  for (const layer of layers) for (const z of layerGrids.get(layer.id)?.keys() ?? []) renderedZs.add(z)
+  for (const z of renderedZs) renderGrids.set(z, composeLayerGrid(layers, layerGrids, z, cols, rows))
+  const isLayerObjectVisible = (item: { layerId?: string; z: number }) => {
+    const layer = layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))
+    return layer?.visible === true && layer.targetZ === item.z
+  }
+  const layerOpacityFor = (item: { layerId?: string }) => (layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))?.opacity ?? 100) / 100
+  const visibleStamps = stamps.filter(isLayerObjectVisible)
+  const visibleSteps = steps.filter(isLayerObjectVisible)
+  const visibleRamps = ramps.filter(isLayerObjectVisible)
+  const visibleLabels = labels.filter(label => isLayerObjectVisible({ ...label, z: label.z ?? 0 }))
+  const visibleLights = lights.filter(light => {
+    const layer = layers.find(candidate => candidate.id === (light.layerId ?? createDefaultLayer().id))
+    return layer?.visible === true && layer.targetZ === light.z
+  })
+
+  const selectLayer = (layer: MapLayer) => {
+    setActiveLayerId(layer.id)
+    setActiveZ(layer.targetZ)
+    setHistory(h => h.present.activeLayerId === layer.id ? h : push(h, { ...h.present, activeLayerId: layer.id }))
+  }
+  const updateLayer = (id: string, update: Partial<MapLayer>) => {
+    setHistory(h => push(h, { ...h.present, layers: h.present.layers.map(layer => layer.id === id ? { ...layer, ...update } : layer) }))
+  }
+  const setActiveLayerZ = (targetZ: number) => {
+    if (!activeLayer) return
+    const layerId = activeLayer.id
+    setHistory(h => push(h, {
+      ...h.present,
+      layers: h.present.layers.map(layer => layer.id === layerId ? { ...layer, targetZ } : layer),
+      stamps: h.present.stamps.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
+      steps: h.present.steps.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
+      ramps: h.present.ramps.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
+      labels: h.present.labels.map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
+      lights: (h.present.lights ?? []).map(item => (item.layerId ?? createDefaultLayer().id) === layerId ? { ...item, z: targetZ } : item),
+    }))
+    setActiveZ(targetZ)
+  }
+
+  const withActiveLayerGrid = (snapshot: AppSnapshot, z: number, grid: Uint8Array): AppSnapshot => {
+    const layerId = activeLayer?.id ?? createDefaultLayer().id
+    return {
+      ...snapshot,
+      layerGrids: setLayerGrid(snapshot.layerGrids, layerId, z, grid),
+      grids: layerId === createDefaultLayer().id ? setGrid(snapshot.grids, z, grid) : snapshot.grids,
+    }
+  }
+
+  const selectObject = (selection: MapObjectSelection[]) => {
+    setObjectSelection(expandSelectionToGroups({ stamps: visibleStamps, steps: visibleSteps, ramps: visibleRamps, labels: visibleLabels, activeZ, selection }))
+  }
 
   const [wallColor, setWallColor] = useState('#000000')
   const [wallOpacity, setWallOpacity] = useState(0)
@@ -197,7 +289,66 @@ export default function App() {
   const [waterColor, setWaterColor] = useState(WATER_COLOR)
   const [lavaColor, setLavaColor] = useState(LAVA_COLOR)
   const [darknessColor, setDarknessColor] = useState(DARKNESS_COLOR)
+  const [textureSettings, setTextureSettings] = useState<TextureSettings>({ ...DEFAULT_TEXTURE_SETTINGS })
+  const [customStylePresets, setCustomStylePresets] = useState<StylePreset[]>(() => {
+    try { return normalizeCustomStylePresets(JSON.parse(localStorage.getItem('torch-and-tile.style-presets.v1') ?? '[]')) }
+    catch { return [] }
+  })
+  const [selectedStylePresetId, setSelectedStylePresetId] = useState<string | null>(null)
+  const [lightingSettings, setLightingSettings] = useState<LightingSettings>({ ...DEFAULT_LIGHTING_SETTINGS })
+  const [selectedLightId, setSelectedLightId] = useState<string | null>(null)
+  const [lightPlacement, setLightPlacement] = useState(false)
+  const [stylePresetName, setStylePresetName] = useState('My style')
+  const captureVisualStyle = (): VisualStyle => ({
+    wallColor, wallOpacity, floorColor, waterColor, lavaColor, darknessColor, isoFaceColor,
+    showGrid, show3D, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle,
+    texture: textureSettings,
+  })
+  const applyVisualStyle = (style: VisualStyle) => {
+    setWallColor(style.wallColor); setWallOpacity(style.wallOpacity); setFloorColor(style.floorColor)
+    setWaterColor(style.waterColor); setLavaColor(style.lavaColor); setDarknessColor(style.darknessColor)
+    setIsoFaceColor(style.isoFaceColor); setShowGrid(style.showGrid); setShow3D(style.show3D)
+    setShowHatching(style.showHatching); setHatchColor(style.hatchColor)
+    setShowWallOutline(style.showWallOutline); setWallOutlineColor(style.wallOutlineColor)
+    setWallOutlineStyle(style.wallOutlineStyle); setTextureSettings(style.texture)
+  }
+  const applyStylePreset = (preset: StylePreset) => {
+    const before = captureVisualStyle()
+    const after = { ...preset.style, texture: { ...preset.style.texture } }
+    setHistory(h => {
+      const previous = { ...h.present, styleFrame: before }
+      const next = { ...h.present, styleFrame: after }
+      return push({ ...h, present: previous }, next)
+    })
+    applyVisualStyle(after)
+    setSelectedStylePresetId(preset.id)
+    setStylePresetName(preset.name)
+  }
+
+  const updateLight = (id: string, update: Partial<MapLight>) => {
+    setHistory(h => push(h, { ...h.present, lights: (h.present.lights ?? []).map(light => light.id === id ? { ...light, ...update } : light) }))
+  }
+  const selectedLight = lights.find(light => light.id === selectedLightId) ?? null
+  const styleSignature = (style: VisualStyle, presets: StylePreset[], lightsState = lights, lightingState = lightingSettings) => JSON.stringify({ style, presets, lights: lightsState, lighting: lightingState })
+  const currentStyleSignature = () => styleSignature(captureVisualStyle(), customStylePresets)
+  const [savedStyleSignature, setSavedStyleSignature] = useState(() => currentStyleSignature())
+  useEffect(() => {
+    try { localStorage.setItem('torch-and-tile.style-presets.v1', JSON.stringify(customStylePresets)) }
+    catch { /* Presets remain available in the open document even if browser storage is full. */ }
+  }, [customStylePresets])
+  useEffect(() => {
+    if (history.present.styleFrame) applyVisualStyle(history.present.styleFrame)
+    // A frame changes only when a style preset is applied or undone/redone.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history.present.styleFrame])
+  const layerTileColorOverrides = new Map([...renderGrids.keys()].map(z => [z, composeLayerTileColors(
+    layers, layerGrids, z, cols, rows, wallColor, wallOpacity, environmentalColors as Map<TileState, string>,
+  )]))
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [imageImportError, setImageImportError] = useState<string | null>(null)
+  const [dungeonImportError, setDungeonImportError] = useState<string | null>(null)
+  const [dungeonImportNotice, setDungeonImportNotice] = useState<string | null>(null)
+  const [customImages, setCustomImages] = useState<CustomImageAsset[]>([])
   const [generationResult, setGenerationResult] = useState<MissionGenerationResult | null>(null)
   const [generationSeedInput, setGenerationSeedInput] = useState('')
   const generationSeedLockedRef = useRef(false)
@@ -209,7 +360,7 @@ export default function App() {
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
-  const isDirty = history.past.length !== savedHistoryLength
+  const isDirty = history.past.length !== savedHistoryLength || savedStyleSignature !== currentStyleSignature()
   const generationPreviewSeed = generationSeedInput.trim() === '' ? 0 : generationSeedInput
   const generationRequest: GenerationRequest = {
     style: generationStyle,
@@ -253,18 +404,25 @@ export default function App() {
   const [fitRequest, setFitRequest] = useState(0)
   const layerRef = useRef<Konva.Layer>(null)
   const stampLayerRef = useRef<Konva.Layer>(null)
+  const lightingLayerRef = useRef<Konva.Layer>(null)
+  const lightMarkersLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
   const labelsLayerRef = useRef<Konva.Layer>(null)
   const labelEditorRef = useRef<HTMLInputElement>(null)
   const draggedLabelRef = useRef<string | null>(null)
   const structureDragRef = useRef<StructureDrag | null>(null)
+  const selectionDragRef = useRef<{ start: Tile; end: Tile } | null>(null)
+  const [selectionDrag, setSelectionDrag] = useState<{ start: Tile; end: Tile } | null>(null)
+  const objectClipboardRef = useRef<MapObjectClipboard | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const dungeonInputRef = useRef<HTMLInputElement>(null)
   const isoDiagnosticEnabled = useRef(new URLSearchParams(window.location.search).has('iso-diagnostic')).current
   const isoDiagnosticRequestIdRef = useRef(0)
   const isoDiagnosticRequestRef = useRef<{ requestId: number; config: ReturnType<typeof normalizeIsoDiagnosticConfig> } | null>(null)
   const isoDiagnosticReportsRef = useRef<IsoDiagnosticReport[]>([])
 
-  const stampImages = useStampImages()
+  const stampImages = useStampImages(customImages)
   const { state: updaterState, checkForUpdate, downloadAndInstall } = useUpdater()
 
   useEffect(() => {
@@ -285,13 +443,18 @@ export default function App() {
         const requestId = ++isoDiagnosticRequestIdRef.current
         isoDiagnosticRequestRef.current = { requestId, config }
         setHistory(createHistory({
+          activeLayerId: 'map',
           grids: buildIsoDiagnosticGrids(config),
+          layerGrids: createLayerGrids(undefined, buildIsoDiagnosticGrids(config)),
           stamps: [],
           steps: [],
           ramps: [],
           labels: [],
+          lights: [],
+          layers: [createDefaultLayer()],
           environmentalColors: new Map(),
         }))
+        setCustomImages([])
         setCols(config.cols)
         setRows(config.rows)
         setActiveZ(config.levelCount - 1)
@@ -367,9 +530,117 @@ export default function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === 'Escape' && shapeDraftRef.current) {
+        shapeDraftRef.current = null
+        setShapeDraft(null)
+        return
+      }
+      if (e.key === 'Escape' && lightPlacement) {
+        setLightPlacement(false)
+        return
+      }
       if (e.ctrlKey && e.key === 'z') { setHistory(h => undo(h)); return }
       if (e.ctrlKey && e.key === 'y') { setHistory(h => redo(h)); return }
       const ds = drawingStateRef.current
+      if (selectionMode && e.key === 'Delete' && objectSelection.length > 0) {
+        const selected = new Set(objectSelection.map(item => `${item.kind}:${item.id}`))
+        setHistory(h => push(h, {
+          ...h.present,
+          stamps: h.present.stamps.filter(item => !selected.has(`stamp:${item.id}`)),
+          steps: h.present.steps.filter(item => !selected.has(`step:${item.id}`)),
+          ramps: h.present.ramps.filter(item => !selected.has(`ramp:${item.id}`)),
+          labels: h.present.labels.filter(item => !selected.has(`label:${item.id}`)),
+        }))
+        setObjectSelection([])
+        return
+      }
+      if (e.key === 'Delete' && selectedLightId) {
+        const light = lights.find(item => item.id === selectedLightId)
+        const owner = layers.find(item => item.id === (light?.layerId ?? createDefaultLayer().id))
+        if (light && owner?.locked !== true) {
+          setHistory(h => push(h, { ...h.present, lights: (h.present.lights ?? []).filter(item => item.id !== selectedLightId) }))
+          setSelectedLightId(null)
+        }
+        return
+      }
+      if (selectionMode && objectSelection.length > 0 && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault()
+        const delta = e.key === 'ArrowUp' ? { col: 0, row: -1 }
+          : e.key === 'ArrowDown' ? { col: 0, row: 1 }
+            : e.key === 'ArrowLeft' ? { col: -1, row: 0 } : { col: 1, row: 0 }
+        setHistory(h => push(h, { ...h.present, ...moveSelectedMapObjects({ ...h.present, selection: objectSelection, delta }) }))
+        return
+      }
+      if (selectionMode && objectSelection.length > 0 && (e.key === 'r' || e.key === 'R')) {
+        setHistory(h => push(h, { ...h.present, ...rotateSelectedMapObjects({ ...h.present, selection: objectSelection }) }))
+        return
+      }
+      if (selectionMode && objectSelection.length > 0 && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        setHistory(h => push(h, { ...h.present, ...ungroupSelectedMapObjects({ ...h.present, selection: objectSelection }) }))
+        return
+      }
+      if (selectionMode && objectSelection.length > 1 && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        setHistory(h => push(h, { ...h.present, ...groupSelectedMapObjects({ ...h.present, selection: objectSelection, groupId: crypto.randomUUID() }) }))
+        return
+      }
+      if (selectionMode && objectSelection.length > 0 && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault()
+        const copiedIds = new Map(objectSelection.map(item => [`${item.kind}:${item.id}`, crypto.randomUUID()]))
+        const copiedGroupIds = new Map<string, string>()
+        const createId = (kind: MapObjectSelection['kind'], sourceId: string) => copiedIds.get(`${kind}:${sourceId}`)!
+        const createGroupId = (sourceGroupId: string) => {
+          const existing = copiedGroupIds.get(sourceGroupId)
+          if (existing) return existing
+          const created = crypto.randomUUID()
+          copiedGroupIds.set(sourceGroupId, created)
+          return created
+        }
+        const copiedSelection = objectSelection.map(item => ({ ...item, id: createId(item.kind, item.id) }))
+        setHistory(h => {
+          const copies = duplicateSelectedMapObjects({ ...h.present, selection: objectSelection, delta: { col: 1, row: 1 }, createId, createGroupId })
+          return push(h, { ...h.present, ...copies })
+        })
+        setObjectSelection(copiedSelection)
+        return
+      }
+      if (selectionMode && objectSelection.length > 0 && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        e.preventDefault()
+        objectClipboardRef.current = copySelectedMapObjects({ stamps, steps, ramps, labels, selection: objectSelection })
+        return
+      }
+      if (selectionMode && objectClipboardRef.current && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        const clipboard = objectClipboardRef.current
+        const copiedIds = new Map<string, string>()
+        const copiedGroupIds = new Map<string, string>()
+        const createId = (kind: MapObjectSelection['kind'], sourceId: string) => {
+          const key = `${kind}:${sourceId}`
+          const existing = copiedIds.get(key)
+          if (existing) return existing
+          const created = crypto.randomUUID()
+          copiedIds.set(key, created)
+          return created
+        }
+        const createGroupId = (sourceGroupId: string) => {
+          const existing = copiedGroupIds.get(sourceGroupId)
+          if (existing) return existing
+          const created = crypto.randomUUID()
+          copiedGroupIds.set(sourceGroupId, created)
+          return created
+        }
+        const pasted = pasteMapObjects({ clipboard, delta: { col: 1, row: 1 }, createId, createGroupId })
+        setHistory(h => push(h, {
+          ...h.present,
+          stamps: [...h.present.stamps, ...pasted.stamps],
+          steps: [...h.present.steps, ...pasted.steps],
+          ramps: [...h.present.ramps, ...pasted.ramps],
+          labels: [...h.present.labels, ...pasted.labels],
+        }))
+        setObjectSelection(pasted.selection)
+        return
+      }
       if (e.key === 'Delete' && ds.tool === 'stamp' && ds.selectedId) {
         const id = ds.selectedId
         setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, id) }))
@@ -421,14 +692,14 @@ export default function App() {
       if (e.key === 'Escape') {
         if (ds.tool === 'rough' && ds.phase === 'placed2') {
           const savedGrid = ds.baseGrid
-          setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, savedGrid) } }))
+          setHistory(h => ({ ...h, present: withActiveLayerGrid(h.present, activeZRef.current, savedGrid) }))
         }
         dispatch({ type: 'ESCAPE' })
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [labels, layers, lights, objectSelection, ramps, selectionMode, selectedLightId, stamps, steps, lightPlacement])
 
   const stageToTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
     const rect = stage.container().getBoundingClientRect()
@@ -452,6 +723,18 @@ export default function App() {
     const col = Math.floor(fc)
     const row = Math.floor(fr)
     return (col >= 0 && row >= 0 && col < cols && row < rows) ? { col, row } : null
+  }
+
+  const stageToShapePoint = (stage: Konva.Stage, clientX: number, clientY: number): ShapePoint | null => {
+    const rect = stage.container().getBoundingClientRect()
+    const scale = stage.scaleX()
+    const worldX = (clientX - rect.left - stage.x()) / scale
+    const worldY = (clientY - rect.top - stage.y()) / scale
+    const point = showIso
+      ? isoUnprojectAtZ(worldX, worldY, TILE_PX * 2, TILE_PX, activeZRef.current)
+      : { col: worldX / TILE_PX, row: worldY / TILE_PX }
+    if (point.col < 0 || point.row < 0 || point.col >= cols || point.row >= rows) return null
+    return snapShapePoint(point, shapeSnap)
   }
 
   const beginStructureDrag = useCallback((kind: StructureKind, id: string, nodes: Konva.Node[], e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -478,13 +761,6 @@ export default function App() {
       const stage = e.target.getStage()!
       if (e.target === stage && editingLabelId) setEditingLabelId(null)
 
-      // A right-click on empty canvas cancels object selection instead of
-      // entering a placement path below.
-      if (e.evt.button === 2 && (ds.tool === 'steps' || ds.tool === 'ramps' || ds.tool === 'stamp')) {
-        dispatch({ type: 'SELECT', id: null })
-        return
-      }
-
       let tile: Tile | null
       if (showIso) {
         tile = stageToIsoTile(stage, e.evt.clientX, e.evt.clientY)
@@ -492,6 +768,78 @@ export default function App() {
         tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
       }
       if (!tile) return
+
+      if (cropMode) {
+        if (e.evt.button === 2) {
+          cropDragRef.current = null
+          setCropDrag(null)
+          setExportRegion(wholeMapRegion(cols, rows))
+          return
+        }
+        if (e.evt.button === 0) {
+          const region = normalizeExportRegion(exportRegion, cols, rows)
+          const right = region.col + region.cols - 1
+          const bottom = region.row + region.rows - 1
+          const isLeft = tile.col === region.col
+          const isRight = tile.col === right
+          const isTop = tile.row === region.row
+          const isBottom = tile.row === bottom
+          const isCorner = (isLeft || isRight) && (isTop || isBottom)
+          const drag = isCorner
+            ? { start: { col: isLeft ? right : region.col, row: isTop ? bottom : region.row }, end: tile }
+            : { start: tile, end: tile }
+          cropDragRef.current = drag
+          setCropDrag(drag)
+        }
+        return
+      }
+
+      if (shapeTool && e.evt.button === 0) {
+        if (activeLayer?.locked) return
+        const point = stageToShapePoint(stage, e.evt.clientX, e.evt.clientY)
+        if (!point) return
+        const draft: ShapeDraft = { tool: shapeTool, start: point, end: point, points: [point] }
+        shapeDraftRef.current = draft
+        setShapeDraft(draft)
+        setObjectSelection([])
+        return
+      }
+
+      if (lightPlacement && e.evt.button === 0) {
+        if (activeLayer?.locked) return
+        const light: MapLight = {
+          id: crypto.randomUUID(), name: `Light ${lights.length + 1}`,
+          col: tile.col, row: tile.row, z: activeZRef.current,
+          layerId: activeLayer?.id, color: '#ffcb70', intensity: 1,
+          brightRadius: 3, dimRadius: 6,
+        }
+        setHistory(h => push(h, { ...h.present, lights: [...(h.present.lights ?? []), light] }))
+        setSelectedLightId(light.id)
+        setLightPlacement(false)
+        return
+      }
+
+      // A right-click on empty canvas cancels object selection instead of
+      // entering a placement path below.
+      if (e.evt.button === 2 && (ds.tool === 'steps' || ds.tool === 'ramps' || ds.tool === 'stamp')) {
+        dispatch({ type: 'SELECT', id: null })
+        return
+      }
+
+      if (selectionMode) {
+        if (e.evt.button === 2) {
+          setObjectSelection([])
+          return
+        }
+        if (!showIso && e.evt.button === 0) {
+          const drag = { start: tile, end: tile }
+          selectionDragRef.current = drag
+          setSelectionDrag(drag)
+        }
+        return
+      }
+
+      if (activeLayer?.locked) return
 
       if (ds.tool === 'rough') {
         if (ds.phase === 'idle') {
@@ -513,8 +861,8 @@ export default function App() {
             let next = paintTiles(savedBase, cols, rectTileList, FLOOR)
             if (captured.length > 0)
               next = paintTiles(next, cols, captured.map(f => ({ col: f.col, row: f.row })), WALL)
-            const baseHistory = { ...h, present: { ...h.present, grids: setGrid(h.present.grids, az, savedBase) } }
-            return push(baseHistory, { ...h.present, grids: setGrid(h.present.grids, az, next) })
+            const baseHistory = { ...h, present: withActiveLayerGrid(h.present, az, savedBase) }
+            return push(baseHistory, withActiveLayerGrid(h.present, az, next))
           })
           dispatch({ type: 'ROUGH_COMMIT' })
         }
@@ -526,6 +874,8 @@ export default function App() {
           id: crypto.randomUUID(),
           col: tile.col,
           row: tile.row,
+          z: activeZRef.current,
+          layerId: activeLayer?.id,
           text: 'New Label',
           number: undefined,
         }
@@ -541,6 +891,7 @@ export default function App() {
           col: tile.col,
           row: tile.row,
           z: activeZRef.current,
+          layerId: activeLayer?.id,
           direction: 'E',
           ascending: false,
         }
@@ -555,6 +906,7 @@ export default function App() {
           col: tile.col,
           row: tile.row,
           z: activeZRef.current,
+          layerId: activeLayer?.id,
           direction: 'E',
           ascending: false,
         }
@@ -564,6 +916,7 @@ export default function App() {
       }
 
       if (ds.tool === 'stamp') {
+        const customAsset = customImages.find(asset => asset.type === ds.stampType)
         const newStamp: Stamp = {
           id: crypto.randomUUID(),
           type: ds.stampType,
@@ -571,6 +924,8 @@ export default function App() {
           row: tile.row,
           rotation: 0,
           z: activeZRef.current,
+          layerId: activeLayer?.id,
+          ...(customAsset ? { assetName: customAsset.name, aspectRatio: customAsset.aspectRatio } : {}),
         }
         setHistory(h => push(h, { ...h.present, stamps: addStamp(h.present.stamps, newStamp) }))
         dispatch({ type: 'SELECT', id: newStamp.id })
@@ -580,7 +935,7 @@ export default function App() {
       // Paint mode: area select start
       dispatch({ type: 'PAINT_START', tile, button: e.evt.button === 2 ? 2 : 0 })
     },
-    [cols, rows, editingLabelId, showIso],
+    [activeLayer?.id, activeLayer?.locked, cols, cropMode, exportRegion, rows, editingLabelId, selectionMode, showIso, shapeTool, shapeSnap, lightPlacement, lights.length],
   )
 
   const handleMouseMove = useCallback(
@@ -612,11 +967,43 @@ export default function App() {
       } else {
         tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
       }
+
+      const crop = cropDragRef.current
+      if (cropMode && crop && tile) {
+        const next = { ...crop, end: tile }
+        cropDragRef.current = next
+        setCropDrag(next)
+        return
+      }
+
+      const shape = shapeDraftRef.current
+      if (shape) {
+        const point = stageToShapePoint(stage, e.evt.clientX, e.evt.clientY)
+        if (point) {
+          const points = shape.tool === 'path'
+            ? (Math.hypot(point.col - shape.points[shape.points.length - 1].col, point.row - shape.points[shape.points.length - 1].row) >= 0.15
+                ? [...shape.points, point]
+                : shape.points)
+            : shape.points
+          const next = { ...shape, end: point, points }
+          shapeDraftRef.current = next
+          setShapeDraft(next)
+        }
+        return
+      }
+
       setHoverTile(tile)
       setHoverPointer({ x: e.evt.clientX, y: e.evt.clientY })
       hoverTileRef.current = tile
 
       const ds = drawingStateRef.current
+      const selection = selectionDragRef.current
+      if (selectionMode && selection && tile) {
+        const next = { ...selection, end: tile }
+        selectionDragRef.current = next
+        setSelectionDrag(next)
+        return
+      }
       if (ds.tool === 'rough' && ds.phase === 'placed1' && tile) {
         dispatch({ type: 'ROUGH_UPDATE_RECT', tile })
         return
@@ -657,12 +1044,73 @@ export default function App() {
         dispatch({ type: 'PAINT_UPDATE', tile })
       }
     },
-    [cols, rows, showIso],
+    [cols, cropMode, rows, selectionMode, showIso, shapeSnap],
   )
 
   const handleMouseUp = useCallback((e: MouseEvent) => {
     if (e.button === 1) {
       isPanningRef.current = false
+      return
+    }
+
+    const crop = cropDragRef.current
+    if (cropMode && crop && e.button === 0) {
+      const end = crop.end
+      const col = Math.min(crop.start.col, end.col)
+      const row = Math.min(crop.start.row, end.row)
+      setExportRegion(normalizeExportRegion({
+        col,
+        row,
+        cols: Math.abs(crop.start.col - end.col) + 1,
+        rows: Math.abs(crop.start.row - end.row) + 1,
+      }, cols, rows))
+      cropDragRef.current = null
+      setCropDrag(null)
+      return
+    }
+
+    const shape = shapeDraftRef.current
+    if (shape && e.button === 0) {
+      const stage = stageRef.current
+      const finalPoint = stage ? stageToShapePoint(stage, e.clientX, e.clientY) : null
+      let completed = shape
+      if (finalPoint) {
+        const points = shape.tool === 'path'
+          ? (Math.hypot(finalPoint.col - shape.points[shape.points.length - 1].col, finalPoint.row - shape.points[shape.points.length - 1].row) >= 0.02
+              ? [...shape.points, finalPoint]
+              : shape.points)
+          : shape.points
+        completed = { ...shape, end: finalPoint, points }
+      }
+      shapeDraftRef.current = null
+      setShapeDraft(null)
+      if (!activeLayer?.locked) {
+        const preview = getShapePreviewPoints(completed, polygonSides, pathSimplification)
+        const tiles = rasterizeShape(completed.tool, preview, cols, rows)
+        if (tiles.length > 0) {
+          const az = activeZRef.current
+          setHistory(h => {
+            const base = getLayerGrid(h.present.layerGrids, activeLayer ?? createDefaultLayer(), az, cols, rows)
+            return push(h, withActiveLayerGrid(h.present, az, paintTiles(base, cols, tiles, selectedPaintState)))
+          })
+        }
+      }
+      return
+    }
+
+    const selection = selectionDragRef.current
+    if (selectionMode && selection && e.button === 0) {
+      selectionDragRef.current = null
+      setSelectionDrag(null)
+      setObjectSelection(selectMapObjects({
+        stamps: visibleStamps, steps: visibleSteps, ramps: visibleRamps, labels: visibleLabels, activeZ: activeZRef.current,
+        bounds: {
+          minCol: Math.min(selection.start.col, selection.end.col),
+          minRow: Math.min(selection.start.row, selection.end.row),
+          maxCol: Math.max(selection.start.col, selection.end.col),
+          maxRow: Math.max(selection.start.row, selection.end.row),
+        },
+      }))
       return
     }
 
@@ -724,10 +1172,10 @@ export default function App() {
         for (let c = minC; c <= maxC; c++)
           rectTileList.push({ col: c, row: r })
       const seed = Math.floor(Math.random() * 2 ** 32)
-      const baseGrid = getGrid(gridsRef.current, activeZRef.current, cols, rows)
+      const baseGrid = getLayerGrid(layerGrids, activeLayer ?? createDefaultLayer(), activeZRef.current, cols, rows)
       setHistory(h => {
         const next = paintTiles(baseGrid, cols, rectTileList, FLOOR)
-        return { ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZRef.current, next) } }
+        return { ...h, present: withActiveLayerGrid(h.present, activeZRef.current, next) }
       })
       dispatch({ type: 'ROUGH_COMMIT_RECT', end, seed, baseGrid })
       return
@@ -738,12 +1186,12 @@ export default function App() {
       const az = activeZRef.current
       const tileValue = ds.paintValue
       setHistory(h => {
-        const gridsNext = setGrid(h.present.grids, az, paintTiles(getGrid(h.present.grids, az, cols, rows), cols, tiles, tileValue))
-        return push(h, { ...h.present, grids: gridsNext })
+        const next = paintTiles(getLayerGrid(h.present.layerGrids, activeLayer ?? createDefaultLayer(), az, cols, rows), cols, tiles, tileValue)
+        return push(h, withActiveLayerGrid(h.present, az, next))
       })
       dispatch({ type: 'PAINT_COMMIT' })
     }
-  }, [cols, rows, showIso])
+  }, [activeLayer, cols, cropMode, layerGrids, visibleLabels, visibleRamps, rows, selectionMode, visibleStamps, visibleSteps, showIso, polygonSides, pathSimplification, selectedPaintState, shapeSnap])
 
   useEffect(() => {
     window.addEventListener('mouseup', handleMouseUp)
@@ -811,12 +1259,13 @@ export default function App() {
       const diagnosticStart = diagnosticRequest ? performance.now() : 0
       const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
       const shapes = buildIsoScene({
-        grids, steps, ramps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
+        grids: renderGrids, steps: visibleSteps, ramps: visibleRamps, cols, rows, show3D, wallColor, wallOpacity, selectedStepId, selectedRampId,
         tileW: TILE_PX * 2, tileH: TILE_PX, frontFaceColor, eastFaceColor,
         floorColor,
         waterColor, lavaColor, darknessColor,
         environmentalColors: environmentalColors as Map<TileState, string>,
-        secretDoorStamps: playerView ? stamps : [],
+        tileColorOverrides: layerTileColorOverrides,
+        secretDoorStamps: playerView ? visibleStamps : [],
       })
       const sceneBuildEnd = diagnosticRequest ? performance.now() : 0
       const groupingStart = diagnosticRequest ? performance.now() : 0
@@ -869,6 +1318,10 @@ export default function App() {
           node.on('mousedown', (e) => {
             e.cancelBubble = true
             e.evt.preventDefault()
+            if (selectionMode && e.evt.button === 0) {
+              selectObject([{ kind: structure.kind, id: structure.id }])
+              return
+            }
             if (e.evt.button === 2) {
               setHistory(h => push(h, structure.kind === 'step'
                 ? { ...h.present, steps: removeStepRun(h.present.steps, structure.id) }
@@ -901,7 +1354,7 @@ export default function App() {
             dotNodeCount: dotLayerRef.current?.getChildren().length ?? 0,
             stampNodeCount: stampLayerRef.current?.getChildren().length ?? 0,
             labelNodeCount: labelsLayerRef.current?.getChildren().length ?? 0,
-            totalNodeCount: [layer, dotLayerRef.current, stampLayerRef.current, labelsLayerRef.current]
+            totalNodeCount: [layer, dotLayerRef.current, stampLayerRef.current, lightingLayerRef.current, lightMarkersLayerRef.current, labelsLayerRef.current]
               .reduce((total, current) => total + (current?.getChildren().length ?? 0), 0),
             sceneBuildMs: sceneBuildEnd - diagnosticStart,
             groupingMs: groupingEnd - groupingStart,
@@ -918,15 +1371,16 @@ export default function App() {
     // Pure scene description — geometry, opacity, and grouping computed once;
     // this effect only walks the result and creates/wires Konva nodes.
     const scene = buildTileScene({
-      grids, steps, ramps, cols, rows, activeZ,
+      grids: renderGrids, steps: visibleSteps, ramps: visibleRamps, cols, rows, activeZ,
       tilePx: TILE_PX, facePx: FACE_PX,
       show3D, showGrid, showHatching, showWallOutline,
       wallOutlineColor, wallOutlineStyle, wallColor, wallOpacity,
-      selectedStepId, selectedRampId,
+      selectedStepId, selectedRampId, selectedStepIds: selectedObjectIds('step'), selectedRampIds: selectedObjectIds('ramp'),
       floorColor,
       waterColor, lavaColor, darknessColor,
       environmentalColors: environmentalColors as Map<TileState, string>,
-      secretDoorStamps: playerView ? stamps : [],
+      tileColorOverrides: layerTileColorOverrides,
+      secretDoorStamps: playerView ? visibleStamps : [],
     })
 
     if (scene.wallBackground) {
@@ -1014,7 +1468,7 @@ export default function App() {
       // Runs draw above wall overlays so their footprint stays clear at
       // exterior entrances and remains selectable over hatch/outline strokes.
       for (const run of level.runs) {
-        const runGroup = new Konva.Group()
+        const runGroup = new Konva.Group({ opacity: layerOpacityFor({ layerId: run.layerId }) })
         if (run.faceRect) {
           runGroup.add(new Konva.Rect({ x: run.faceRect.x, y: run.faceRect.y, width: run.faceRect.w, height: run.faceRect.h, fill: FACE_COLOR }))
         }
@@ -1037,6 +1491,10 @@ export default function App() {
             e.cancelBubble = true
             e.evt.preventDefault()
             const currentSelectedId = isStep ? selectedStepId : selectedRampId
+            if (selectionMode && e.evt.button === 0) {
+              selectObject([{ kind: isStep ? 'step' : 'ramp', id: run.id }])
+              return
+            }
             if (e.evt.button === 2) {
               setHistory(h => push(h, isStep
                 ? { ...h.present, steps: removeStepRun(h.present.steps, run.id) }
@@ -1055,8 +1513,22 @@ export default function App() {
       layer.add(group)
     }
 
+    const textureGrid = textureSettings.scope === 'active-layer'
+      ? (activeLayer ? getLayerGrid(layerGrids, activeLayer, activeZ, cols, rows) : null)
+      : renderGrids.get(activeZ)
+    if (textureGrid && (textureSettings.scope === 'map' || activeLayer?.visible)) {
+      const texture = createTextureCanvas(textureGrid, cols, rows, TILE_PX, textureSettings, showIso)
+      if (texture) layer.add(new Konva.Image({
+        image: texture.canvas as unknown as HTMLImageElement,
+        x: texture.x,
+        y: showIso ? -activeZ * Z_STEP_HEIGHT : texture.y,
+        opacity: textureSettings.scope === 'active-layer' ? (activeLayer?.opacity ?? 100) / 100 : 1,
+        listening: false,
+      }))
+    }
+
     layer.batchDraw()
-  }, [grids, stamps, steps, ramps, selectedStepId, selectedRampId, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, playerView, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor])
+  }, [renderGrids, layerGrids, activeLayer, textureSettings, visibleStamps, visibleSteps, visibleRamps, selectedStepId, selectedRampId, objectSelection, selectionMode, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, playerView, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor])
 
   // Stamp layer
   useEffect(() => {
@@ -1064,18 +1536,23 @@ export default function App() {
     if (!layer || !stampImages) return
     layer.destroyChildren()
 
-    const items = buildStampScene({ stamps, selectedStampId, stampImages, activeZ, tilePx: TILE_PX, showIso, showTrapIcons: !playerView, showSecretDoors: !playerView, showLockedDoors: !playerView })
+    const items = buildStampScene({ stamps: visibleStamps, selectedStampId, selectedStampIds: selectedObjectIds('stamp'), stampImages, activeZ, tilePx: TILE_PX, showIso, showTrapIcons: !playerView, showSecretDoors: !playerView, showLockedDoors: !playerView })
 
     for (const item of items) {
-      const stamp = stamps.find(s => s.id === item.id)!
+      const stamp = visibleStamps.find(s => s.id === item.id)!
       const imgEl = stampImages.get(item.stampType)!
       const stampImage = colorizeStampImage(imgEl, stamp.color)
+      const layerOpacity = layerOpacityFor(stamp)
       const v = item.variant
 
       const attachStampInteraction = (node: Konva.Node) => {
         node.on('mousedown', (e) => {
           e.cancelBubble = true
           e.evt.preventDefault()
+          if (selectionMode && e.evt.button === 0) {
+            selectObject([{ kind: 'stamp', id: item.id }])
+            return
+          }
           if (e.evt.button === 2) {
             setHistory(h => push(h, { ...h.present, stamps: removeStamp(h.present.stamps, item.id) }))
             dispatch({ type: 'SELECT', id: null })
@@ -1093,6 +1570,7 @@ export default function App() {
           offsetX: v.w / 2, offsetY: v.h / 2,
           rotation: v.rotation,
           scaleX: v.mirrored ? -1 : 1,
+          opacity: layerOpacity,
         })
         attachStampInteraction(imgNode)
         layer.add(imgNode)
@@ -1111,6 +1589,7 @@ export default function App() {
           x: v.x, y: v.y,
           rotation: v.rotation,
           scaleX: v.scaleX, scaleY: v.scaleY, skewX: v.skewX,
+          opacity: layerOpacity,
         })
         group.add(new Konva.Image({ image: stampImage, x: -v.w / 2, y: -v.h / 2, width: v.w, height: v.h }))
         attachStampInteraction(group)
@@ -1132,12 +1611,12 @@ export default function App() {
           scaleX: v.mirrored ? -1 : 1,
           draggable: v.draggable,
           listening: v.listening,
-          opacity: v.opacity,
+          opacity: (v.opacity ?? 1) * layerOpacity,
         })
         if (item.interactive) {
           attachStampInteraction(node)
           node.on('dragend', () => {
-            const sz = stampSize(stamp.type)
+            const sz = stampFootprintSize(stamp)
             const snappedCol = Math.max(0, Math.min(cols - sz.cols, Math.round((node.x() - v.w / 2) / TILE_PX)))
             const snappedRow = Math.max(0, Math.min(rows - sz.rows, Math.round((node.y() - v.h / 2) / TILE_PX)))
             setHistory(h => push(h, { ...h.present, stamps: moveStamp(h.present.stamps, item.id, snappedCol, snappedRow) }))
@@ -1159,7 +1638,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [stamps, selectedStampId, stampImages, cols, rows, showIso, activeZ, playerView])
+  }, [visibleStamps, selectedStampId, objectSelection, selectionMode, stampImages, cols, rows, showIso, activeZ, playerView])
 
   // Non-exported layer: dot pattern + ghost cursor preview
   useEffect(() => {
@@ -1216,6 +1695,89 @@ export default function App() {
           x: t.col * TILE_PX, y: t.row * TILE_PX,
           width: TILE_PX, height: TILE_PX,
           fill: ghostFill,
+        }))
+      }
+    }
+
+    if (selectionDrag && !showIso) {
+      const minCol = Math.min(selectionDrag.start.col, selectionDrag.end.col)
+      const minRow = Math.min(selectionDrag.start.row, selectionDrag.end.row)
+      const maxCol = Math.max(selectionDrag.start.col, selectionDrag.end.col)
+      const maxRow = Math.max(selectionDrag.start.row, selectionDrag.end.row)
+      layer.add(new Konva.Rect({
+        x: minCol * TILE_PX, y: minRow * TILE_PX,
+        width: (maxCol - minCol + 1) * TILE_PX, height: (maxRow - minRow + 1) * TILE_PX,
+        stroke: '#2f80ed', strokeWidth: 2, dash: [4, 2], fill: 'rgba(47,128,237,0.12)', listening: false,
+      }))
+    }
+
+    if (cropMode) {
+      const region = cropDrag
+        ? normalizeExportRegion({
+            col: Math.min(cropDrag.start.col, cropDrag.end.col),
+            row: Math.min(cropDrag.start.row, cropDrag.end.row),
+            cols: Math.abs(cropDrag.start.col - cropDrag.end.col) + 1,
+            rows: Math.abs(cropDrag.start.row - cropDrag.end.row) + 1,
+          }, cols, rows)
+        : normalizeExportRegion(exportRegion, cols, rows)
+      let rect = {
+        x: region.col * TILE_PX,
+        y: region.row * TILE_PX,
+        width: region.cols * TILE_PX,
+        height: region.rows * TILE_PX,
+      }
+      if (showIso) {
+        const corners = [
+          [region.col, region.row],
+          [region.col + region.cols, region.row],
+          [region.col + region.cols, region.row + region.rows],
+          [region.col, region.row + region.rows],
+        ].map(([col, row]) => ({ x: (col - row) * TILE_PX, y: (col + row) * TILE_PX / 2 }))
+        const xs = corners.map(point => point.x)
+        const ys = corners.map(point => point.y)
+        rect = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
+      }
+      layer.add(new Konva.Rect({
+        ...rect,
+        stroke: '#e4bd77',
+        strokeWidth: 2,
+        dash: [8, 4],
+        fill: 'rgba(228,189,119,0.12)',
+        listening: false,
+      }))
+      const handles = [
+        [region.col, region.row],
+        [region.col + region.cols, region.row],
+        [region.col + region.cols, region.row + region.rows],
+        [region.col, region.row + region.rows],
+      ].map(([col, row]) => showIso
+        ? isoProjectAtZ(col, row, TILE_PX * 2, TILE_PX, activeZ)
+        : { x: col * TILE_PX, y: row * TILE_PX })
+      for (const handle of handles) layer.add(new Konva.Rect({
+        x: handle.x - 4, y: handle.y - 4, width: 8, height: 8,
+        fill: '#e4bd77', stroke: '#211a13', strokeWidth: 1, listening: false,
+      }))
+    }
+
+    if (shapeDraft) {
+      const points = getShapePreviewPoints(shapeDraft, polygonSides, pathSimplification)
+      const projected = points.flatMap(point => {
+        const world = showIso
+          ? isoProjectAtZ(point.col, point.row, TILE_PX * 2, TILE_PX, activeZ)
+          : { x: point.col * TILE_PX, y: point.row * TILE_PX }
+        return [world.x, world.y]
+      })
+      if (projected.length >= 2) {
+        layer.add(new Konva.Line({
+          points: projected,
+          closed: shapeDraft.tool !== 'path',
+          stroke: '#e4bd77',
+          strokeWidth: 2,
+          dash: shapeDraft.tool === 'path' ? undefined : [5, 3],
+          fill: shapeDraft.tool === 'path' ? undefined : 'rgba(228,189,119,0.16)',
+          lineCap: 'round',
+          lineJoin: 'round',
+          listening: false,
         }))
       }
     }
@@ -1281,7 +1843,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor])
+  }, [grids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, selectionDrag, cropMode, cropDrag, exportRegion, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor, shapeDraft, polygonSides, pathSimplification])
 
   // Labels layer
   useEffect(() => {
@@ -1290,9 +1852,10 @@ export default function App() {
     layer.destroyChildren()
     if (showIso) { layer.batchDraw(); return }
 
-    const items = buildLabelScene(labels, selectedLabelId, TILE_PX, !playerView)
+    const items = buildLabelScene(visibleLabels, selectedLabelId, TILE_PX, !playerView, activeZ, selectedObjectIds('label'))
 
     for (const item of items) {
+      const label = visibleLabels.find(candidate => candidate.id === item.id)
       const textNode = new Konva.Text({
         x: item.x,
         y: item.y,
@@ -1301,11 +1864,16 @@ export default function App() {
         fontSize: item.fontSize,
         fontFamily: 'Arial',
         fill: item.color ?? '#000',
+        opacity: label ? layerOpacityFor(label) : 1,
         align: 'center',
         draggable: true,
       })
       textNode.on('mousedown', (e) => {
         e.cancelBubble = true
+        if (selectionMode && e.evt.button === 0) {
+          selectObject([{ kind: 'label', id: item.id }])
+          return
+        }
         const ds = drawingStateRef.current
         if (e.evt.button === 2 && ds.tool === 'label' && ds.phase === 'idle' && ds.selectedId === item.id) {
           setHistory(h => push(h, { ...h.present, labels: removeLabel(h.present.labels, item.id) }))
@@ -1363,7 +1931,59 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [cols, labels, playerView, rows, showIso, selectedLabelId])
+  }, [activeZ, cols, visibleLabels, objectSelection, selectionMode, playerView, rows, showIso, selectedLabelId])
+
+  useEffect(() => {
+    const layer = lightingLayerRef.current
+    if (!layer) return
+    layer.destroyChildren()
+    const grid = renderGrids.get(activeZ)
+    if (grid && lightingSettings.enabled) {
+      const visibleForLevel = visibleLights.filter(light => light.z === activeZ).map(light => ({
+        ...light,
+        intensity: light.intensity * ((layers.find(item => item.id === (light.layerId ?? createDefaultLayer().id))?.opacity ?? 100) / 100),
+      }))
+      const lighting = createLightingCanvas(grid, cols, rows, visibleForLevel, lightingSettings, TILE_PX, showIso, activeZ)
+      if (lighting) layer.add(new Konva.Image({
+        image: lighting.canvas as unknown as HTMLImageElement,
+        x: lighting.x, y: lighting.y, listening: false,
+      }))
+    }
+    layer.batchDraw()
+  }, [renderGrids, visibleLights, layers, lightingSettings, activeZ, cols, rows, showIso])
+
+  useEffect(() => {
+    const layer = lightMarkersLayerRef.current
+    if (!layer) return
+    layer.destroyChildren()
+    if (!playerView) for (const light of visibleLights.filter(item => item.z === activeZ)) {
+      const position = showIso
+        ? isoProjectAtZ(light.col + 0.5, light.row + 0.5, TILE_PX * 2, TILE_PX, activeZ)
+        : { x: (light.col + 0.5) * TILE_PX, y: (light.row + 0.5) * TILE_PX }
+      const owner = layers.find(item => item.id === (light.layerId ?? createDefaultLayer().id))
+      const marker = new Konva.Circle({
+        x: position.x, y: position.y, radius: selectedLightId === light.id ? 7 : 5,
+        fill: light.color, stroke: selectedLightId === light.id ? '#fff1c6' : '#25211d',
+        strokeWidth: selectedLightId === light.id ? 3 : 2,
+        draggable: owner?.locked !== true,
+      })
+      marker.on('mousedown', event => {
+        event.cancelBubble = true
+        if (event.evt.button === 0) { setSelectedLightId(light.id); setLightPlacement(false) }
+      })
+      marker.on('dragend', () => {
+        const tile = showIso
+          ? isoUnprojectAtZ(marker.x(), marker.y(), TILE_PX * 2, TILE_PX, activeZ)
+          : { col: marker.x() / TILE_PX - 0.5, row: marker.y() / TILE_PX - 0.5 }
+        updateLight(light.id, {
+          col: Math.max(0, Math.min(cols - 1, Math.round(tile.col))),
+          row: Math.max(0, Math.min(rows - 1, Math.round(tile.row))),
+        })
+      })
+      layer.add(marker)
+    }
+    layer.batchDraw()
+  }, [visibleLights, playerView, activeZ, showIso, selectedLightId, cols, rows, layers])
 
   useEffect(() => { activeZRef.current = activeZ }, [activeZ])
 
@@ -1385,7 +2005,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
     setRows(newRows)
@@ -1405,7 +2025,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, rows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
     pendingFitRef.current = true
@@ -1423,7 +2043,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ grids: newGrids, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, cols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setRows(newRows)
     pendingFitRef.current = true
@@ -1445,7 +2065,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         resized.set(z, resizeGrid(g, cols, rows, newCols, newRows))
       }
-      return createHistory({ grids: resized, stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: resized, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(rows)
     setRows(cols)
@@ -1462,16 +2082,21 @@ export default function App() {
     }
   }
 
-  const renderExportImage = useCallback((forPlayerView: boolean): Promise<string> => {
+  const renderExportImage = useCallback((forPlayerView: boolean, mimeType = 'image/png', options: { includePointLights?: boolean; universalVtt?: boolean } = {}): Promise<string> => {
     if (!stampImages) return Promise.reject(new Error('Stamp images are not ready'))
 
-    const activeStamps = stamps.filter(s => s.z === activeZ)
+    const exportGrid = renderGrids.get(activeZ) ?? activeGrid
+    const exportIso = options.universalVtt ? false : showIso
+    const export3D = options.universalVtt ? false : show3D
+    const exportGridLines = options.universalVtt ? false : showGrid
+    const normalizedRegion = normalizeExportRegion(exportRegion, cols, rows)
+    const activeStamps = visibleStamps.filter(s => s.z === activeZ)
     const exportState = forPlayerView
-      ? buildPlayerViewExport(activeGrid, cols, rows, activeZ, activeStamps)
-      : { grid: activeGrid, stamps: activeStamps }
+      ? buildPlayerViewExport(exportGrid, cols, rows, activeZ, activeStamps)
+      : { grid: exportGrid, stamps: activeStamps }
     const { front: frontFaceColor, east: eastFaceColor } = deriveFaceColors(isoFaceColor)
     const layout = buildExportShapes({
-      grid: exportState.grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity,
+      grid: exportState.grid, cols, rows, showIso: exportIso, show3D: export3D, showGrid: exportGridLines, wallColor, wallOpacity,
       frontFaceColor, eastFaceColor,
       stamps: exportState.stamps,
       showHatching,
@@ -1479,13 +2104,35 @@ export default function App() {
       showWallOutline,
       wallOutlineColor,
       wallOutlineStyle,
-      exportTile: getExportTilePixels(tilesPerInch),
+      exportTile: exportPixelsPerCell,
       floorColor,
       waterColor,
       lavaColor,
       darknessColor,
       environmentalColors: environmentalColors as Map<TileState, string>,
+      tileColorOverrides: layerTileColorOverrides.get(activeZ),
+      layerOpacityById: new Map(layers.map(layer => [layer.id, layer.opacity / 100])),
+      textureGrid: textureSettings.scope === 'active-layer'
+        ? (activeLayer?.visible ? getLayerGrid(layerGrids, activeLayer, activeZ, cols, rows) : null)
+        : exportState.grid,
+      textureSettings,
+      textureOpacity: textureSettings.scope === 'active-layer' ? (activeLayer?.opacity ?? 100) / 100 : 1,
     })
+    if (lightingSettings.enabled) {
+      const exportLights = (options.includePointLights !== false ? visibleLights.filter(light => light.z === activeZ) : []).map(light => ({
+        ...light,
+        z: 0,
+        intensity: light.intensity * ((layers.find(item => item.id === (light.layerId ?? createDefaultLayer().id))?.opacity ?? 100) / 100),
+      }))
+      const lighting = createLightingCanvas(
+        exportState.grid, cols, rows, exportLights, lightingSettings, exportPixelsPerCell, exportIso, 0,
+      )
+      if (lighting) layout.shapes.push({
+        kind: 'canvas', canvas: lighting.canvas,
+        x: lighting.x, y: lighting.y,
+        w: lighting.canvas.width, h: lighting.canvas.height,
+      })
+    }
 
     return new Promise((resolve, reject) => {
       const container = document.createElement('div')
@@ -1497,6 +2144,12 @@ export default function App() {
         const offLayer = new Konva.Layer()
         if (layout.offsetX !== 0) offLayer.x(layout.offsetX)
         offStage.add(offLayer)
+
+        // JPEG has no alpha channel. Composite transparent wall areas over a
+        // white page so the result is predictable in image viewers and VTTs.
+        if (mimeType === 'image/jpeg') {
+          offLayer.add(new Konva.Rect({ x: 0, y: 0, width: layout.canvasW, height: layout.canvasH, fill: '#ffffff', listening: false }))
+        }
 
         for (const shape of layout.shapes) {
           if (shape.kind === 'rect') {
@@ -1515,6 +2168,7 @@ export default function App() {
             offLayer.add(new Konva.Image({
               image: shape.canvas as unknown as HTMLImageElement,
               x: shape.x, y: shape.y, width: shape.w, height: shape.h,
+              opacity: shape.opacity,
               listening: false,
             }))
           } else if (shape.kind === 'line') {
@@ -1535,7 +2189,7 @@ export default function App() {
                 scaleX: shape.scaleX, scaleY: shape.scaleY,
                 skewX: shape.skewX,
               })
-              group.add(new Konva.Image({ image: colorizeStampImage(imgEl, shape.color), x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h }))
+              group.add(new Konva.Image({ image: colorizeStampImage(imgEl, shape.color), x: -shape.w / 2, y: -shape.h / 2, width: shape.w, height: shape.h, opacity: shape.opacity }))
               offLayer.add(group)
             } else {
               offLayer.add(new Konva.Image({
@@ -1545,14 +2199,18 @@ export default function App() {
                 offsetX: shape.offsetX, offsetY: shape.offsetY,
                 rotation: shape.rotation,
                 scaleX: shape.mirrored ? -1 : 1,
+                opacity: shape.opacity,
               }))
             }
           }
         }
 
         offLayer.draw()
+        const crop = exportCropRect(normalizedRegion, exportPixelsPerCell, exportIso ? 'iso' : 'top-down', rows)
         offStage.toDataURL({
-          mimeType: 'image/png',
+          ...crop,
+          mimeType,
+          quality: mimeType === 'image/jpeg' || mimeType === 'image/webp' ? 0.92 : undefined,
           callback: (dataUrl: string) => {
             document.body.removeChild(container)
             offStage.destroy()
@@ -1564,7 +2222,7 @@ export default function App() {
         reject(error)
       }
     })
-  }, [activeGrid, activeZ, stamps, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, tilesPerInch, floorColor, waterColor, lavaColor, darknessColor, environmentalColors])
+  }, [activeGrid, activeZ, renderGrids, layerGrids, activeLayer, textureSettings, layerTileColorOverrides, layers, visibleLights, lightingSettings, visibleStamps, cols, rows, exportPixelsPerCell, exportRegion, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, environmentalColors])
 
   const getRoomLedgerText = useCallback(() => {
     if (!generationResult?.ok || !generationResult.space) return null
@@ -1587,21 +2245,53 @@ export default function App() {
 
   const handleExport = useCallback(async () => {
     if (!stampImages) return
-    const dataUrl = await renderExportImage(playerView)
-    const ts = new Date().toISOString().replace(/[:.]/g, '-')
-    const pngName = `dungeon-map-${ts}.png`
-    const ledgerText = getRoomLedgerText()
-    if (isTauri()) {
-      const path = await savePngFile(pngName, dataUrl)
-      if (path && ledgerText) await saveTextFile(siblingFilePath(path, '.txt'), ledgerText)
-      return
+    setExportError(null)
+    try {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-')
+      const extension = getMapExportExtension(exportFormat)
+      const outputName = `dungeon-map-${ts}.${extension}`
+      if (exportFormat === 'uvtt') {
+        const imageDataUrl = await renderExportImage(playerView, 'image/png', { includePointLights: false, universalVtt: true })
+        const region = normalizeExportRegion(exportRegion, cols, rows)
+        const content = buildUniversalVttExport({
+          title: documentName,
+          imageDataUrl,
+          cols,
+          rows,
+          pixelsPerGrid: exportPixelsPerCell,
+          region,
+          grid: renderGrids.get(activeZ) ?? activeGrid,
+          stamps: visibleStamps.filter(stamp => stamp.z === activeZ).map(stamp => ({ ...stamp, z: 0 })),
+          lights: lightingSettings.enabled ? visibleLights.filter(light => light.z === activeZ).map(light => ({
+            col: light.col - region.col + 0.5,
+            row: light.row - region.row + 0.5,
+            range: light.dimRadius,
+            intensity: light.intensity * ((layers.find(item => item.id === (light.layerId ?? createDefaultLayer().id))?.opacity ?? 100) / 100),
+            color: `ff${light.color.slice(1)}`.toLowerCase(),
+          })).filter(light => light.col >= 0 && light.row >= 0 && light.col <= region.cols && light.row <= region.rows) : [],
+        })
+        if (isTauri()) await saveTextFileAs(outputName, content, 'Universal VTT Map', extension)
+        else downloadText(outputName, content)
+        return
+      }
+
+      const mimeType = getMapExportMimeType(exportFormat)
+      const dataUrl = await renderExportImage(playerView, mimeType)
+      if (isTauri()) {
+        const filterName = exportFormat === 'jpg' ? 'JPEG Image' : exportFormat === 'webp' ? 'WebP Image' : 'PNG Image'
+        await saveImageFile(outputName, dataUrl, extension, filterName)
+      } else {
+        const anchor = document.createElement('a')
+        anchor.download = outputName
+        anchor.href = dataUrl
+        anchor.click()
+      }
+      const ledgerText = getRoomLedgerText()
+      if (ledgerText) downloadText(siblingFilePath(outputName, '.txt'), ledgerText)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Export failed. Try a smaller region or resolution.')
     }
-    const anchor = document.createElement('a')
-    anchor.download = pngName
-    anchor.href = dataUrl
-    anchor.click()
-    if (ledgerText) downloadText(siblingFilePath(pngName, '.txt'), ledgerText)
-  }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
+  }, [activeGrid, activeZ, cols, documentName, exportFormat, exportPixelsPerCell, exportRegion, getRoomLedgerText, layers, lightingSettings, playerView, renderExportImage, renderGrids, rows, stampImages, visibleLights, visibleStamps])
 
   const handleExportHtml = useCallback(async () => {
     if (!stampImages) return
@@ -1641,7 +2331,7 @@ export default function App() {
   }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
 
   const getSerializedMap = () => {
-    const mapSave = serialize({ grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors: environmentalColors as Map<number, string> })
+    const mapSave = serialize({ grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, layers, activeLayerId, environmentalColors: environmentalColors as Map<number, string>, textureSettings, customStylePresets, lights, lightingSettings })
     return JSON.stringify(mapSave, null, 2)
   }
 
@@ -1651,6 +2341,7 @@ export default function App() {
       if (currentFilePath) {
         await saveJsonFile(currentFilePath, content)
         setSavedHistoryLength(history.past.length)
+        setSavedStyleSignature(currentStyleSignature())
       } else {
         await handleSaveAs()
       }
@@ -1662,8 +2353,10 @@ export default function App() {
       a.download = 'dungeon-map.json'
       a.click()
       URL.revokeObjectURL(url)
+      setSavedHistoryLength(history.past.length)
+      setSavedStyleSignature(currentStyleSignature())
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
 
   const handleSaveAs = useCallback(async () => {
     if (!isTauri()) return
@@ -1675,8 +2368,9 @@ export default function App() {
     if (path) {
       setCurrentFilePath(path)
       setSavedHistoryLength(history.past.length)
+      setSavedStyleSignature(currentStyleSignature())
     }
-  }, [currentFilePath, history.past.length, grids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, steps, ramps, labels, environmentalColors])
+  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
@@ -1701,7 +2395,10 @@ export default function App() {
       const confirmed = window.confirm('You have unsaved changes. Start a new map anyway?')
       if (!confirmed) return
     }
-    setHistory(createHistory({ grids: new Map([[0, createGrid(DEFAULT_COLS, DEFAULT_ROWS)]]), stamps: [], steps: [], ramps: [], labels: [], environmentalColors: new Map() }))
+    const grid = createGrid(DEFAULT_COLS, DEFAULT_ROWS)
+    setHistory(createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() }))
+    setActiveLayerId('map')
+    setCustomImages([])
     setCols(DEFAULT_COLS)
     setRows(DEFAULT_ROWS)
     setTilesPerInch(DEFAULT_TILES_PER_INCH)
@@ -1710,6 +2407,9 @@ export default function App() {
     setWaterColor(WATER_COLOR)
     setLavaColor(LAVA_COLOR)
     setDarknessColor(DARKNESS_COLOR)
+    setTextureSettings({ ...DEFAULT_TEXTURE_SETTINGS })
+    setLightingSettings({ ...DEFAULT_LIGHTING_SETTINGS })
+    setSelectedStylePresetId(null)
     setCurrentFilePath(null)
     setSavedHistoryLength(0)
     setGenerationResult(null)
@@ -1746,7 +2446,8 @@ export default function App() {
         return
       }
       const snapshot = result.snapshot
-      setHistory(h => push(h, snapshot))
+      setHistory(h => push(h, { ...snapshot, activeLayerId: 'map', layerGrids: createLayerGrids(undefined, snapshot.grids), layers: [createDefaultLayer()] }))
+      setActiveLayerId('map')
       setActiveZ(0)
       activeZRef.current = 0
       setHoverTile(null)
@@ -1861,7 +2562,20 @@ export default function App() {
   const applyLoad = (text: string) => {
     try {
       const save = deserialize(JSON.parse(text))
-      setHistory(createHistory({ grids: save.grids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, environmentalColors: save.environmentalColors }))
+      const loadedPresets = normalizeCustomStylePresets([...customStylePresets, ...save.customStylePresets])
+      const loadedStyle: VisualStyle = {
+        wallColor: save.wallColor, wallOpacity: save.wallOpacity, floorColor: save.floorColor,
+        waterColor: save.waterColor, lavaColor: save.lavaColor, darknessColor: save.darknessColor,
+        isoFaceColor: save.isoFaceColor, showGrid: save.showGrid, show3D: save.show3D,
+        showHatching: save.showHatching, hatchColor: save.hatchColor,
+        showWallOutline: save.showWallOutline, wallOutlineColor: save.wallOutlineColor,
+        wallOutlineStyle: save.wallOutlineStyle, texture: save.textureSettings,
+      }
+      setSavedStyleSignature(styleSignature(loadedStyle, loadedPresets, save.lights, save.lightingSettings))
+      setHistory(createHistory({ activeLayerId: save.activeLayerId, grids: save.grids, layerGrids: save.layerGrids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, lights: save.lights, layers: save.layers, environmentalColors: save.environmentalColors }))
+      setCustomImages(save.customImages)
+      setActiveLayerId(save.activeLayerId)
+      setActiveZ(save.layers.find(layer => layer.id === save.activeLayerId)?.targetZ ?? save.layers[0].targetZ)
       setGenerationResult(null)
       setCols(save.cols)
       setRows(save.rows)
@@ -1882,6 +2596,10 @@ export default function App() {
       setWaterColor(save.waterColor)
       setLavaColor(save.lavaColor)
       setDarknessColor(save.darknessColor)
+      setTextureSettings(save.textureSettings)
+      setLightingSettings(save.lightingSettings)
+      setCustomStylePresets(loadedPresets)
+      setSelectedStylePresetId(null)
       setLoadError(null)
       pendingFitRef.current = true
       setFitRequest(value => value + 1)
@@ -1891,15 +2609,160 @@ export default function App() {
     }
   }
 
+  const handleCustomImageFile = (file: File, clientPoint?: { x: number; y: number }) => {
+    setImageImportError(null)
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    const inferredMime = extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : extension === 'webp' ? 'image/webp' : extension === 'png' ? 'image/png' : ''
+    const allowedMimes = ['image/png', 'image/jpeg', 'image/webp']
+    const mime = allowedMimes.includes(file.type) ? file.type : inferredMime || file.type
+    if (!allowedMimes.includes(mime)) {
+      setImageImportError('Choose a PNG, JPEG, or WebP image.')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setImageImportError('Image files must be 20 MB or smaller.')
+      return
+    }
+    if (activeLayer?.locked) {
+      setImageImportError('Unlock the active layer before placing an image.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onerror = () => setImageImportError(`Could not read ${file.name}. Try another image file.`)
+    reader.onload = event => {
+      const dataUrl = typeof event.target?.result === 'string' ? event.target.result : ''
+      if (!dataUrl) {
+        setImageImportError(`Could not read ${file.name}. Try another image file.`)
+        return
+      }
+      const preview = new window.Image()
+      preview.onerror = () => setImageImportError(`${file.name} is not a readable PNG, JPEG, or WebP image.`)
+      preview.onload = () => {
+        const aspectRatio = preview.naturalWidth / Math.max(1, preview.naturalHeight)
+        const type = `custom-image-2x1-${crypto.randomUUID()}`
+        const asset: CustomImageAsset = { type, name: file.name, dataUrl, aspectRatio }
+        setCustomImages(previous => [...previous, asset])
+        let tile = hoverTileRef.current
+        const stage = stageRef.current
+        if (clientPoint && stage) tile = showIso
+          ? stageToIsoTile(stage, clientPoint.x, clientPoint.y)
+          : stageToTile(stage, clientPoint.x, clientPoint.y)
+        tile ??= { col: Math.floor(cols / 2), row: Math.floor(rows / 2) }
+        const widthInCells = 2
+        const heightInCells = widthInCells / aspectRatio
+        const col = Math.max(0, Math.min(Math.max(0, cols - widthInCells), tile.col - 1))
+        const row = Math.max(0, Math.min(Math.max(0, Math.floor(rows - heightInCells)), Math.round(tile.row - heightInCells / 2)))
+        const stamp: Stamp = {
+          id: crypto.randomUUID(), type, col, row, rotation: 0,
+          z: activeLayer?.targetZ ?? activeZ,
+          layerId: activeLayer?.id,
+          assetName: file.name,
+          aspectRatio,
+        }
+        setHistory(history => push(history, { ...history.present, stamps: addStamp(history.present.stamps, stamp) }))
+        setActiveZ(activeLayer?.targetZ ?? activeZ)
+        setSelectionMode(false)
+        dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: type, selectedId: stamp.id } })
+      }
+      preview.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleFileLoad = (file: File) => {
     const reader = new FileReader()
     reader.onload = e => applyLoad(e.target?.result as string)
     reader.readAsText(file)
   }
 
+  const applyExternalDungeonImport = (raw: unknown) => {
+    setDungeonImportError(null)
+    setDungeonImportNotice(null)
+    try {
+        const imported = importExternalDungeon(raw)
+        const detail = imported.diagnostics.length ? `\n\nImport notes:\n${imported.diagnostics.join('\n')}` : ''
+        const accepted = window.confirm(`Import ${imported.source} map (${imported.cols} × ${imported.rows} cells, ${imported.stamps.length} doors or stairs)? This replaces the current map.${detail}`)
+        if (!accepted) return
+        const layer: MapLayer = { ...createDefaultLayer(), name: 'Imported' }
+        const nextGrid = imported.grid
+        setHistory(createHistory({
+          activeLayerId: layer.id,
+          grids: new Map([[0, nextGrid]]),
+          layerGrids: new Map([[layer.id, new Map([[0, nextGrid]])]]),
+          stamps: imported.stamps,
+          steps: [], ramps: [], labels: imported.labels,
+          layers: [layer], environmentalColors: new Map(), lights: [],
+        }))
+        setCols(imported.cols)
+        setRows(imported.rows)
+        setActiveLayerId(layer.id)
+        setActiveZ(0)
+        activeZRef.current = 0
+        setCustomImages([])
+        setCurrentFilePath(null)
+        setSavedHistoryLength(-1)
+        setSelectionMode(false)
+        setShapeTool(null)
+        dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: FLOOR, brushShape } })
+        setWorkspaceTab('draw')
+        setDungeonImportNotice(`${imported.source} imported: ${imported.cols} × ${imported.rows} cells${imported.diagnostics.length ? ` · ${imported.diagnostics.join(' ')}` : ''}`)
+        pendingFitRef.current = true
+        setFitRequest(value => value + 1)
+    } catch (error) {
+      setDungeonImportError(error instanceof Error ? error.message : 'Could not import that dungeon JSON.')
+    }
+  }
+
+  const handleDungeonImportFile = (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      setDungeonImportError('Dungeon JSON must be 10 MB or smaller.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onerror = () => setDungeonImportError(`Could not read ${file.name}. Try another JSON export.`)
+    reader.onload = event => {
+      try { applyExternalDungeonImport(JSON.parse(String(event.target?.result ?? ''))) }
+      catch (error) { setDungeonImportError(error instanceof Error ? error.message : 'Could not read that JSON file.') }
+    }
+    reader.readAsText(file)
+  }
+
+  const handleJsonDrop = (file: File) => {
+    const reader = new FileReader()
+    reader.onerror = () => setDungeonImportError(`Could not read ${file.name}.`)
+    reader.onload = event => {
+      const text = String(event.target?.result ?? '')
+      try {
+        const raw = JSON.parse(text) as Record<string, unknown>
+        if (raw && raw.version === 1) applyLoad(text)
+        else applyExternalDungeonImport(raw)
+      } catch (error) {
+        setDungeonImportError(error instanceof Error ? error.message : 'Could not import that JSON file.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
   const applyPreset = (preset: typeof WALL_PRESETS[number]) => {
     setWallColor(preset.color)
     setWallOpacity(preset.opacity)
+  }
+  const saveStylePreset = (update: boolean) => {
+    const name = stylePresetName.trim()
+    if (!name) return
+    if (update && selectedStylePresetId && customStylePresets.some(preset => preset.id === selectedStylePresetId)) {
+      setCustomStylePresets(previous => previous.map(preset => preset.id === selectedStylePresetId ? { ...preset, name, style: captureVisualStyle() } : preset))
+      return
+    }
+    const preset = { id: crypto.randomUUID(), name: name.slice(0, 48), style: captureVisualStyle() }
+    setCustomStylePresets(previous => [...previous, preset])
+    setSelectedStylePresetId(preset.id)
+    setStylePresetName(preset.name)
+  }
+  const deleteStylePreset = (id: string) => {
+    setCustomStylePresets(previous => previous.filter(preset => preset.id !== id))
+    if (selectedStylePresetId === id) setSelectedStylePresetId(null)
   }
 
   const editingLabel = editingLabelId ? labels.find(label => label.id === editingLabelId) ?? null : null
@@ -1927,11 +2790,18 @@ export default function App() {
     <div
       ref={containerRef}
       style={{ width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative', background: '#fff' }}
-      onDragOver={e => e.preventDefault()}
+      onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
       onDrop={e => {
         e.preventDefault()
         const file = e.dataTransfer.files[0]
-        if (file) handleFileLoad(file)
+        if (!file) return
+        if (file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name)) {
+          handleCustomImageFile(file, { x: e.clientX, y: e.clientY })
+        } else if (/\.json$/i.test(file.name)) {
+          handleJsonDrop(file)
+        } else {
+          setImageImportError('Drop a PNG, JPEG, WebP image, or JSON map file.')
+        }
       }}
     >
       {/* Workspace inspector */}
@@ -1973,6 +2843,153 @@ export default function App() {
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'draw'}>
           <div className="panel-intro"><strong>Shape the map</strong><span>Choose a surface, then drag on the canvas. Right-click erases tiles, deletes objects, or deselects on blank space.</span></div>
 
+        <Section title="Selection" icon={<IconFrame size={14} />} defaultOpen>
+          <ToolButton
+            icon={<IconFrame size={14} />}
+            label="Select objects"
+            active={selectionMode}
+            onClick={() => {
+              setSelectionMode(active => !active)
+              setShapeTool(null)
+              setObjectSelection([])
+              selectionDragRef.current = null
+              setSelectionDrag(null)
+            }}
+          />
+          {selectionMode && <div className="hint">Drag across active-level objects to select them. Arrow keys move; Ctrl/Cmd+C/V copies and pastes; Ctrl/Cmd+D duplicates; Ctrl/Cmd+G groups; Ctrl/Cmd+Shift+G ungroups; Delete removes {objectSelection.length || 'the'} selected object{objectSelection.length === 1 ? '' : 's'}.</div>}
+          {selectionMode && objectSelection.length > 0 && (
+            <div className="field-stack">
+              {objectSelection.length > 1 && (
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...groupSelectedMapObjects({ ...h.present, selection: objectSelection, groupId: crypto.randomUUID() }) }))}>
+                  <IconLayers size={13} /> Group selected
+                </Btn>
+              )}
+              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...ungroupSelectedMapObjects({ ...h.present, selection: objectSelection }) }))}>
+                <IconLayers size={13} /> Ungroup selected
+              </Btn>
+              <div className="button-row">
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...reorderSelectedMapObjects({ ...h.present, selection: objectSelection, direction: 'backward' }) }))}>Send backward</Btn>
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...reorderSelectedMapObjects({ ...h.present, selection: objectSelection, direction: 'forward' }) }))}>Bring forward</Btn>
+              </div>
+              <div className="hint">Draw order changes only within each object type; structures stay beneath stamps and labels stay above them.</div>
+              <Btn onClick={() => setHistory(h => push(h, { ...h.present, ...rotateSelectedMapObjects({ ...h.present, selection: objectSelection }) }))}>
+                <IconRotate size={13} /> Rotate selected
+              </Btn>
+              {selectedStamps.length > 0 && (
+                <label className="field-row">
+                  <span>Stamp scale</span>
+                  <input aria-label="Selected stamp scale" type="range" min={0.5} max={4} step={0.25} value={selectedStampScale}
+                    onChange={e => setHistory(h => push(h, { ...h.present, stamps: scaleSelectedStamps({ stamps: h.present.stamps, selection: objectSelection, scale: Number(e.target.value) }) }))} />
+                </label>
+              )}
+            </div>
+          )}
+        </Section>
+
+        <Section title="Lighting" icon={<IconFlame size={14} />}>
+          <div className="button-row">
+            <ToolButton
+              icon={<IconFlame size={13} />}
+              label={lightingSettings.enabled ? 'Lighting on' : 'Lighting off'}
+              active={lightingSettings.enabled}
+              onClick={() => setLightingSettings(previous => ({ ...previous, enabled: !previous.enabled }))}
+            />
+            <ToolButton
+              icon={<IconPlus size={13} />}
+              label="Place light"
+              active={lightPlacement}
+              onClick={() => {
+                if (activeLayer?.locked) return
+                setLightPlacement(value => !value)
+                setShapeTool(null)
+                setCropMode(false)
+                setSelectionMode(false)
+                setObjectSelection([])
+              }}
+            />
+          </div>
+          {lightingSettings.enabled && <div className="field-stack">
+            <ColorField label="Ambient color" value={lightingSettings.ambientColor} onChange={ambientColor => setLightingSettings(previous => ({ ...previous, ambientColor }))} />
+            <label className="field-row">
+              <span>Darkness</span>
+              <input aria-label="Ambient darkness" type="range" min={0} max={1} step={0.02} value={lightingSettings.darkness} onChange={e => setLightingSettings(previous => ({ ...previous, darkness: Number(e.target.value) }))} />
+              <span className="label-dim">{Math.round(lightingSettings.darkness * 100)}%</span>
+            </label>
+            {lightPlacement && <div className="hint">Click a map tile to place a light. Escape cancels placement.</div>}
+            <div className="field-stack">
+              <span className="label-dim">Lights on Z{activeZ}</span>
+              {visibleLights.filter(light => light.z === activeZ).map(light => (
+                <ToolButton
+                  key={light.id}
+                  label={light.name}
+                  active={selectedLightId === light.id}
+                  onClick={() => { setSelectedLightId(light.id); setLightPlacement(false) }}
+                  style={{ borderColor: light.color }}
+                />
+              ))}
+              {visibleLights.every(light => light.z !== activeZ) && <div className="hint">No lights on this level yet.</div>}
+            </div>
+            {selectedLight && selectedLight.z === activeZ && (() => {
+              const owner = layers.find(layer => layer.id === (selectedLight.layerId ?? createDefaultLayer().id))
+              const locked = owner?.locked === true
+              return <div className="field-stack">
+                <label className="field-row"><span>Name</span><input aria-label="Light name" className="text-field" value={selectedLight.name} disabled={locked} onChange={e => updateLight(selectedLight.id, { name: e.target.value.slice(0, 48) })} /></label>
+                <div style={{ opacity: locked ? 0.55 : 1, pointerEvents: locked ? 'none' : 'auto' }}><ColorField label="Light color" value={selectedLight.color} onChange={color => updateLight(selectedLight.id, { color })} /></div>
+                <label className="field-row"><span>Intensity</span><input aria-label="Light intensity" type="range" min={0} max={1} step={0.05} value={selectedLight.intensity} disabled={locked} onChange={e => updateLight(selectedLight.id, { intensity: Number(e.target.value) })} /><span className="label-dim">{Math.round(selectedLight.intensity * 100)}%</span></label>
+                <label className="field-row"><span>Bright radius</span><input aria-label="Bright radius" type="range" min={0} max={20} step={0.5} value={selectedLight.brightRadius} disabled={locked} onChange={e => {
+                  const brightRadius = Number(e.target.value)
+                  updateLight(selectedLight.id, { brightRadius, dimRadius: Math.max(brightRadius, selectedLight.dimRadius) })
+                }} /><span className="label-dim">{selectedLight.brightRadius.toFixed(1)}</span></label>
+                <label className="field-row"><span>Dim radius</span><input aria-label="Dim radius" type="range" min={selectedLight.brightRadius} max={30} step={0.5} value={selectedLight.dimRadius} disabled={locked} onChange={e => updateLight(selectedLight.id, { dimRadius: Math.max(selectedLight.brightRadius, Number(e.target.value)) })} /><span className="label-dim">{selectedLight.dimRadius.toFixed(1)}</span></label>
+                <button className="btn btn-danger" disabled={locked} onClick={() => {
+                  setHistory(h => push(h, { ...h.present, lights: (h.present.lights ?? []).filter(item => item.id !== selectedLight.id) }))
+                  setSelectedLightId(null)
+                }}>Delete light</button>
+              </div>
+            })()}
+            <div className="hint">Walls block light in both projections. Universal VTT stores one range per light (the dim radius); bright/dim falloff stays in raster exports.</div>
+          </div>}
+        </Section>
+
+        <Section title="Shapes & paths" icon={<IconSquareBrush size={14} />}>
+          <div className="button-row">
+            {([
+              ['rectangle', 'Rectangle', <IconSquareBrush size={13} />],
+              ['circle', 'Circle', <IconCircleBrush size={13} />],
+              ['polygon', 'Polygon', <IconHatch size={13} />],
+              ['path', 'Path', <IconFrame size={13} />],
+            ] as const).map(([kind, label, icon]) => (
+              <ToolButton key={kind} icon={icon} label={label} active={shapeTool === kind} onClick={() => {
+                setShapeTool(current => current === kind ? null : kind)
+                setSelectionMode(false)
+                setCropMode(false)
+                setObjectSelection([])
+                if (drawingState.tool !== 'paint') dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
+              }} />
+            ))}
+          </div>
+          {shapeTool && <div className="field-stack">
+            <label className="field-row">
+              <span>Snap increment</span>
+              <select aria-label="Shape snap increment" className="num-field" value={shapeSnap ?? 0} onChange={e => setShapeSnap(Number(e.target.value) || null)}>
+                <option value={1}>1 cell</option>
+                <option value={0.5}>½ cell</option>
+                <option value={0.25}>¼ cell</option>
+                <option value={0}>Off</option>
+              </select>
+            </label>
+            {shapeTool === 'polygon' && <label className="field-row">
+              <span>Sides</span>
+              <input aria-label="Polygon sides" className="num-field" type="number" min={3} max={16} value={polygonSides} onChange={e => setPolygonSides(Math.max(3, Math.min(16, Number(e.target.value) || 3)))} />
+            </label>}
+            {shapeTool === 'path' && <label className="field-row">
+              <span>Path simplification</span>
+              <input aria-label="Path simplification" type="range" min={0} max={4} step={0.1} value={pathSimplification} onChange={e => setPathSimplification(Number(e.target.value))} />
+            </label>}
+            <div className="hint">Drag on the map to preview and commit. Escape cancels. The active paint or erase setting fills the covered cells.</div>
+          </div>}
+        </Section>
+
         <Section title="Draw" icon={<IconFloor size={14} />} defaultOpen>
           <Segmented
             value={drawingState.tool === 'rough' ? 'cave' : brushShape}
@@ -1981,7 +2998,7 @@ export default function App() {
                 const ds = drawingState
                 if (ds.tool === 'rough') {
                   if (ds.phase === 'placed2') {
-                    setHistory(h => ({ ...h, present: { ...h.present, grids: setGrid(h.present.grids, activeZ, ds.baseGrid) } }))
+                    setHistory(h => ({ ...h, present: withActiveLayerGrid(h.present, activeZ, ds.baseGrid) }))
                   }
                   dispatch({ type: 'SET_TOOL', to: { tool: 'paint', phase: 'idle', paintValue: selectedPaintState, brushShape } })
                 } else {
@@ -2083,9 +3100,9 @@ export default function App() {
 
         <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
           <div className="stepper">
-            <button aria-label="Previous level" onClick={() => setActiveZ(z => z - 1)}><IconMinus size={13} /></button>
+            <button aria-label="Previous level" onClick={() => setActiveLayerZ(activeZ - 1)}><IconMinus size={13} /></button>
             <span className="z-value">Z{activeZ}</span>
-            <button aria-label="Next level" onClick={() => setActiveZ(z => z + 1)}><IconPlus size={13} /></button>
+            <button aria-label="Next level" onClick={() => setActiveLayerZ(activeZ + 1)}><IconPlus size={13} /></button>
           </div>
           <div className="row">
             <div style={{ flex: 1 }}>
@@ -2094,6 +3111,59 @@ export default function App() {
             <div style={{ flex: 1 }}>
               <ToolButton icon={<IconCube size={14} />} label="Iso" tone="iso" active={showIso} onClick={() => setShowIso(v => !v)} />
             </div>
+          </div>
+        </Section>
+
+        <Section title="Layers" icon={<IconLayers size={14} />} defaultOpen>
+          <div className="field-stack">
+            <label className="field-row">
+              <span>Active layer</span>
+              <select aria-label="Active layer" className="num-field" value={activeLayer?.id ?? ''} onChange={e => {
+                const layer = layers.find(candidate => candidate.id === e.target.value)
+                if (layer) selectLayer(layer)
+              }}>
+                {layers.map(layer => <option key={layer.id} value={layer.id}>{layer.name}{layer.locked ? ' (locked)' : ''}</option>)}
+              </select>
+            </label>
+            {activeLayer && <>
+              <label className="field-row">
+                <span>Name</span>
+                <input aria-label="Layer name" className="text-field" value={activeLayer.name} onChange={e => updateLayer(activeLayer.id, { name: e.target.value || 'Untitled layer' })} />
+              </label>
+              <label className="field-row">
+                <span>Target level</span>
+                <input aria-label="Layer target Z level" className="num-field" type="number" value={activeLayer.targetZ} onChange={e => setActiveLayerZ(Number(e.target.value))} />
+              </label>
+              <label className="field-row">
+                <span>Opacity</span>
+                <input aria-label="Layer opacity" type="range" min={0} max={100} value={activeLayer.opacity} onChange={e => updateLayer(activeLayer.id, { opacity: Number(e.target.value) })} />
+              </label>
+              <div className="row">
+                <div style={{ flex: 1 }}><ToolButton label="Visible" active={activeLayer.visible} onClick={() => updateLayer(activeLayer.id, { visible: !activeLayer.visible })} /></div>
+                <div style={{ flex: 1 }}><ToolButton label="Locked" active={activeLayer.locked} onClick={() => updateLayer(activeLayer.id, { locked: !activeLayer.locked })} /></div>
+              </div>
+              <div className="row">
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, layers: moveLayer(h.present.layers, activeLayer.id, 'back') }))}>Send backward</Btn>
+                <Btn onClick={() => setHistory(h => push(h, { ...h.present, layers: moveLayer(h.present.layers, activeLayer.id, 'forward') }))}>Bring forward</Btn>
+              </div>
+              {layers.length > 1 && <Btn variant="danger" onClick={() => {
+                const remaining = removeLayer(layers, activeLayer.id)
+                const nextActiveLayer = remaining[0]
+                setHistory(h => {
+                  const nextLayerGrids = new Map(h.present.layerGrids)
+                  nextLayerGrids.delete(activeLayer.id)
+                  return push(h, { ...h.present, activeLayerId: nextActiveLayer.id, layers: remaining, layerGrids: nextLayerGrids })
+                })
+                setActiveLayerId(nextActiveLayer.id)
+                setActiveZ(nextActiveLayer.targetZ)
+              }}>Delete layer</Btn>}
+            </>}
+            <Btn onClick={() => {
+              const layer: MapLayer = { id: crypto.randomUUID(), name: `Layer ${layers.length + 1}`, targetZ: activeZ, visible: true, opacity: 100, locked: false }
+              setHistory(h => push(h, { ...h.present, activeLayerId: layer.id, layers: [...h.present.layers, layer] }))
+              setActiveLayerId(layer.id)
+            }}><IconPlus size={13} /> Add layer</Btn>
+            <div className="hint">Layers target a Z Level. Layer content, visibility, opacity, and locking are saved with the map.</div>
           </div>
         </Section>
 
@@ -2159,7 +3229,39 @@ export default function App() {
         </div>
 
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'assets'}>
-          <div className="panel-intro"><strong>Place an asset</strong><span>Search the library, select an icon, then click the map.</span></div>
+          <div className="panel-intro"><strong>Place an asset</strong><span>Choose a library stamp or add an image stored with this map.</span></div>
+
+        <Section title="Custom images" icon={<IconImage size={14} />} defaultOpen>
+          <div className="row">
+            <Btn onClick={() => imageInputRef.current?.click()}><IconImage size={13} /> Upload image</Btn>
+            <span className="label-dim">PNG · JPEG · WebP</span>
+          </div>
+          {imageImportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{imageImportError}</div>}
+          {customImages.length > 0 && <div className="field-stack">
+            {customImages.map(asset => <Btn key={asset.type} onClick={() => {
+              setSelectionMode(false)
+              dispatch({ type: 'SET_TOOL', to: { tool: 'stamp', stampType: asset.type, selectedId: null } })
+            }}>{asset.name}</Btn>)}
+          </div>}
+          <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style={{ display: 'none' }} onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) handleCustomImageFile(file)
+            e.target.value = ''
+          }} />
+          <div className="hint">Images are embedded in the map file. Drag an image onto the canvas to place it at that spot.</div>
+        </Section>
+
+        <Section title="Import dungeon" icon={<IconFolder size={14} />}>
+          <Btn onClick={() => dungeonInputRef.current?.click()}><IconFolder size={13} /> Choose dungeon JSON</Btn>
+          <input ref={dungeonInputRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) handleDungeonImportFile(file)
+            e.target.value = ''
+          }} />
+          {dungeonImportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{dungeonImportError}</div>}
+          {dungeonImportNotice && <div role="status" className="hint">{dungeonImportNotice}</div>}
+          <div className="hint">Accepts Watabou One Page Dungeon JSON with room/corridor geometry and donjon Random Dungeon JSON cell matrices. Import replaces the open map after confirmation.</div>
+        </Section>
 
         <Section title="Stamps" icon={<IconStampFloor size={14} />} defaultOpen>
           <div className="row" style={{ marginBottom: 8 }}>
@@ -2555,14 +3657,41 @@ export default function App() {
 
           </div>
 
+          <div className="subsection-label">Export region</div>
+          <div className="field-stack">
+            <ToolButton
+              icon={<IconFrame size={14} />}
+              label={cropMode ? 'Finish crop selection' : 'Select crop region'}
+              active={cropMode}
+              onClick={() => {
+                setCropMode(value => !value)
+                setObjectSelection([])
+                setSelectionMode(false)
+                cropDragRef.current = null
+                setCropDrag(null)
+              }}
+            />
+            {cropMode && <div className="hint">Drag over the map to choose bounds, or drag a marked corner to resize. Right-click resets the crop.</div>}
+            <label className="field-row"><span>Pixels per cell</span><input aria-label="Export pixels per cell" className="num-field" type="number" min={16} max={600} value={exportPixelsPerCell} onChange={e => setExportPixelsPerCell(Math.max(16, Math.min(600, Number(e.target.value) || 75)))} /></label>
+            <div className="hint">{(() => { const region = normalizeExportRegion(exportRegion, cols, rows); const size = showIso ? exportCropRect(region, exportPixelsPerCell, 'iso', rows) : exportDimensions(region, exportPixelsPerCell); return `${Math.round(size.width)} × ${Math.round(size.height)}px output` })()}</div>
+            <Btn onClick={() => { setExportRegion(wholeMapRegion(cols, rows)); setCropMode(false); cropDragRef.current = null; setCropDrag(null) }}>Reset crop to full map</Btn>
+            <label className="field-row"><span>Format</span><select aria-label="Export format" className="num-field" value={exportFormat} onChange={e => setExportFormat(e.target.value as MapExportFormat)}>
+              <option value="png">PNG</option>
+              <option value="webp">WebP</option>
+              <option value="jpg">JPG (white background)</option>
+              <option value="uvtt">Universal VTT (.dd2vtt)</option>
+            </select></label>
+          </div>
+
           <div className="subsection-label">File actions</div>
           <div className="row">
             <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
             <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
           </div>
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
-            <IconImage size={13} /> Export PNG
+            <IconImage size={13} /> Export {exportFormat === 'uvtt' ? 'Universal VTT' : exportFormat.toUpperCase()}
           </button>
+          {exportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{exportError}</div>}
           <div className="row">
             <Btn onClick={handleExportHtml}>Export HTML</Btn>
             <Btn onClick={handleExportMarkdown}>Export MD</Btn>
@@ -2595,6 +3724,41 @@ export default function App() {
         </Section>
 
         <Section title="Style" icon={<IconHatch size={14} />} defaultOpen>
+          <div className="subsection-label">Reusable map styles</div>
+          <div className="field-stack">
+            {[...BUILT_IN_STYLE_PRESETS, ...customStylePresets].map(preset => (
+              <div key={preset.id} className="row">
+                <div style={{ flex: 1 }}><ToolButton label={preset.name} active={selectedStylePresetId === preset.id} onClick={() => applyStylePreset(preset)} /></div>
+                {customStylePresets.some(candidate => candidate.id === preset.id) && <Btn variant="danger" onClick={() => deleteStylePreset(preset.id)}>Delete</Btn>}
+              </div>
+            ))}
+            <label className="field-row">
+              <span>Preset name</span>
+              <input className="text-field" aria-label="Style preset name" maxLength={48} value={stylePresetName} onChange={e => setStylePresetName(e.target.value)} />
+            </label>
+            <div className="row">
+              <Btn onClick={() => saveStylePreset(false)}>Save as new</Btn>
+              {customStylePresets.some(preset => preset.id === selectedStylePresetId) && <Btn onClick={() => saveStylePreset(true)}>Update selected</Btn>}
+            </div>
+            <div className="hint">Styles capture wall and floor colors, grid, shading, hatching, outlines, and texture. Applying one is undoable with Ctrl/Cmd+Z.</div>
+          </div>
+
+          <div className="subsection-label">Texture overlay</div>
+          <div className="field-stack">
+            <label className="field-row"><span>Pattern</span><select aria-label="Texture pattern" className="num-field" value={textureSettings.pattern} onChange={e => setTextureSettings(previous => ({ ...previous, pattern: e.target.value as TextureSettings['pattern'] }))}>
+              <option value="none">None</option><option value="dots">Dots</option><option value="diagonal">Diagonal</option><option value="crosshatch">Crosshatch</option>
+            </select></label>
+            {textureSettings.pattern !== 'none' && <>
+              <label className="field-row"><span>Scope</span><select aria-label="Texture scope" className="num-field" value={textureSettings.scope} onChange={e => setTextureSettings(previous => ({ ...previous, scope: e.target.value as TextureSettings['scope'] }))}>
+                <option value="map">Visible map content</option><option value="active-layer">Active layer</option>
+              </select></label>
+              <label className="field-row"><span>Scale</span><input aria-label="Texture scale" type="range" min={0.25} max={4} step={0.25} value={textureSettings.scale} onChange={e => setTextureSettings(previous => ({ ...previous, scale: Number(e.target.value) }))} /><span className="label-dim">{textureSettings.scale}×</span></label>
+              <label className="field-row"><span>Opacity</span><input aria-label="Texture opacity" type="range" min={0} max={100} value={textureSettings.opacity} onChange={e => setTextureSettings(previous => ({ ...previous, opacity: Number(e.target.value) }))} /><span className="label-dim">{textureSettings.opacity}%</span></label>
+              <ColorField label="Texture color" value={textureSettings.color} onChange={color => setTextureSettings(previous => ({ ...previous, color }))} />
+            </>}
+            <div className="hint">Scale is spacing in cell multiples. Texture is clipped to floor cells and appears in Player View and raster exports.</div>
+          </div>
+
           <div className="row">
             <IconToggle icon={<IconHatch size={15} />} active={showHatching} onClick={() => setShowHatching(v => !v)} title="Hatching" />
             {showHatching && <ColorField label="Hatch" value={hatchColor} onChange={setHatchColor} />}
@@ -2690,7 +3854,7 @@ export default function App() {
         <MapLegend />
       </div>
       <div className="canvas-status" aria-live="polite">
-        <strong>{drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label'}</strong>
+        <strong>{cropMode ? 'Export crop' : shapeDraft?.tool ?? (shapeTool ? `Shape: ${shapeTool}` : selectionMode ? 'Select' : drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label')}</strong>
         <span>Z{activeZ}</span>
         <span>{showIso ? 'Isometric preview' : 'Top-down editing'}</span>
       </div>
@@ -2708,10 +3872,12 @@ export default function App() {
         }}
         onWheel={handleWheel}
         onContextMenu={e => e.evt.preventDefault()}
-        style={{ cursor: (drawingState.tool === 'paint' || drawingState.tool === 'rough') ? 'crosshair' : 'cell' }}
+        style={{ cursor: cropMode || shapeTool || lightPlacement || selectionMode || drawingState.tool === 'paint' || drawingState.tool === 'rough' ? 'crosshair' : 'cell' }}
       >
         <Layer ref={layerRef} />
         <Layer ref={stampLayerRef} />
+        <Layer ref={lightingLayerRef} listening={false} />
+        <Layer ref={lightMarkersLayerRef} />
         <Layer ref={dotLayerRef} listening={false} />
         <Layer ref={labelsLayerRef} />
       </Stage>

@@ -1,10 +1,12 @@
 import { FLOOR, FLOOR_COLOR, FACE_COLOR, FACE_PX, TILE_PX, getTileColor, type TileState } from './constants'
 import { getTile } from './grid'
 import { isoProject, isoStampTransform } from './iso'
-import { isObjectStamp, stampSize, type Stamp } from './stamps'
+import { isObjectStamp, stampFootprintSize, type Stamp } from './stamps'
 import { buildIsoScene } from './isoScene'
 import { buildTopDownShapes } from './topDownScene'
 import { drawHatching, drawShadow, buildWallOutlineSegments, mergeOutlineSegments, roughenSegments, varyWidthsAlongStroke, OUTLINE_ROUGH_OPTS } from './patterns'
+import { createTextureCanvas } from './texture'
+import type { TextureSettings } from './styles'
 export type RectSpec = {
   kind: 'rect'
   x: number; y: number; w: number; h: number
@@ -29,6 +31,7 @@ export type ImageSpec = {
   x: number; y: number; w: number; h: number
   offsetX: number; offsetY: number
   rotation: number
+  opacity?: number
   color?: string
   scaleX?: number
   scaleY?: number
@@ -40,6 +43,7 @@ export type CanvasSpec = {
   kind: 'canvas'
   canvas: HTMLCanvasElement
   x: number; y: number; w: number; h: number
+  opacity?: number
 }
 
 export type LineSpec = {
@@ -84,15 +88,24 @@ export type BuildExportParams = {
   lavaColor: string
   darknessColor: string
   environmentalColors?: Map<TileState, string>
+  tileColorOverrides?: ReadonlyMap<number, string>
+  layerOpacityById?: ReadonlyMap<string, number>
+  textureGrid?: Uint8Array | null
+  textureSettings?: TextureSettings
+  textureOpacity?: number
+  textureZ?: number
 }
 
 export function buildExportShapes(params: BuildExportParams): ExportLayout {
-  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, exportTile: T, floorColor = FLOOR_COLOR, waterColor, lavaColor, darknessColor, environmentalColors = new Map() } = params
+  const { grid, cols, rows, showIso, show3D, showGrid, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, exportTile: T, floorColor = FLOOR_COLOR, waterColor, lavaColor, darknessColor, environmentalColors = new Map(), tileColorOverrides, layerOpacityById } = params
 
   if (showIso) {
-    return buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors })
+    const layout = buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors, tileColorOverrides, layerOpacityById })
+    addTextureOverlay(layout, params, cols, rows, T, true)
+    return layout
   }
-  const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors })
+  const layout = buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors, tileColorOverrides, layerOpacityById })
+  addTextureOverlay(layout, params, cols, rows, T, false)
   if (showHatching && hatchColor) {
     const hatchCanvas = document.createElement('canvas')
     hatchCanvas.width = cols * T
@@ -126,13 +139,28 @@ export function buildExportShapes(params: BuildExportParams): ExportLayout {
   return layout
 }
 
-function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors }: {
+function addTextureOverlay(layout: ExportLayout, params: BuildExportParams, cols: number, rows: number, tileSize: number, isometric: boolean): void {
+  if (!params.textureSettings || !params.textureGrid) return
+  const generated = createTextureCanvas(params.textureGrid, cols, rows, tileSize, params.textureSettings, isometric, params.textureZ ?? 0)
+  if (!generated) return
+  const shape: CanvasSpec = {
+    kind: 'canvas', canvas: generated.canvas, x: generated.x, y: generated.y,
+    w: generated.canvas.width, h: generated.canvas.height,
+    opacity: params.textureOpacity ?? 1,
+  }
+  const firstImage = layout.shapes.findIndex(item => item.kind === 'image')
+  layout.shapes.splice(firstImage < 0 ? layout.shapes.length : firstImage, 0, shape)
+}
+
+function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wallOpacity, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors, tileColorOverrides, layerOpacityById }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean; showGrid: boolean
   wallColor: string; wallOpacity: number
   stamps: Stamp[]; T: number; floorColor: string
   waterColor: string; lavaColor: string; darknessColor: string
   environmentalColors: Map<TileState, string>
+  tileColorOverrides?: ReadonlyMap<number, string>
+  layerOpacityById?: ReadonlyMap<string, number>
 }): ExportLayout {
   const canvasW = cols * T
   const canvasH = rows * T
@@ -144,21 +172,22 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
   }
 
   for (const s of buildTopDownShapes(grid, cols, rows, show3D)) {
+    const composedColor = tileColorOverrides?.get(s.row * cols + s.col)
     switch (s.kind) {
       case 'floor':
-        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: floorColor })
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: composedColor ?? floorColor })
         break
       case 'water':
-        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: waterColor })
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: composedColor ?? waterColor })
         break
       case 'lava':
-        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: lavaColor })
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: composedColor ?? lavaColor })
         break
       case 'darkness':
-        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: darknessColor })
+        shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: composedColor ?? darknessColor })
         break
       case 'environmental': {
-        const color = getTileColor(s.tileState as TileState, environmentalColors)
+        const color = composedColor ?? getTileColor(s.tileState as TileState, environmentalColors)
         if (color !== 'transparent') {
           shapes.push({ kind: 'rect', x: s.col * T, y: s.row * T, w: T, h: T, fill: color })
         }
@@ -187,7 +216,7 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
 
   for (const stamp of stamps) {
     if (isObjectStamp(stamp)) continue
-    const sz = stampSize(stamp.type)
+    const sz = stampFootprintSize(stamp)
     const sc = stamp.scale ?? 1
     const w = sz.cols * T * sc
     const h = sz.rows * T * sc
@@ -200,6 +229,7 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
       offsetX: w / 2,
       offsetY: h / 2,
       rotation: stamp.rotation,
+      opacity: layerOpacityById?.get(stamp.layerId ?? 'map') ?? 1,
       mirrored: stamp.mirrored,
       ...(stamp.color ? { color: stamp.color } : {}),
     })
@@ -208,7 +238,7 @@ function buildTopDownExport({ grid, cols, rows, show3D, showGrid, wallColor, wal
   return { canvasW, canvasH, offsetX: 0, shapes }
 }
 
-function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors }: {
+function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, frontFaceColor, eastFaceColor, stamps, T, floorColor, waterColor, lavaColor, darknessColor, environmentalColors, tileColorOverrides, layerOpacityById }: {
   grid: Uint8Array; cols: number; rows: number
   show3D: boolean
   wallColor: string; wallOpacity: number
@@ -216,6 +246,8 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
   stamps: Stamp[]; T: number; floorColor: string
   waterColor: string; lavaColor: string; darknessColor: string
   environmentalColors?: Map<number, string>
+  tileColorOverrides?: ReadonlyMap<number, string>
+  layerOpacityById?: ReadonlyMap<string, number>
 }): ExportLayout {
   const ITW = T * 2
   const ITH = T
@@ -232,6 +264,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
     floorColor,
     waterColor, lavaColor, darknessColor,
     environmentalColors: environmentalColors ?? new Map(),
+    tileColorOverrides: new Map([[0, tileColorOverrides ?? new Map()]]),
     selectedStepId: null, selectedRampId: null,
     tileW: ITW, tileH: ITH,
     facePx: Math.round(FACE_PX * T / TILE_PX),
@@ -247,7 +280,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
   }))
 
   for (const stamp of stamps) {
-    const sz = stampSize(stamp.type)
+    const sz = stampFootprintSize(stamp)
     const sc = stamp.scale ?? 1
     const w = sz.cols * T * sc
     const h = sz.rows * T * sc
@@ -264,6 +297,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
         offsetX: sz.cols * T * sc,
         offsetY: h,
         rotation: 0,
+        opacity: layerOpacityById?.get(stamp.layerId ?? 'map') ?? 1,
         mirrored: stamp.mirrored,
         ...(stamp.color ? { color: stamp.color } : {}),
       })
@@ -278,6 +312,7 @@ function buildIsoExport({ grid, cols, rows, show3D, wallColor, wallOpacity, fron
         offsetX: w / 2,
         offsetY: h / 2,
         rotation: t.rotation,
+        opacity: layerOpacityById?.get(stamp.layerId ?? 'map') ?? 1,
         scaleX: stamp.mirrored ? -t.scaleX : t.scaleX,
         scaleY: t.scaleY,
         skewX: t.skewX,

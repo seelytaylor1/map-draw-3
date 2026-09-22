@@ -55,16 +55,29 @@ export async function saveJsonFileAs(defaultName: string, content: string): Prom
   return path
 }
 
-export async function writePngFile(path: string, dataUrl: string): Promise<void> {
+export async function writeImageFile(path: string, dataUrl: string): Promise<void> {
   if (!isTauri()) return
   const base64 = dataUrl.split(',')[1]
-  if (!base64) throw new Error('Invalid PNG data URL')
+  if (!base64) throw new Error('Invalid image data URL')
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i)
   }
   await writeFile(path, bytes)
+}
+
+export async function writePngFile(path: string, dataUrl: string): Promise<void> {
+  await writeImageFile(path, dataUrl)
+}
+
+export async function saveImageFile(defaultName: string, dataUrl: string, extension: string, filterName: string): Promise<string | null> {
+  if (!isTauri()) return null
+  const ext = extension.replace(/^\./, '')
+  const path = await save({ defaultPath: defaultName, filters: [{ name: filterName, extensions: [ext] }] })
+  if (!path) return null
+  await writeImageFile(path, dataUrl)
+  return path
 }
 
 export async function savePngFile(defaultName: string, dataUrl: string): Promise<string | null> {

@@ -1,6 +1,7 @@
 // src/labels.test.ts
 import { describe, it, expect } from 'vitest'
 import { addLabel, getLabelDisplayText, removeLabel, updateLabel, type Label } from './labels'
+import { buildLabelScene } from './viewportScene'
 
 describe('labels', () => {
   const label: Label = {
@@ -53,5 +54,14 @@ describe('labels', () => {
 
   it('renders numbered room labels without descriptive text when requested', () => {
     expect(getLabelDisplayText({ ...label, number: 12, numberOnly: true })).toBe('12')
+  })
+
+  it('shows only labels on the active Z Level', () => {
+    const labels: Label[] = [
+      { ...label, id: 'ground', z: 0 },
+      { ...label, id: 'upper', z: 1 },
+    ]
+
+    expect(buildLabelScene(labels, null, 20, true, 1).map(item => item.id)).toEqual(['upper'])
   })
 })

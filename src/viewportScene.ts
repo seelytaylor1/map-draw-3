@@ -17,7 +17,7 @@ import {
   buildHatchPolylines, buildWallOutlineSegments, mergeOutlineSegments,
   roughenSegments, varyWidthsAlongStroke, OUTLINE_ROUGH_OPTS,
 } from './patterns'
-import { isChestStamp, isHazardStamp, isLockedDoorStamp, isObjectStamp, isSecretDoorStamp, stampSize, type Stamp, type StampType, type ObjectStampType } from './stamps'
+import { isChestStamp, isHazardStamp, isLockedDoorStamp, isObjectStamp, isSecretDoorStamp, stampFootprintSize, type Stamp, type StampType, type ObjectStampType } from './stamps'
 import { applyPlayerViewSecretDoors } from './playerView'
 import { stepRunTiles, topDownStepFaceRect, topDownStepRects, type StepRun } from './steps'
 import { rampRunTiles, topDownRampFaceRect, topDownRampRect, type RampRun } from './ramps'
@@ -35,6 +35,7 @@ export interface RunShape {
   kind: 'run'
   runType: 'step' | 'ramp'
   id: string
+  layerId?: string
   faceRect: PxRect | null
   footprint: PxRect[]
   selected: boolean
@@ -76,11 +77,14 @@ export interface TileSceneState {
   wallOpacity: number
   selectedStepId: string | null
   selectedRampId: string | null
+  selectedStepIds?: readonly string[]
+  selectedRampIds?: readonly string[]
   floorColor?: string
   waterColor: string
   lavaColor: string
   darknessColor: string
   environmentalColors: Map<TileState, string>
+  tileColorOverrides?: ReadonlyMap<number, ReadonlyMap<number, string>>
   secretDoorStamps?: readonly Stamp[]
 }
 
@@ -145,15 +149,20 @@ function buildOutlineGrid(grid: Uint8Array, cols: number, z: number, steps: Step
   return outlineGrid
 }
 
-function buildRunShapes(steps: StepRun[], ramps: RampRun[], z: number, tilePx: number, facePx: number, show3D: boolean, selectedStepId: string | null, selectedRampId: string | null): RunShape[] {
+function buildRunShapes(steps: StepRun[], ramps: RampRun[], z: number, tilePx: number, facePx: number, show3D: boolean, selectedStepId: string | null, selectedRampId: string | null, selectedStepIds: readonly string[] = [], selectedRampIds: readonly string[] = []): RunShape[] {
+  const selectedSteps = new Set(selectedStepIds)
+  const selectedRamps = new Set(selectedRampIds)
+  if (selectedStepId) selectedSteps.add(selectedStepId)
+  if (selectedRampId) selectedRamps.add(selectedRampId)
   const runs: RunShape[] = []
   for (const run of steps) {
     if (run.z !== z) continue
     const footprint = topDownStepRects(run).map(r => rect(r.x, r.y, r.width, r.height, tilePx))
     const faceBand = show3D ? topDownStepFaceRect(run, tilePx, facePx) : null
-    const selected = run.id === selectedStepId
+    const selected = selectedSteps.has(run.id)
     runs.push({
       kind: 'run', runType: 'step', id: run.id,
+      layerId: run.layerId,
       faceRect: faceBand ? { x: faceBand.x, y: faceBand.y, w: faceBand.width, h: faceBand.height } : null,
       footprint,
       selected,
@@ -164,9 +173,10 @@ function buildRunShapes(steps: StepRun[], ramps: RampRun[], z: number, tilePx: n
     if (run.z !== z) continue
     const r = topDownRampRect(run)
     const faceBand = show3D ? topDownRampFaceRect(run, tilePx, facePx) : null
-    const selected = run.id === selectedRampId
+    const selected = selectedRamps.has(run.id)
     runs.push({
       kind: 'run', runType: 'ramp', id: run.id,
+      layerId: run.layerId,
       faceRect: faceBand ? { x: faceBand.x, y: faceBand.y, w: faceBand.width, h: faceBand.height } : null,
       footprint: [rect(r.x, r.y, r.width, r.height, tilePx)],
       selected,
@@ -176,7 +186,7 @@ function buildRunShapes(steps: StepRun[], ramps: RampRun[], z: number, tilePx: n
   return runs
 }
 
-function buildTileFills(grid: Uint8Array, cols: number, rows: number, tilePx: number, customColors: Map<TileState, string>): TileFillShape[] {
+function buildTileFills(grid: Uint8Array, cols: number, rows: number, tilePx: number, customColors: Map<TileState, string>, tileColors?: ReadonlyMap<number, string>): TileFillShape[] {
   const tiles: TileFillShape[] = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -184,7 +194,7 @@ function buildTileFills(grid: Uint8Array, cols: number, rows: number, tilePx: nu
       if (t !== WALL) {
         const color = getTileColor(t, customColors)
         if (color !== 'transparent') {
-          tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: color })
+          tiles.push({ kind: 'tile', rect: rect(c, r, 1, 1, tilePx), fill: tileColors?.get(r * cols + c) ?? color })
         }
       }
     }
@@ -196,8 +206,8 @@ export function buildTileScene(state: TileSceneState): TileScene {
   const {
     grids, steps, ramps, cols, rows, activeZ, tilePx, facePx,
     show3D, showGrid, showHatching, showWallOutline, wallOutlineColor, wallOutlineStyle,
-    wallColor, wallOpacity, selectedStepId, selectedRampId, floorColor = FLOOR_COLOR,
-    waterColor, lavaColor, darknessColor, environmentalColors, secretDoorStamps = [],
+    wallColor, wallOpacity, selectedStepId, selectedRampId, selectedStepIds = [], selectedRampIds = [], floorColor = FLOOR_COLOR,
+    waterColor, lavaColor, darknessColor, environmentalColors, tileColorOverrides, secretDoorStamps = [],
   } = state
 
   const allCustomColors = new Map(environmentalColors)
@@ -243,13 +253,13 @@ export function buildTileScene(state: TileSceneState): TileScene {
         }
       }
     }
-    const runs = buildRunShapes(steps, ramps, z, tilePx, facePx, show3D, selectedStepId, selectedRampId)
+    const runs = buildRunShapes(steps, ramps, z, tilePx, facePx, show3D, selectedStepId, selectedRampId, selectedStepIds, selectedRampIds)
     levels.push({
       z,
       opacity: Math.pow(0.5, activeZ - z),
       interactive: true,
       grid: levelGrid,
-      tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors),
+      tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors, tileColorOverrides?.get(z)),
       faces,
       gridLines,
       runs,
@@ -268,7 +278,7 @@ export function buildTileScene(state: TileSceneState): TileScene {
       opacity: 0.25 * Math.pow(0.6, z - activeZ - 1),
       interactive: false,
       grid: levelGrid,
-      tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors),
+      tiles: buildTileFills(levelGrid, cols, rows, tilePx, allCustomColors, tileColorOverrides?.get(z)),
       faces: [],
       gridLines: [],
       runs: runs.map(r => ({ ...r, selected: false, selectionRect: null })),
@@ -307,6 +317,7 @@ export interface StampSceneItem {
 export interface StampSceneState {
   stamps: Stamp[]
   selectedStampId: string | null
+  selectedStampIds?: readonly string[]
   stampImages: Map<string, HTMLImageElement>
   activeZ: number
   tilePx: number
@@ -317,19 +328,21 @@ export interface StampSceneState {
 }
 
 export function buildStampScene(state: StampSceneState): StampSceneItem[] {
-  const { stamps, selectedStampId, stampImages, activeZ, tilePx, showIso, showTrapIcons = true, showSecretDoors = true, showLockedDoors = true } = state
+  const { stamps, selectedStampId, selectedStampIds = [], stampImages, activeZ, tilePx, showIso, showTrapIcons = true, showSecretDoors = true, showLockedDoors = true } = state
+  const selectedIds = new Set(selectedStampIds)
+  if (selectedStampId) selectedIds.add(selectedStampId)
   const items: StampSceneItem[] = []
 
   for (const stamp of stamps) {
     if (!showTrapIcons && (isHazardStamp(stamp) || isChestStamp(stamp))) continue
     if (!showSecretDoors && isSecretDoorStamp(stamp)) continue
     const stampType = !showLockedDoors && isLockedDoorStamp(stamp) ? 'Door1x1' : stamp.type
-    const sz = stampSize(stampType)
+    const sz = stampFootprintSize(stamp)
     const w = sz.cols * tilePx
     const h = sz.rows * tilePx
     const imgEl = stampImages.get(stampType)
     if (!imgEl) continue
-    const selected = stamp.id === selectedStampId
+    const selected = selectedIds.has(stamp.id)
 
     if (showIso) {
       const isoCenter = isoProject(stamp.col + sz.cols / 2, stamp.row + sz.rows / 2, tilePx * 2, tilePx)
@@ -404,17 +417,22 @@ export interface LabelSceneItem {
   selectionRect: PxRect | null
 }
 
-export function buildLabelScene(labels: Label[], selectedLabelId: string | null, tilePx: number, showRoomNumbers = true): LabelSceneItem[] {
-  return labels.filter(label => showRoomNumbers || !label.numberOnly).map(label => {
+export function buildLabelScene(labels: Label[], selectedLabelId: string | null, tilePx: number, showRoomNumbers = true, activeZ = 0, selectedLabelIds: readonly string[] = []): LabelSceneItem[] {
+  const selectedIds = new Set(selectedLabelIds)
+  if (selectedLabelId) selectedIds.add(selectedLabelId)
+  return labels
+    .filter(label => (label.z ?? 0) === activeZ)
+    .filter(label => showRoomNumbers || !label.numberOnly)
+    .map(label => {
     const displayText = getLabelDisplayText(label)
     const textWidth = tilePx * 4
     const fontSize = label.number !== undefined ? 14 : 10
     const x = label.col * tilePx + tilePx / 2 - textWidth / 2
     const y = label.row * tilePx + tilePx / 2 - 7
-    const selected = label.id === selectedLabelId
+    const selected = selectedIds.has(label.id)
     return {
       id: label.id, text: displayText, color: label.color, x, y, width: textWidth, fontSize, selected,
       selectionRect: selected ? { x: x - 2, y: y - 2, w: textWidth + 4, h: fontSize + 4 } : null,
     }
-  })
+    })
 }

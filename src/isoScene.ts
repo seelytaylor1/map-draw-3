@@ -27,6 +27,7 @@ export interface IsoSceneParams {
   lavaColor: string
   darknessColor: string
   environmentalColors?: Map<TileState, string>
+  tileColorOverrides?: ReadonlyMap<number, ReadonlyMap<number, string>>
   secretDoorStamps?: readonly Stamp[]
 }
 
@@ -99,14 +100,16 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
   for (const z of zs) {
     const grid = applyPlayerViewSecretDoors(p.grids.get(z) ?? new Uint8Array(p.cols * p.rows), p.cols, p.rows, z, hiddenSecretDoors)
     const yOff = -z * Z_STEP_HEIGHT
+    const tileColors = p.tileColorOverrides?.get(z)
     const items: Renderable[] = []
     if (grid) for (let r = 0; r < p.rows; r++) {
       for (let c = 0; c < p.cols; c++) {
         const state = getTile(grid, p.cols, c, r)
+        const compositedColor = tileColors?.get(r * p.cols + c)
         if (state === FLOOR) {
           const shapes: IsoShape[] = [{
             points: isoFloorPoints(c, r, p.tileW, p.tileH),
-            fill: floorColor,
+            fill: compositedColor ?? floorColor,
             stroke: 'rgba(0,0,0,0.15)',
             strokeWidth: 0.5,
           }]
@@ -124,16 +127,16 @@ export function buildIsoScene(p: IsoSceneParams): IsoShape[] {
           }
           items.push({ depth: c + r + 1, shapes })
         } else if (state === WATER) {
-          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.waterColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
+          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, compositedColor ?? p.waterColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
         } else if (state === LAVA) {
-          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.lavaColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
+          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, compositedColor ?? p.lavaColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
         } else if (state === DARKNESS) {
-          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, p.darknessColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
+          items.push({ depth: c + r + 1, shapes: buildFluidShapes(c, r, compositedColor ?? p.darknessColor, p.tileW, p.tileH, facePx, p.show3D, grid, p.cols, p.rows) })
         } else if (state === GRASS || state === ROAD || state === SAND || state === MUD || state === STONE || state === MOSSY_STONE || state === RUBBLE || state === SNOW) {
           const envColor = getTileColor(state, p.environmentalColors ?? new Map())
           const shapes: IsoShape[] = [{
             points: isoFloorPoints(c, r, p.tileW, p.tileH),
-            fill: envColor,
+            fill: compositedColor ?? envColor,
             stroke: 'rgba(0,0,0,0.15)',
             strokeWidth: 0.5,
           }]

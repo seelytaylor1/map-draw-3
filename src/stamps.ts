@@ -106,6 +106,17 @@ export interface Stamp {
   scale?: number
   mirrored?: boolean
   color?: string
+  groupId?: string
+  layerId?: string
+  assetName?: string
+  aspectRatio?: number
+}
+
+export interface CustomImageAsset {
+  type: string
+  name: string
+  dataUrl: string
+  aspectRatio: number
 }
 
 const toAssetName = (assetPath: string): string => assetPath.split('/').pop()!.replace(/\.[^.]+$/, '')
@@ -145,7 +156,7 @@ export const STAMP_ASSET_MAP = STAMP_ASSET_URLS as Record<StampType, string>
 export const OBJECT_ASSET_MAP = OBJECT_ASSET_URLS as Record<ObjectStampType, string>
 
 export function isObjectStamp(s: Stamp): boolean {
-  return (OBJECT_STAMP_TYPES as string[]).includes(s.type)
+  return (OBJECT_STAMP_TYPES as string[]).includes(s.type) || s.type.startsWith('custom-image-')
 }
 
 export function isFloorStamp(s: Stamp): s is Stamp & { type: StampType } {
@@ -172,6 +183,14 @@ export function stampSize(type: StampType | ObjectStampType): { cols: number; ro
   const size = type.match(/(\d+)x(\d+)(?:_\d+)?(?:$|[_-])/)
   if (size) return { cols: Number(size[1]), rows: Number(size[2]) }
   return { cols: 1, rows: 1 }
+}
+
+export function stampFootprintSize(stamp: Pick<Stamp, 'type' | 'aspectRatio'>): { cols: number; rows: number } {
+  const size = stampSize(stamp.type)
+  if (stamp.type.startsWith('custom-image-') && typeof stamp.aspectRatio === 'number' && Number.isFinite(stamp.aspectRatio) && stamp.aspectRatio > 0) {
+    return { cols: size.cols, rows: size.cols / stamp.aspectRatio }
+  }
+  return size
 }
 
 export function addStamp(stamps: Stamp[], stamp: Stamp): Stamp[] {

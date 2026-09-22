@@ -123,6 +123,30 @@ describe('App load lifecycle', () => {
     expect(screen.getByText('Paint', { selector: 'strong' })).toBeInTheDocument()
   })
 
+  it('exposes a selection mode for object drag-selection', () => {
+    render(<App />)
+
+    const select = screen.getByRole('button', { name: 'Select objects' })
+    expect(select).not.toHaveClass('active')
+    fireEvent.click(select)
+
+    expect(select).toHaveClass('active')
+    expect(screen.getByText('Select', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText(/drag across active-level objects/i)).toBeInTheDocument()
+  })
+
+  it('provides persistent named-layer controls with visibility, opacity, and locking', () => {
+    render(<App />)
+
+    expect(screen.getByLabelText('Active layer')).toHaveValue('map')
+    expect(screen.getByLabelText('Layer target Z level')).toHaveValue(0)
+    expect(screen.getByLabelText('Layer opacity')).toHaveValue('100')
+    fireEvent.click(screen.getByRole('button', { name: 'Locked' }))
+    expect(screen.getByRole('button', { name: 'Locked' })).toHaveClass('active')
+    fireEvent.click(screen.getByRole('button', { name: /add layer/i }))
+    expect(screen.getByRole('option', { name: 'Layer 2' })).toBeInTheDocument()
+  })
+
   it('launches with one-eighth-inch squares and uses that as the canvas dimension step', () => {
     render(<App />)
     openWorkspace('File')

@@ -1,5 +1,5 @@
 import { WALL } from './constants'
-import { isChestStamp, isHazardStamp, isLockedDoorStamp, isSecretDoorStamp, stampSize, type Stamp } from './stamps'
+import { isChestStamp, isHazardStamp, isLockedDoorStamp, isSecretDoorStamp, stampFootprintSize, type Stamp } from './stamps'
 
 /** Returns a render-only grid with secret-door footprints concealed as walls. */
 export function applyPlayerViewSecretDoors(
@@ -15,7 +15,7 @@ export function applyPlayerViewSecretDoors(
   const rendered = grid.slice()
 
   for (const stamp of secretDoors) {
-    const size = stampSize(stamp.type)
+    const size = stampFootprintSize(stamp)
     for (let row = stamp.row; row < stamp.row + size.rows; row++) {
       for (let col = stamp.col; col < stamp.col + size.cols; col++) {
         if (col >= 0 && row >= 0 && col < cols && row < rows) rendered[row * cols + col] = WALL

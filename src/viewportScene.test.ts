@@ -66,6 +66,18 @@ describe('buildStampScene — top-down view of object stamps', () => {
     expect(items[0].selectionRect).not.toBeNull()
   })
 
+  it('renders all selected stamps with selection outlines', () => {
+    const items = buildStampScene({
+      stamps: [objectStamp, { ...objectStamp, id: 'b', col: 2 }],
+      selectedStampId: null,
+      selectedStampIds: ['a', 'b'],
+      stampImages: new Map([['g1002', fakeImage()]]),
+      activeZ: 0, tilePx: TILE_PX, showIso: false,
+    })
+
+    expect(items.every(item => item.selected && item.selectionRect)).toBe(true)
+  })
+
   it('keeps a stamp color override attached to that stamp in top-down and iso views', () => {
     const coloredFloorStamp: Stamp = { id: 'color-floor', type: 'door', col: 0, row: 0, rotation: 0, z: 0, color: '#e04b61' }
     const coloredObjectStamp: Stamp = { id: 'color-object', type: 'g1002', col: 0, row: 0, rotation: 0, z: 0, color: '#4b83e0' }

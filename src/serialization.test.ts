@@ -82,6 +82,75 @@ describe('serialize', () => {
     expect(restored.labels[0].color).toBe('#d52b35')
   })
 
+  it('round-trips a label on its Z Level', () => {
+    const label = { id: 'upper-label', col: 1, row: 2, z: 3, text: 'Upper vault' }
+    const save = serialize({ ...BASE, labels: [label] })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.labels[0].z).toBe(3)
+  })
+
+  it('migrates legacy saves to one default named layer and preserves named-layer state', () => {
+    const legacy = deserialize(JSON.parse(JSON.stringify(serialize(BASE))))
+    expect(legacy.layers).toEqual([{ id: 'map', name: 'Map', targetZ: 0, visible: true, opacity: 100, locked: false }])
+
+    const saved = serialize({ ...BASE, layers: [{ id: 'notes', name: 'GM notes', targetZ: 1, visible: false, opacity: 40, locked: true }] })
+    expect(deserialize(JSON.parse(JSON.stringify(saved))).layers).toEqual(saved.layers)
+  })
+
+  it('migrates legacy grids into the Map layer and preserves independent named-layer grids', () => {
+    const legacy = deserialize(JSON.parse(JSON.stringify(serialize(BASE))))
+    expect(legacy.layerGrids.get('map')?.get(0)).toEqual(GRIDS.get(0))
+
+    const layerGrids = new Map([
+      ['map', new Map([[0, new Uint8Array([1, 0, 1, 1])]])],
+      ['notes', new Map([[0, new Uint8Array([0, 1, 0, 0])]])],
+    ])
+    const restored = deserialize(JSON.parse(JSON.stringify(serialize({ ...BASE, layerGrids }))))
+    expect(restored.layerGrids.get('notes')?.get(0)).toEqual(new Uint8Array([0, 1, 0, 0]))
+  })
+
+  it('round-trips group membership across all editable object kinds', () => {
+    const groupId = 'entryway-group'
+    const save = serialize({
+      ...BASE,
+      stamps: [{ ...STAMP, groupId }],
+      steps: [{ id: 'step', col: 2, row: 1, z: 0, direction: 'E', groupId }],
+      ramps: [{ id: 'ramp', col: 3, row: 1, z: 0, direction: 'W', groupId }],
+      labels: [{ id: 'label', col: 4, row: 1, text: 'Entry', groupId }],
+    })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.stamps[0].groupId).toBe(groupId)
+    expect(restored.steps[0].groupId).toBe(groupId)
+    expect(restored.ramps[0].groupId).toBe(groupId)
+    expect(restored.labels[0].groupId).toBe(groupId)
+  })
+
+  it('preserves editable object ownership by named layer', () => {
+    const save = serialize({
+      ...BASE,
+      layers: [{ id: 'notes', name: 'Notes', targetZ: 0, visible: true, opacity: 100, locked: false }],
+      stamps: [{ ...STAMP, layerId: 'notes' }],
+      steps: [{ id: 'step', col: 1, row: 1, z: 0, direction: 'E', layerId: 'notes' }],
+      ramps: [{ id: 'ramp', col: 2, row: 1, z: 0, direction: 'W', layerId: 'notes' }],
+      labels: [{ id: 'label', col: 3, row: 1, text: 'Note', layerId: 'notes' }],
+    })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.stamps[0].layerId).toBe('notes')
+    expect(restored.steps[0].layerId).toBe('notes')
+    expect(restored.ramps[0].layerId).toBe('notes')
+    expect(restored.labels[0].layerId).toBe('notes')
+  })
+
+  it('loads a legacy label onto the ground Z Level', () => {
+    const save = serialize({ ...BASE, labels: [{ id: 'legacy-label', col: 1, row: 2, text: 'Old map' }] })
+    const restored = deserialize(JSON.parse(JSON.stringify(save)))
+
+    expect(restored.labels[0].z ?? 0).toBe(0)
+  })
+
   it('round-trips room details on an individual label', () => {
     const label = { id: 'label-module-task-1', col: 1, row: 2, text: 'Encounter 1', number: 2, details: 'A narrow chamber with a hidden stair.' }
     const save = serialize({ ...BASE, labels: [label] })

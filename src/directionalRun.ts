@@ -7,6 +7,8 @@ export interface DirectionalRun {
   row: number
   z: number
   direction: Direction
+  groupId?: string
+  layerId?: string
 }
 
 export const RUN_LENGTH = 2  // tiles from top floor to bottom floor

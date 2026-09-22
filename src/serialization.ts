@@ -1,8 +1,12 @@
-import { STAMP_TYPES, OBJECT_STAMP_TYPES, type Stamp, type StampType, type ObjectStampType, type Rotation } from './stamps'
+import { STAMP_TYPES, OBJECT_STAMP_TYPES, type CustomImageAsset, type Stamp, type StampType, type ObjectStampType, type Rotation } from './stamps'
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
 import { type Label } from './labels'
+import { normalizeLayers, type MapLayer } from './layers'
+import { createLayerGrids, type LayerGrids } from './layerGrids'
 import { FLOOR_COLOR, WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, normalizeTilesPerInch, TILES_PER_INCH } from './constants'
+import { normalizeCustomStylePresets, normalizeTextureSettings, type StylePreset, type TextureSettings } from './styles'
+import { DEFAULT_LIGHTING_SETTINGS, normalizeLightingSettings, normalizeLights, type LightingSettings, type MapLight } from './lighting'
 
 const STEP_DIRECTIONS: StepDirection[] = ['N', 'E', 'S', 'W']
 const RAMP_DIRECTIONS: RampDirection[] = ['N', 'E', 'S', 'W']
@@ -13,6 +17,7 @@ export interface MapSave {
   rows: number
   tilesPerInch?: number
   grids: Record<string, number[]>
+  layerGrids: Record<string, Record<string, number[]>>
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
@@ -30,10 +35,17 @@ export interface MapSave {
   lavaColor?: string
   darknessColor?: string
   stamps: Stamp[]
+  customImages?: CustomImageAsset[]
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  layers: MapLayer[]
+  activeLayerId?: string
   environmentalColors?: Record<string, string>
+  textureSettings?: TextureSettings
+  customStylePresets?: StylePreset[]
+  lights?: MapLight[]
+  lightingSettings?: LightingSettings
 }
 
 export interface DeserializedMap {
@@ -42,6 +54,7 @@ export interface DeserializedMap {
   rows: number
   tilesPerInch: number
   grids: Map<number, Uint8Array>
+  layerGrids: LayerGrids
   wallColor: string
   wallOpacity: number
   brushShape: 'square' | 'circle'
@@ -59,14 +72,22 @@ export interface DeserializedMap {
   lavaColor: string
   darknessColor: string
   stamps: Stamp[]
+  customImages: CustomImageAsset[]
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  layers: MapLayer[]
+  activeLayerId: string
   environmentalColors: Map<number, string>
+  textureSettings: TextureSettings
+  customStylePresets: StylePreset[]
+  lights: MapLight[]
+  lightingSettings: LightingSettings
 }
 
 export function serialize(params: {
   grids: Map<number, Uint8Array>
+  layerGrids?: LayerGrids
   cols: number
   rows: number
   tilesPerInch?: number
@@ -87,21 +108,34 @@ export function serialize(params: {
   lavaColor: string
   darknessColor: string
   stamps: Stamp[]
+  customImages?: CustomImageAsset[]
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  layers?: MapLayer[]
+  activeLayerId?: string
   environmentalColors: Map<number, string>
+  textureSettings?: TextureSettings
+  customStylePresets?: StylePreset[]
+  lights?: MapLight[]
+  lightingSettings?: LightingSettings
 }): MapSave {
   const grids: Record<string, number[]> = {}
   for (const [z, grid] of params.grids) {
     grids[String(z)] = Array.from(grid)
   }
+  const layerGrids = Object.fromEntries(Array.from(createLayerGrids(params.layerGrids, params.grids), ([layerId, levelGrids]) => [
+    layerId,
+    Object.fromEntries(Array.from(levelGrids, ([z, grid]) => [String(z), Array.from(grid)])),
+  ]))
+  const layers = normalizeLayers(params.layers)
   return {
     version: 1,
     cols: params.cols,
     rows: params.rows,
     tilesPerInch: normalizeTilesPerInch(params.tilesPerInch ?? TILES_PER_INCH),
     grids,
+    layerGrids,
     wallColor: params.wallColor,
     wallOpacity: params.wallOpacity,
     brushShape: params.brushShape,
@@ -127,6 +161,7 @@ export function serialize(params: {
       if (color !== undefined) out.color = color
       return out as Stamp
     }),
+    customImages: params.customImages ?? [],
     steps: params.steps.map(s => {
       const out = { ...s }
       if (out.ascending === false) delete out.ascending
@@ -138,7 +173,13 @@ export function serialize(params: {
       return out
     }),
     labels: params.labels,
+    layers,
+    activeLayerId: layers.some(layer => layer.id === params.activeLayerId) ? params.activeLayerId : layers[0].id,
     environmentalColors: Object.fromEntries(Array.from(params.environmentalColors.entries())),
+    textureSettings: normalizeTextureSettings(params.textureSettings),
+    customStylePresets: normalizeCustomStylePresets(params.customStylePresets),
+    lights: normalizeLights(params.lights),
+    lightingSettings: normalizeLightingSettings(params.lightingSettings),
   }
 }
 
@@ -177,13 +218,43 @@ export function deserialize(raw: unknown): DeserializedMap {
     throw new Error('Invalid grid')
   }
 
+  const decodedLayerGrids: LayerGrids = new Map()
+  if (typeof s['layerGrids'] === 'object' && s['layerGrids'] !== null && !Array.isArray(s['layerGrids'])) {
+    for (const [layerId, rawLevels] of Object.entries(s['layerGrids'] as Record<string, unknown>)) {
+      if (typeof rawLevels !== 'object' || rawLevels === null || Array.isArray(rawLevels)) continue
+      const levels = new Map<number, Uint8Array>()
+      for (const [rawZ, rawGrid] of Object.entries(rawLevels as Record<string, unknown>)) {
+        const z = Number.parseInt(rawZ, 10)
+        if (Number.isFinite(z) && Array.isArray(rawGrid)) levels.set(z, new Uint8Array(rawGrid as number[]))
+      }
+      if (levels.size > 0) decodedLayerGrids.set(layerId, levels)
+    }
+  }
+  const layerGrids = createLayerGrids(decodedLayerGrids, grids)
+
+  const customImages: CustomImageAsset[] = []
+  if (Array.isArray(s['customImages'])) {
+    const seenTypes = new Set<string>()
+    for (const entry of s['customImages']) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const asset = entry as Record<string, unknown>
+      if (typeof asset['type'] !== 'string' || !asset['type'].startsWith('custom-image-') || seenTypes.has(asset['type'])) continue
+      if (typeof asset['name'] !== 'string' || typeof asset['dataUrl'] !== 'string' || !/^data:image\/(?:png|jpeg|webp);base64,/i.test(asset['dataUrl'])) continue
+      if (typeof asset['aspectRatio'] !== 'number' || !Number.isFinite(asset['aspectRatio']) || asset['aspectRatio'] <= 0) continue
+      seenTypes.add(asset['type'])
+      customImages.push({ type: asset['type'], name: asset['name'], dataUrl: asset['dataUrl'], aspectRatio: asset['aspectRatio'] })
+    }
+  }
+  const customImageTypes = new Set(customImages.map(asset => asset.type))
   const rawStamps = Array.isArray(s['stamps']) ? s['stamps'] : []
   const stamps: Stamp[] = rawStamps.map((entry: unknown): Stamp => {
     if (typeof entry !== 'object' || entry === null) throw new Error('Invalid stamp entry')
     const o = entry as Record<string, unknown>
     if (typeof o['id'] !== 'string') throw new Error('Invalid stamp id')
     const allTypes = [...STAMP_TYPES, ...OBJECT_STAMP_TYPES]
-    if (!allTypes.includes(o['type'] as StampType | ObjectStampType)) throw new Error('Invalid stamp type')
+    const type = typeof o['type'] === 'string' ? o['type'] : ''
+    const isCustomImage = type.startsWith('custom-image-') && customImageTypes.has(type)
+    if (!allTypes.includes(type as StampType | ObjectStampType) && !isCustomImage) throw new Error('Invalid stamp type or missing custom image data')
     if (typeof o['col'] !== 'number') throw new Error('Invalid stamp col')
     if (typeof o['row'] !== 'number') throw new Error('Invalid stamp row')
     if (![0, 90, 180, 270].includes(o['rotation'] as number)) throw new Error('Invalid stamp rotation')
@@ -196,7 +267,7 @@ export function deserialize(raw: unknown): DeserializedMap {
 
     const stamp: Stamp = {
       id: o['id'] as string,
-      type: o['type'] as StampType | ObjectStampType,
+      type: type as StampType | ObjectStampType,
       col: o['col'] as number,
       row: o['row'] as number,
       rotation: o['rotation'] as Rotation,
@@ -205,6 +276,13 @@ export function deserialize(raw: unknown): DeserializedMap {
     if (scale !== undefined && scale !== 1) stamp.scale = scale
     if (o['mirrored'] === true) stamp.mirrored = true
     if (color !== undefined) stamp.color = color
+    if (typeof o['groupId'] === 'string') stamp.groupId = o['groupId']
+    if (typeof o['layerId'] === 'string') stamp.layerId = o['layerId']
+    if (isCustomImage) {
+      const asset = customImages.find(candidate => candidate.type === type)!
+      stamp.assetName = asset.name
+      stamp.aspectRatio = asset.aspectRatio
+    }
     return stamp
   })
 
@@ -226,6 +304,8 @@ export function deserialize(raw: unknown): DeserializedMap {
       direction: o['direction'] as StepDirection,
     }
     if (ascending !== undefined) step.ascending = ascending
+    if (typeof o['groupId'] === 'string') step.groupId = o['groupId']
+    if (typeof o['layerId'] === 'string') step.layerId = o['layerId']
     return step
   })
 
@@ -247,6 +327,8 @@ export function deserialize(raw: unknown): DeserializedMap {
       direction: o['direction'] as RampDirection,
     }
     if (ascending !== undefined) ramp.ascending = ascending
+    if (typeof o['groupId'] === 'string') ramp.groupId = o['groupId']
+    if (typeof o['layerId'] === 'string') ramp.layerId = o['layerId']
     return ramp
   })
 
@@ -264,12 +346,19 @@ export function deserialize(raw: unknown): DeserializedMap {
       row: o['row'] as number,
       text: o['text'] as string,
     }
+    if (typeof o['z'] === 'number') label.z = o['z'] as number
     if (typeof o['number'] === 'number') label.number = o['number']
     if (o['numberOnly'] === true) label.numberOnly = true
     if (isHexColor(o['color'])) label.color = o['color']
     if (typeof o['details'] === 'string') label.details = o['details']
+    if (typeof o['groupId'] === 'string') label.groupId = o['groupId']
+    if (typeof o['layerId'] === 'string') label.layerId = o['layerId']
     return label
   })
+  const layers = normalizeLayers(s['layers'])
+  const activeLayerId = typeof s['activeLayerId'] === 'string' && layers.some(layer => layer.id === s['activeLayerId'])
+    ? s['activeLayerId']
+    : layers[0].id
 
   const showHatching = s['showHatching'] === true
   const hatchColor = typeof s['hatchColor'] === 'string' ? s['hatchColor'] : '#000000'
@@ -300,6 +389,7 @@ export function deserialize(raw: unknown): DeserializedMap {
     rows: s['rows'] as number,
     tilesPerInch,
     grids,
+    layerGrids,
     wallColor: s['wallColor'] as string,
     wallOpacity: s['wallOpacity'] as number,
     brushShape: s['brushShape'] as 'square' | 'circle',
@@ -317,9 +407,16 @@ export function deserialize(raw: unknown): DeserializedMap {
     lavaColor,
     darknessColor,
     stamps,
+    customImages,
     steps,
     ramps,
     labels,
+    layers,
+    activeLayerId,
     environmentalColors,
+    textureSettings: normalizeTextureSettings(s['textureSettings']),
+    customStylePresets: normalizeCustomStylePresets(s['customStylePresets']),
+    lights: normalizeLights(s['lights']),
+    lightingSettings: normalizeLightingSettings(s['lightingSettings'] ?? DEFAULT_LIGHTING_SETTINGS),
   }
 }

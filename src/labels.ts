@@ -3,6 +3,11 @@ export interface Label {
   id: string
   col: number
   row: number
+  // Labels created before Z Levels existed have no z value. Treat them as Z=0
+  // on read so saved maps stay compatible with the level-aware editor.
+  z?: number
+  groupId?: string
+  layerId?: string
   text: string
   number?: number // Optional number for keyed entries (1, 2, 3...)
   numberOnly?: boolean // Render numbered room labels without their descriptive text.
