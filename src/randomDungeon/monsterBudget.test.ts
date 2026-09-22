@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { generateMissionDungeon, getDungeonLevelBudget, remainingMonsterRoomBudget, rollMonsterEncounter } from './missionFirst'
-import { createD6Random } from './random'
-import { MONSTER_CATALOG, createMonsterEncounterTable } from './monsterCatalog'
 import type { MonsterRecord } from './monsterCatalog'
 
 const request = (playerLevel: number) => ({
@@ -61,26 +59,24 @@ describe('monster level budgets', () => {
     expect(remainingMonsterRoomBudget(20, 20, 4, 0)).toBe(0)
   })
 
-  it('samples the full catalog before applying budgets to room groups', () => {
-    const low = generateMissionDungeon(request(1))
-    const high = generateMissionDungeon(request(10))
+  it('builds a level-appropriate, varied population from the encounter table', () => {
+    const result = generateMissionDungeon({
+      ...request(1),
+      seed: 110755675,
+      complexity: 'standard',
+      loopCount: 1,
+      loopPreference: 'double-lock',
+      loopChallenges: ['double-lock'],
+    })
+    const table = result.space!.monsterEncounterTable
+    const groups = result.space!.modules.flatMap(module => module.monsterEncounterGroups ?? [])
 
-    expect(low.ok).toBe(true)
-    expect(high.ok).toBe(true)
-    expect(low.space?.monsterEncounterTable).toHaveLength(5)
-    expect(new Set(low.space?.monsterEncounterTable.map(monster => monster.name)).size).toBe(5)
-    expect(low.space?.monsterEncounterTable.every(monster => MONSTER_CATALOG.includes(monster))).toBe(true)
-    let tableWithHighLevelMonster = false
-    for (let seed = 1; seed <= 20 && !tableWithHighLevelMonster; seed += 1) {
-      const table = createMonsterEncounterTable(createD6Random(seed))
-      tableWithHighLevelMonster = table.some(monster => monster.level === '*' || (typeof monster.level === 'number' && monster.level > 3))
-    }
-    expect(tableWithHighLevelMonster).toBe(true)
-    expect(low.space?.monsterLevelsUsed).toBeLessThanOrEqual(low.space!.dungeonLevelBudget.dungeonBudget)
-    expect(high.space?.monsterLevelsUsed).toBeLessThanOrEqual(high.space!.dungeonLevelBudget.dungeonBudget)
-    expect(low.space?.modules.flatMap(module => module.monsterEncounterGroups ?? []).every(group => group.levelTotal >= low.space!.dungeonLevelBudget.encounterBudget)).toBe(true)
-    expect(low.space?.dungeonLevelBudget.encounterBudget).toBe(4)
-    expect(high.space?.dungeonLevelBudget.encounterBudget).toBe(28)
+    expect(result.ok).toBe(true)
+    expect(table).toHaveLength(5)
+    expect(table).toEqual(expect.arrayContaining(groups.map(group => group.monster)))
+    expect(table.every(monster => typeof monster.level === 'number' && monster.level >= 0 && monster.level <= 3)).toBe(true)
+    expect(new Set(groups.map(group => group.monster.name)).size).toBe(groups.length)
+    expect(result.space?.monsterLevelsUsed).toBeLessThanOrEqual(result.space!.dungeonLevelBudget.dungeonBudget)
   })
 
   it('rejects a player level outside the picker range', () => {

@@ -14,7 +14,7 @@ import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 import { createMonsterEncounterTable, MONSTER_CATALOG, pickRandomMonsterFromTable, type MonsterRecord } from './monsterCatalog'
-import { minimumMonsterEncounterCost, numericMonsterLevel, remainingMonsterRoomBudget, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
+import { minimumMonsterEncounterCost, monsterFitsLevelBudget, numericMonsterLevel, remainingMonsterRoomBudget, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -282,14 +282,23 @@ function ensureHighLevelContractMonsterOnTable(random: ReturnType<typeof createD
   return candidates
 }
 
+function createAmbientMonsterRoster(random: ReturnType<typeof createD6Random>, budget: DungeonLevelBudget): MonsterRecord[] {
+  const tierCandidates = MONSTER_CATALOG.filter(monster => monsterFitsLevelBudget(monster, budget))
+  const standardEncounterCandidates = tierCandidates.filter(monster => {
+    const level = numericMonsterLevel(monster)
+    return level !== null && minimumMonsterEncounterCost(level, budget.encounterBudget) <= budget.encounterBudget
+  })
+  const candidates = standardEncounterCandidates.length >= 5 ? standardEncounterCandidates : tierCandidates
+  return createMonsterEncounterTable(random, 5, candidates)
+}
+
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
   plan.dungeonLevelBudget = resolveDungeonLevelBudget(request.playerLevel)
-  // The table is an unrestricted sample from the catalog. Dungeon and
-  // encounter budgets are applied only when a table entry is assigned to a
-  // room, so high-level entries can still appear and be documented as
-  // rejected when they cannot fit the generated dungeon.
-  plan.monsterEncounterTable = createMonsterEncounterTable(random)
+  // The ambient roster is party-tier compatible before it is assigned to
+  // rooms, preventing one affordable entry from monopolizing a table of
+  // otherwise unusable threats.
+  plan.monsterEncounterTable = createAmbientMonsterRoster(random, plan.dungeonLevelBudget)
   const highLevelContractCycles = mission.cycles.filter(cycle => cycle.challenge === 'dangerous-route' || cycle.challenge === 'patrolled-cycle' || cycle.challenge === 'gambit')
   const highLevelContractMonsterCandidates = highLevelContractCycles.length > 0
     ? ensureHighLevelContractMonsterOnTable(random, plan.monsterEncounterTable, plan.dungeonLevelBudget)
@@ -370,6 +379,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   })
   const monsterRoomCount = modulesByMonsterPriority.filter(module => module.encounters?.includes('monster')).length
   let monsterRoomsRemaining = monsterRoomCount
+  const usedAmbientMonsters = new Set<MonsterRecord>()
   for (const module of modulesByMonsterPriority) {
     const resolvedEncounters: RoomEncounter[] = []
     const monsterGroups = [] as NonNullable<SpatialModule['monsterEncounterGroups']>
@@ -397,7 +407,10 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
         const level = numericMonsterLevel(monster)
         return level !== null && minimumMonsterEncounterCost(level, plan.dungeonLevelBudget.encounterBudget) <= availableDungeonBudget
       })
-      const selectedMonster = contractMonster ?? (affordableMonsters.length > 0 ? pickRandomMonsterFromTable(random, affordableMonsters) : undefined)
+      const unusedAffordableMonsters = affordableMonsters.filter(monster => !usedAmbientMonsters.has(monster))
+      const selectedMonster = contractMonster ?? (unusedAffordableMonsters.length > 0
+        ? pickRandomMonsterFromTable(random, unusedAffordableMonsters)
+        : affordableMonsters.length > 0 ? pickRandomMonsterFromTable(random, affordableMonsters) : undefined)
       const group = selectedMonster
         ? rollMonsterEncounter(selectedMonster, plan.dungeonLevelBudget.encounterBudget, remainingDungeonBudget)
         : null
@@ -423,6 +436,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       resolvedEncounters.push('monster')
       monsterGroups.push(group)
       monsterDetails.push(group.monster)
+      if (!contractMonster) usedAmbientMonsters.add(group.monster)
       monsterLevelsUsed += group.levelTotal
     }
     if (hasMonsterRoom) monsterRoomsRemaining -= 1
