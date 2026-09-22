@@ -454,12 +454,10 @@ describe('mission-first dungeon generation', () => {
     expect(runKinds).toEqual(new Set(['steps', 'ramp']))
   })
 
-  it('rolls room encounters and independent treasure by seed', () => {
+  it('rolls room encounters and assigns table-driven treasure by seed', () => {
     const encounterKinds = new Set<string>()
     const encounterCounts = { empty: 0, monster: 0, trap: 0, hazard: 0 }
-    const encounterTreasurePairs = new Set<string>()
     let roomCount = 0
-    let treasureCount = 0
 
     for (let seed = 1; seed <= 80; seed++) {
       const result = generateMissionDungeon(request({ seed, complexity: 'compact', loopCount: 0 }))
@@ -476,9 +474,8 @@ describe('mission-first dungeon generation', () => {
         const hasTreasure = Boolean(room.hasTreasure)
         const chestInRoom = chest.some(stamp => room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))
         expect(chestInRoom).toBe(hasTreasure)
-        encounterTreasurePairs.add(`${room.encounter}/${hasTreasure}`)
+        expect(room.treasureFinds?.every(find => find.moduleId === room.id)).toBe(true)
         roomCount++
-        if (hasTreasure) treasureCount++
         if (room.encounter === 'monster') {
           expect(result.snapshot!.stamps.some(stamp => stamp.type === 'TriangleArrowhead1x1' && room.footprint.some(point => point.col === stamp.col && point.row === stamp.row))).toBe(false)
           expect(result.snapshot!.labels.some(label => label.text === 'Monster' && room.footprint.some(point => point.col === label.col && point.row === label.row))).toBe(false)
@@ -492,6 +489,9 @@ describe('mission-first dungeon generation', () => {
         }
       }
       expect(chest).toHaveLength(rooms.filter(room => room.hasTreasure).length)
+      expect(result.space!.treasurePlan.gpTotal).toBe(300)
+      expect(result.space!.treasurePlan.finds.filter(find => find.tier === 'poor')).toHaveLength(5)
+      expect(result.space!.treasurePlan.finds.filter(find => find.tier === 'normal')).toHaveLength(3)
     }
 
     expect([...encounterKinds].sort()).toEqual(['empty', 'hazard', 'monster', 'trap'])
@@ -503,9 +503,6 @@ describe('mission-first dungeon generation', () => {
     expect(encounterCounts.trap / roomCount).toBeLessThan(0.17)
     expect(encounterCounts.hazard / roomCount).toBeGreaterThan(0.05)
     expect(encounterCounts.hazard / roomCount).toBeLessThan(0.17)
-    expect(treasureCount / roomCount).toBeGreaterThan(0.27)
-    expect(treasureCount / roomCount).toBeLessThan(0.40)
-    expect([...encounterTreasurePairs]).toEqual(expect.arrayContaining(['empty/false', 'empty/true', 'monster/false', 'monster/true', 'trap/false', 'trap/true', 'hazard/false', 'hazard/true']))
   })
 
   it('builds one five-entry monster encounter table and assigns monster rooms from it', () => {

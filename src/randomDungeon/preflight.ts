@@ -99,6 +99,10 @@ export function validateGenerationRequest(request: Partial<GenerationRequest>): 
   if (!Number.isFinite(request.tilesPerInch) || ![2, 4, 8].includes(request.tilesPerInch ?? 0)) add('invalid-tile-size', 'Tile size must use 2, 4, or 8 tiles per inch.')
   if (!request.complexity || !['compact', 'standard', 'dense'].includes(request.complexity)) add('invalid-complexity', 'Choose Compact, Standard, or Dense complexity.')
   if (request.playerLevel !== undefined && (!Number.isInteger(request.playerLevel) || request.playerLevel < 1 || request.playerLevel > 10)) add('invalid-player-level', 'Dungeon level must be an integer from 1 to 10.')
+  if (request.magicItemSources !== undefined) {
+    if (!Array.isArray(request.magicItemSources)) add('invalid-magic-item-sources', 'Magic-item sources must be a list.')
+    else if (request.magicItemSources.some(source => source !== 'shadowdark-core' && source !== 'custom')) add('invalid-magic-item-source', 'Choose a supported magic-item source.')
+  }
   if (request.orientation !== undefined && !['landscape', 'portrait'].includes(request.orientation)) add('invalid-orientation', 'Orientation must be landscape or portrait.')
   if (!Number.isSafeInteger(request.loopCount) || (request.loopCount ?? -1) < 0) add('invalid-loop-count', 'Loop count must be a non-negative integer.')
   if (!isLoopPreference(request.loopPreference)) add('invalid-loop-preference', 'Choose a valid loop preference.')
@@ -171,6 +175,7 @@ export function createGenerationRequest(input: Partial<GenerationRequest> & Pick
     loopCount: input.loopCount ?? 0,
     loopPreference: input.loopPreference ?? 'varied',
     playerLevel: input.playerLevel ?? 1,
+    ...(input.magicItemSources ? { magicItemSources: input.magicItemSources } : {}),
     ...(input.loopChallenges ? { loopChallenges: input.loopChallenges } : {}),
     ...(input.availableStampTypes ? { availableStampTypes: input.availableStampTypes } : {}),
   }
