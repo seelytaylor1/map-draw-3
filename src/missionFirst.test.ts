@@ -300,9 +300,10 @@ describe('mission-first dungeon generation', () => {
     expect(doubleLock.mission.locks).toHaveLength(2)
   })
 
-  it('realizes Dramatic Arc inside Start behind a room-wide darkness band', () => {
+  it('realizes Dramatic Arc inside room 1 behind a room-wide darkness band', () => {
     const result = generateMissionDungeon(request({ seed: 42, loopCount: 1, loopChallenges: ['dramatic-arc'] }))
     const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
+    const goal = result.space!.modules.find(module => module.missionNodeId === result.mission.goalNodeId)
     const grid = result.snapshot!.grids.get(0)!
     const darkness = start.footprint.filter(point => grid[point.row * result.request.cols + point.col] === DARKNESS)
     const darkRows = new Map<number, number>()
@@ -310,7 +311,7 @@ describe('mission-first dungeon generation', () => {
     const darknessKeys = new Set(darkness.map(point => `${point.col},${point.row}`))
 
     expect(result.space!.anchors[result.mission.goalNodeId]).toBe(start.id)
-    expect(result.space!.modules.some(module => module.missionNodeId === result.mission.goalNodeId)).toBe(false)
+    expect(goal).toBeUndefined()
     expect(result.snapshot!.labels.some(label => label.id === 'label-dramatic-goal')).toBe(false)
     expect(start.width).toBeGreaterThanOrEqual(7)
     expect(start.height).toBeGreaterThanOrEqual(7)
@@ -331,29 +332,31 @@ describe('mission-first dungeon generation', () => {
     expect(side(entryTile!.row)).not.toBe('darkness')
     expect(side(chest.row)).not.toBe('darkness')
     expect(side(entryTile!.row)).not.toBe(side(chest.row))
+    expect(result.space!.connections.some(connection => connection.toModuleId === start.id && connection.traversable !== 'blocked')).toBe(true)
   })
 
-  it('keeps the Dramatic Arc descent on a side with an open Start connection', () => {
+  it('keeps the Dramatic Arc descent and goal on opposite sides of room 1', () => {
     const result = generateMissionDungeon(request({ seed: 9, loopCount: 1, loopChallenges: ['dramatic-arc'] }))
     const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
     const run = result.snapshot!.steps[0] ?? result.snapshot!.ramps[0]!
     const [stair] = runTiles(run)
-    const cycleConnections = result.space!.connections.filter(connection => connection.fromModuleId === start.id || connection.toModuleId === start.id)
     const grid = result.snapshot!.grids.get(0)!
-    const bandLength = Math.min(6, Math.max(3, Math.min(4, Math.max(start.width, start.height) - 2)))
-    const bandStart = Math.floor((Math.max(start.width, start.height) - bandLength) / 2)
-    const side = (point: { col: number; row: number }) => {
-      const position = start.width >= start.height ? point.row - start.origin.row : point.col - start.origin.col
-      return position < bandStart ? 'before' : position >= bandStart + bandLength ? 'after' : 'darkness'
-    }
-    const openSides = cycleConnections
-      .filter(connection => connection.traversable !== 'blocked')
-      .map(connection => connection.fromModuleId === start.id ? connection.path[0]! : connection.path[connection.path.length - 1]!)
-      .map(side)
+    const darkness = start.footprint.filter(point => grid[point.row * result.request.cols + point.col] === DARKNESS)
+    const darkRows = new Map<number, number>()
+    for (const point of darkness) darkRows.set(point.row, (darkRows.get(point.row) ?? 0) + 1)
+    const darkTop = Math.min(...darkRows.keys())
+    const darkBottom = Math.max(...darkRows.keys())
+    const side = (row: number) => row < darkTop ? 'before' : row > darkBottom ? 'after' : 'darkness'
+    const cycle = result.mission.cycles[0]!
+    const goalEdge = result.mission.edges.find(edge => edge.from === cycle.routeB[cycle.routeB.length - 2] && edge.to === result.mission.goalNodeId)!
+    const goalConnection = result.space!.connections.find(connection => connection.missionEdgeId === goalEdge.id)!
+    const goalAperture = goalConnection.toModuleId === start.id ? goalConnection.path[goalConnection.path.length - 1]! : goalConnection.path[0]!
 
     expect(result.ok).toBe(true)
     expect(grid[stair!.row * result.request.cols + stair!.col]).not.toBe(DARKNESS)
-    expect(openSides).toContain(side(stair!))
+    expect(side(stair!.row)).not.toBe('darkness')
+    expect(side(goalAperture.row)).not.toBe('darkness')
+    expect(side(goalAperture.row)).not.toBe(side(stair!.row))
   })
 
   it('does not add a deprecated free-floating Goal label for the reported Dramatic Arc seed', () => {
@@ -361,6 +364,23 @@ describe('mission-first dungeon generation', () => {
 
     expect(result.ok).toBe(true)
     expect(result.snapshot!.labels.some(label => label.text === 'Goal' && label.id === 'label-dramatic-goal')).toBe(false)
+  })
+
+  it('keeps the reported Varied seed to one physical Dramatic Arc cycle', () => {
+    const result = generateMissionDungeon(request({ seed: 1284289473, loopCount: 1 }))
+    const start = result.space!.modules.find(module => module.missionNodeId === 'start')!
+    const goal = result.space!.modules.find(module => module.missionNodeId === result.mission.goalNodeId)
+
+    expect(result.ok).toBe(true)
+    expect(result.mission.cycles).toHaveLength(1)
+    expect(result.mission.cycles[0]!.challenge).toBe('dramatic-arc')
+    expect(goal).toBeUndefined()
+    expect(result.space!.anchors[result.mission.goalNodeId]).toBe(start.id)
+    expect(result.snapshot!.labels.find(label => label.number === 1)?.id).toBe(`label-${start.id}`)
+    const grid = result.snapshot!.grids.get(0)!
+    expect(start.footprint.some(point => grid[point.row * result.request.cols + point.col] === DARKNESS)).toBe(true)
+    expect(start.ports).toHaveLength(2)
+    expect(result.space!.connections).toHaveLength(result.space!.modules.length)
   })
 
   it('realizes Hub and Spoke as a central hub with two declared cycle spokes', () => {

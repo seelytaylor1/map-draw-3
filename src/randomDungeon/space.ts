@@ -173,12 +173,30 @@ export interface SpaceValidationResult { valid: boolean; diagnostics: Generation
 export function buildSpacePlan(request: GenerationRequest, mission: Mission, attempt = 0): SpacePlan {
   const style = getGenerationStyle(request.style)
   const dramaticCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc')
-  const dramaticGoalInStart = mission.cycles.some(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
+  const dramaticGoalInStart = dramaticCycle?.roles.objectiveNode === mission.goalNodeId
+  // Dramatic Arc's one-loop Spine contract is a single room-spanning cycle:
+  // Start and Goal share room 1, Route A runs into the room's obstacle, and
+  // Route B continues from Route A's far end before returning to the Goal side.
+  // The blocked mission edge is represented by the darkness band itself, so it
+  // must not become a second physical corridor back into the shared room.
+  const dramaticBlockedEdge = dramaticGoalInStart
+    ? mission.edges.find(edge => edge.blocked && dramaticCycle.routeEdgeIds.includes(edge.id))
+    : undefined
+  const dramaticRouteBStart = dramaticGoalInStart
+    ? mission.edges.find(edge => edge.from === dramaticCycle.routeB[0] && edge.to === dramaticCycle.routeB[1] && dramaticCycle.routeEdgeIds.includes(edge.id))
+    : undefined
+  const dramaticRouteAEnd = dramaticGoalInStart ? dramaticCycle.routeA[dramaticCycle.routeA.length - 2] : undefined
   const modules: SpatialModule[] = mission.nodes.filter(node => !dramaticGoalInStart || node.id !== mission.goalNodeId).map(node => ({
     id: `module-${node.id}`, type: style.moduleType(node), missionNodeId: node.id,
     origin: { col: -1, row: -1 }, width: 3, height: 3, footprint: [], ports: [],
   }))
-  const edges = mission.edges.map(edge => ({ ...edge, originalId: edge.id }))
+  const edges = mission.edges
+    .filter(edge => edge.id !== dramaticBlockedEdge?.id)
+    .map(edge => ({
+      ...edge,
+      ...(edge.id === dramaticRouteBStart?.id && dramaticRouteAEnd ? { from: dramaticRouteAEnd } : {}),
+      originalId: edge.id,
+    }))
   for (const cycle of mission.cycles.filter(c => c.challenge === 'unknown-return')) {
     const edge = edges.find(e => e.id === `unknown-return-back-${cycle.id}`)
     if (!edge) continue
@@ -581,7 +599,14 @@ export function validateSpacePlan(request: GenerationRequest, plan: SpacePlan, m
       if (pointInModule(point, module)) addDiagnostic(diagnostics, request, 'corridor-room-overlap', `Connection ${connection.id} passes through module ${module.id}.`, 'protected room footprint', point)
     }
   }
-  for (const missionEdge of mission.edges) if (!missionEdgeConnections.has(missionEdge.id)) addDiagnostic(diagnostics, request, 'unrealized-mission-edge', `Mission relationship ${missionEdge.id} has no spatial connection.`, 'Mission/Space relationship')
+  const dramaticGoalCycle = mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc' && cycle.roles.objectiveNode === mission.goalNodeId)
+  const dramaticDarknessEdgeId = dramaticGoalCycle
+    ? mission.edges.find(edge => edge.blocked && dramaticGoalCycle.routeEdgeIds.includes(edge.id))?.id
+    : undefined
+  for (const missionEdge of mission.edges) {
+    if (missionEdgeConnections.has(missionEdge.id) || missionEdge.id === dramaticDarknessEdgeId) continue
+    addDiagnostic(diagnostics, request, 'unrealized-mission-edge', `Mission relationship ${missionEdge.id} has no spatial connection.`, 'Mission/Space relationship')
+  }
   const progression = validateProgression(mission)
   diagnostics.push(...progression.diagnostics)
   for (const cycle of mission.cycles) {
@@ -781,7 +806,10 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
       })
       if (connectedCandidates.length > 0) outwardCandidates.splice(0, outwardCandidates.length, ...connectedCandidates)
     }
-    const preferredOutward = oppositeDirection[directionForPath(firstConnection.path.slice(0, 2))]
+    const firstConnectionDirection = directionForPath(firstConnection.path.slice(0, 2))
+    const preferredOutward = dramaticLayout?.start === start
+      ? firstConnectionDirection
+      : oppositeDirection[firstConnectionDirection]
     outwardCandidates.sort((a, b) => Number(b.outward === preferredOutward) - Number(a.outward === preferredOutward)
       || a.inside.row - b.inside.row || a.inside.col - b.inside.col || directions.indexOf(a.outward) - directions.indexOf(b.outward))
     const origin = outwardCandidates[0]?.run
