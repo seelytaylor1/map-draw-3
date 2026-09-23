@@ -322,7 +322,6 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     '1. Torch extinguished',
     ...plan.monsterEncounterTable.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
   ].join('\n'))
-  plan.generalNotes.push(`Monster budget: dungeon level ${request.playerLevel ?? 1} · encounters ${plan.dungeonLevelBudget.encounterBudget} levels · dungeon ${plan.dungeonLevelBudget.dungeonBudget} levels.`)
   const roomHazardNames = new Set<string>()
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
     module.encounter = rollRoomEncounter(random)
@@ -473,7 +472,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
         if (encounter === 'hazard') return [formatHazardRecord(module.hazardDetails![hazardIndex++]!)]
         return []
       })
-    module.generatedDetails = module.hasTreasure ? [...encounterDetails, 'Treasure: present.'] : encounterDetails
+    module.generatedDetails = encounterDetails
   }
   const goldRoomId = plan.anchors[mission.goalNodeId] ?? plan.modules.find(module => module.footprint.length > 0)?.id ?? ''
   plan.treasurePlan = generateTreasurePlan(
@@ -487,22 +486,9 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     module.treasureFinds = plan.treasurePlan.finds.filter(find => find.moduleId === module.id)
     module.hasTreasure = module.treasureFinds.length > 0
     const treasureDetails = module.treasureFinds.map(formatTreasureFind)
-    if (treasureDetails.length > 0) module.generatedDetails = [...(module.generatedDetails ?? []), 'Treasure: present.', ...treasureDetails]
+    if (treasureDetails.length > 0) module.generatedDetails = [...(module.generatedDetails ?? []), ...treasureDetails]
   }
-  plan.generalNotes.push(...plan.treasurePlan.notes)
   plan.monsterLevelsUsed = monsterLevelsUsed
-  plan.generalNotes.push(`Monster levels used: ${monsterLevelsUsed} / ${plan.dungeonLevelBudget.dungeonBudget}.`)
-  if (plan.monsterRejections.length > 0) {
-    plan.generalNotes.push([
-      'Rejected monster encounters:',
-      ...plan.monsterRejections.map(rejection => {
-        const room = rejection.missionNodeId ?? rejection.moduleId
-        const candidates = rejection.candidateMonsters.join(', ')
-        const reserve = rejection.futureMonsterRooms > 0 ? `; ${rejection.reservedDungeonBudget} reserved for ${rejection.futureMonsterRooms} future standard room${rejection.futureMonsterRooms === 1 ? '' : 's'}` : ''
-        return `${room}: ${candidates} rejected; ${rejection.remainingDungeonBudget} dungeon levels remained${reserve}, leaving ${rejection.availableDungeonBudget} available, but at least ${rejection.minimumRequiredLevel} were needed for a ${rejection.encounterBudget}-level encounter.`
-      }),
-    ].join('\n'))
-  }
   const hallwayTrapConnections = plan.connections.filter(connection => connection.condition === 'trap')
   if (hallwayTrapConnections.length > 0) {
     const hallwayTrap = createTrapRecord(random)

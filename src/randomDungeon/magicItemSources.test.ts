@@ -41,7 +41,7 @@ describe('magic item sources', () => {
 
     expect(result.ok).toBe(true)
     expect(result.space!.treasurePlan.finds.every(find => (find.magicItems?.length ?? 0) === 0)).toBe(true)
-    expect(result.space!.generalNotes).toEqual(expect.arrayContaining([
+    expect(result.space!.treasurePlan.notes).toEqual(expect.arrayContaining([
       expect.stringContaining('No magic-item source is enabled'),
     ]))
   })

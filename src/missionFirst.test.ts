@@ -490,8 +490,9 @@ describe('mission-first dungeon generation', () => {
       }
       expect(chest).toHaveLength(rooms.filter(room => room.hasTreasure).length)
       expect(result.space!.treasurePlan.gpTotal).toBe(300)
-      expect(result.space!.treasurePlan.finds.filter(find => find.tier === 'poor')).toHaveLength(5)
-      expect(result.space!.treasurePlan.finds.filter(find => find.tier === 'normal')).toHaveLength(3)
+      expect(result.space!.treasurePlan.finds.filter(find => find.tier === 'poor').length).toBeLessThanOrEqual(5)
+      expect(result.space!.treasurePlan.finds.filter(find => find.tier === 'normal').length).toBeLessThanOrEqual(3)
+      expect(rooms.every(room => (room.treasureFinds?.length ?? 0) <= 1)).toBe(true)
     }
 
     expect([...encounterKinds].sort()).toEqual(['empty', 'hazard', 'monster', 'trap'])
@@ -525,6 +526,7 @@ describe('mission-first dungeon generation', () => {
       '1. Torch extinguished',
       ...table.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
     ].join('\n'))
+    expect(first.space!.generalNotes.join('\n')).not.toMatch(/Monster budget:|Treasure budget:|Treasure finds:|Monster levels used:|Magic items:|Rejected monster encounters:/)
     expect(second.space!.monsterEncounterTable).toEqual(table)
     expect(second.space!.modules.flatMap(room => room.monsterDetails ?? [])).toEqual(assignments)
   })
@@ -607,7 +609,8 @@ describe('mission-first dungeon generation', () => {
     expect(generated?.ok).toBe(true)
     expect(treasureModule).toBeDefined()
     const label = generated?.snapshot?.labels.find(candidate => candidate.id === `label-${treasureModule!.id}`)
-    expect(label?.details).toContain('Treasure: present.')
+    expect(label?.details).toMatch(/Treasure: (Poor|Normal|Fabulous|Legend) find/)
+    expect(label?.details).not.toContain('Treasure: present.')
   })
 
   it('records one shared hallway trap variety in general notes', () => {

@@ -394,6 +394,7 @@ export default function App() {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const dungeonInputRef = useRef<HTMLInputElement>(null)
   const isoDiagnosticEnabled = useRef(new URLSearchParams(window.location.search).has('iso-diagnostic')).current
+  const generationDiagnosticEnabled = useRef(new URLSearchParams(window.location.search).has('generation-debug')).current
   const isoDiagnosticRequestIdRef = useRef(0)
   const isoDiagnosticRequestRef = useRef<{ requestId: number; config: ReturnType<typeof normalizeIsoDiagnosticConfig> } | null>(null)
   const isoDiagnosticReportsRef = useRef<IsoDiagnosticReport[]>([])
@@ -2415,6 +2416,17 @@ export default function App() {
   const generateRandomDungeonWithSeed = useCallback(async (seed: number) => {
     try {
       const result = generateMissionDungeon({ ...generationRequest, seed })
+      if (generationDiagnosticEnabled && result.space) {
+        console.debug('Dungeon generation details', {
+          seed: result.seed,
+          monsterBudget: result.space.dungeonLevelBudget,
+          monsterLevelsUsed: result.space.monsterLevelsUsed,
+          monsterRejections: result.space.monsterRejections,
+          treasureBudgetGp: result.space.treasurePlan.gpTotal,
+          treasureFinds: result.space.treasurePlan.finds,
+          treasureNotes: result.space.treasurePlan.notes,
+        })
+      }
       setGenerationSeedInput(String(result.seed))
       setGenerationResult(result)
       if (!result.ok || !result.snapshot) {
@@ -2436,7 +2448,7 @@ export default function App() {
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Mission-first dungeon generation failed.')
     }
-  }, [brushShape, generationRequest])
+  }, [brushShape, generationDiagnosticEnabled, generationRequest])
 
   const handleGenerateRandomDungeon = useCallback(() => {
     if (!generationSeedLockedRef.current) return generateRandomDungeonWithSeed(createRandomSeed())

@@ -94,7 +94,7 @@ describe('monster level budgets', () => {
     expect(first.space?.monsterLevelsUsed).toBe(second.space?.monsterLevelsUsed)
   })
 
-  it('documents monster encounters rejected by the dungeon budget', () => {
+  it('retains monster encounters rejected by the dungeon budget as diagnostics', () => {
     let generated: ReturnType<typeof generateMissionDungeon> | undefined
     for (let seed = 1; seed <= 20 && !generated; seed += 1) {
       const result = generateMissionDungeon({ ...request(1), seed, complexity: 'dense' })
@@ -103,9 +103,8 @@ describe('monster level budgets', () => {
 
     expect(generated?.space?.monsterRejections.length).toBeGreaterThan(0)
     const rejection = generated!.space!.monsterRejections[0]!
-    const note = generated!.space!.generalNotes.find(candidate => candidate.startsWith('Rejected monster encounters:'))
-    expect(note).toContain(rejection.missionNodeId ?? rejection.moduleId)
-    expect(note).toContain('rejected')
-    expect(note).toContain(String(rejection.remainingDungeonBudget))
+    expect(rejection.moduleId).toBeTruthy()
+    expect(rejection.remainingDungeonBudget).toBeGreaterThanOrEqual(0)
+    expect(generated!.space!.generalNotes.some(note => note.startsWith('Rejected monster encounters:'))).toBe(false)
   })
 })
