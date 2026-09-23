@@ -3514,7 +3514,26 @@ export default function App() {
         </div>
 
         <div className="workspace-panel" role="tabpanel" hidden={workspaceTab !== 'document'}>
-          <div className="panel-intro"><strong>Canvas & file</strong><span>Set the printed page, save your work, or export the map as PNG, HTML, or Markdown.</span></div>
+          <div className="panel-intro"><strong>File</strong><span>Manage the map, page size, and exports.</span></div>
+
+        <Section title="Map file" icon={<IconSave size={14} />} defaultOpen>
+          <div className="row file-action-row">
+            <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
+            <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
+          </div>
+          {loadError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{loadError}</div>}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) handleFileLoad(file)
+              e.target.value = ''
+            }}
+          />
+        </Section>
 
         <Section title="Canvas size" icon={<IconImage size={14} />} defaultOpen>
           <div className="canvas-size-stack">
@@ -3583,70 +3602,49 @@ export default function App() {
 
           </div>
 
-          <div className="subsection-label">Export region</div>
-          <div className="field-stack">
-            <ToolButton
-              icon={<IconFrame size={14} />}
-              label={cropMode ? 'Finish crop selection' : 'Select crop region'}
-              active={cropMode}
-              onClick={() => {
-                setCropMode(value => !value)
-                setObjectSelection([])
-                setSelectionMode(false)
-                cropDragRef.current = null
-                setCropDrag(null)
-              }}
-            />
-            {cropMode && <div className="hint">Drag over the map to choose bounds, or drag a marked corner to resize. Right-click resets the crop.</div>}
-            <label className="field-row"><span>Pixels per cell</span><input aria-label="Export pixels per cell" className="num-field" type="number" min={16} max={600} value={exportPixelsPerCell} onChange={e => setExportPixelsPerCell(Math.max(16, Math.min(600, Number(e.target.value) || 75)))} /></label>
-            <div className="hint">{(() => { const region = normalizeExportRegion(exportRegion, cols, rows); const size = showIso ? exportCropRect(region, exportPixelsPerCell, 'iso', rows) : exportDimensions(region, exportPixelsPerCell); return `${Math.round(size.width)} × ${Math.round(size.height)}px output` })()}</div>
-            <Btn onClick={() => { setExportRegion(wholeMapRegion(cols, rows)); setCropMode(false); cropDragRef.current = null; setCropDrag(null) }}>Reset crop to full map</Btn>
-            <label className="field-row"><span>Format</span><select aria-label="Export format" className="num-field" value={exportFormat} onChange={e => setExportFormat(e.target.value as MapExportFormat)}>
-              <option value="png">PNG</option>
-              <option value="webp">WebP</option>
-              <option value="jpg">JPG (white background)</option>
-              <option value="uvtt">Universal VTT (.dd2vtt)</option>
-            </select></label>
-          </div>
+        </Section>
 
-          <div className="subsection-label">File actions</div>
-          <div className="row">
-            <Btn onClick={handleSave}><IconSave size={13} /> Save</Btn>
-            <Btn onClick={() => fileInputRef.current?.click()}><IconFolder size={13} /> Load</Btn>
-          </div>
+        <Section title="Export map" icon={<IconImage size={14} />} defaultOpen>
+          <ToolButton icon={<IconHash size={14} />} label="Player view" active={playerView} onClick={() => setPlayerView(value => !value)} />
+          <div className="hint">{playerView ? 'Room numbers, trap, hazard and chest icons hidden; secret doors become walls; locked doors become regular doors' : 'Room numbers, trap, hazard and chest icons visible; secret and locked doors shown'}</div>
+          <label className="field-row"><span>Format</span><select aria-label="Export format" className="num-field" value={exportFormat} onChange={e => setExportFormat(e.target.value as MapExportFormat)}>
+            <option value="png">PNG</option>
+            <option value="webp">WebP</option>
+            <option value="jpg">JPG (white background)</option>
+            <option value="uvtt">Universal VTT (.dd2vtt)</option>
+          </select></label>
           <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleExport}>
             <IconImage size={13} /> Export {exportFormat === 'uvtt' ? 'Universal VTT' : exportFormat.toUpperCase()}
           </button>
           {exportError && <div role="alert" className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{exportError}</div>}
-          <div className="row">
+
+          <details className="file-options">
+            <summary>Region &amp; resolution</summary>
+            <div className="field-stack">
+              <ToolButton
+                icon={<IconFrame size={14} />}
+                label={cropMode ? 'Finish crop selection' : 'Select crop region'}
+                active={cropMode}
+                onClick={() => {
+                  setCropMode(value => !value)
+                  setObjectSelection([])
+                  setSelectionMode(false)
+                  cropDragRef.current = null
+                  setCropDrag(null)
+                }}
+              />
+              {cropMode && <div className="hint">Drag over the map to choose bounds, or drag a marked corner to resize. Right-click resets the crop.</div>}
+              <label className="field-row"><span>Pixels per cell</span><input aria-label="Export pixels per cell" className="num-field" type="number" min={16} max={600} value={exportPixelsPerCell} onChange={e => setExportPixelsPerCell(Math.max(16, Math.min(600, Number(e.target.value) || 75)))} /></label>
+              <div className="hint">{(() => { const region = normalizeExportRegion(exportRegion, cols, rows); const size = showIso ? exportCropRect(region, exportPixelsPerCell, 'iso', rows) : exportDimensions(region, exportPixelsPerCell); return `${Math.round(size.width)} × ${Math.round(size.height)}px output` })()}</div>
+              <Btn onClick={() => { setExportRegion(wholeMapRegion(cols, rows)); setCropMode(false); cropDragRef.current = null; setCropDrag(null) }}>Reset crop to full map</Btn>
+            </div>
+          </details>
+
+          <div className="subsection-label">Document exports</div>
+          <div className="row file-action-row">
             <Btn onClick={handleExportHtml}>Export HTML</Btn>
             <Btn onClick={handleExportMarkdown}>Export MD</Btn>
           </div>
-
-          <div className="subsection-label">View</div>
-          <ToolButton
-            icon={<IconHash size={14} />}
-            label="Player view"
-            active={playerView}
-            onClick={() => setPlayerView(value => !value)}
-          />
-          <div className="hint">{playerView ? 'Room numbers, trap, hazard and chest icons hidden; secret doors become walls; locked doors become regular doors' : 'Room numbers, trap, hazard and chest icons visible; secret and locked doors shown'}</div>
-
-          {loadError && (
-            <div className="hint" style={{ borderLeftColor: 'var(--danger)', color: '#e08b71' }}>{loadError}</div>
-          )}
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: 'none' }}
-            onChange={e => {
-              const file = e.target.files?.[0]
-              if (file) handleFileLoad(file)
-              e.target.value = ''
-            }}
-          />
         </Section>
 
         <Section title="Import dungeon" icon={<IconFolder size={14} />}>
@@ -3661,8 +3659,7 @@ export default function App() {
           <div className="hint">Accepts Watabou One Page Dungeon JSON with room/corridor geometry and donjon Random Dungeon JSON cell matrices. Import replaces the open map after confirmation.</div>
         </Section>
 
-        <Section title="Style" icon={<IconHatch size={14} />} defaultOpen>
-          <div className="subsection-label">Reusable map styles</div>
+        <Section title="Styles" icon={<IconHatch size={14} />}>
           <div className="field-stack">
             {[...BUILT_IN_STYLE_PRESETS, ...customStylePresets].map(preset => (
               <div key={preset.id} className="row">
@@ -3680,7 +3677,9 @@ export default function App() {
             </div>
             <div className="hint">Styles capture wall and floor colors, grid, shading, hatching, outlines, and texture. Applying one is undoable with Ctrl/Cmd+Z.</div>
           </div>
+        </Section>
 
+        <Section title="Appearance" icon={<IconHatch size={14} />}>
           <div className="subsection-label">Texture overlay</div>
           <div className="field-stack">
             <label className="field-row"><span>Pattern</span><select aria-label="Texture pattern" className="num-field" value={textureSettings.pattern} onChange={e => setTextureSettings(previous => ({ ...previous, pattern: e.target.value as TextureSettings['pattern'] }))}>
