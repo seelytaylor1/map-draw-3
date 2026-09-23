@@ -67,7 +67,19 @@ export function minimumMonsterEncounterCost(monsterLevel: number, encounterBudge
   return Math.ceil(encounterBudget / cost) * cost
 }
 
-const STANDARD_DICE_SIDES = [2, 4, 6, 8, 10, 12, 20] as const
+const MONSTER_QUANTITY_DICE = [
+  { count: 1, sides: 2 },
+  { count: 1, sides: 3 },
+  { count: 1, sides: 4 },
+  { count: 1, sides: 6 },
+  { count: 1, sides: 8 },
+  { count: 1, sides: 10 },
+  { count: 1, sides: 12 },
+  { count: 2, sides: 3 },
+  { count: 2, sides: 4 },
+  { count: 2, sides: 8 },
+  { count: 2, sides: 10 },
+] as const
 
 /**
  * Choose a quantity roll whose expected creature count is close to the
@@ -76,20 +88,17 @@ const STANDARD_DICE_SIDES = [2, 4, 6, 8, 10, 12, 20] as const
 export function monsterCountDiceNotation(monsterLevel: number, encounterBudget: number): string {
   const cost = Math.max(1, monsterLevel)
   const targetCount = Math.max(0, encounterBudget) / cost
-  const maxDice = Math.max(1, Math.ceil(targetCount) + 1)
-  let best: { count: number; sides: number; average: number; difference: number } | undefined
+  const best = MONSTER_QUANTITY_DICE.reduce((selected, candidate) => {
+    const average = candidate.count * (candidate.sides + 1) / 2
+    const difference = Math.abs(average - targetCount)
+    const selectedAverage = selected.count * (selected.sides + 1) / 2
+    const selectedDifference = Math.abs(selectedAverage - targetCount)
+    return difference < selectedDifference || (difference === selectedDifference && average > selectedAverage)
+      ? candidate
+      : selected
+  })
 
-  for (let count = 1; count <= maxDice; count += 1) {
-    for (const sides of STANDARD_DICE_SIDES) {
-      const average = count * (sides + 1) / 2
-      const difference = Math.abs(average - targetCount)
-      if (!best || difference < best.difference || (difference === best.difference && (count < best.count || (count === best.count && average > best.average)))) {
-        best = { count, sides, average, difference }
-      }
-    }
-  }
-
-  return `${best!.count}d${best!.sides}`
+  return `${best.count === 1 ? '' : best.count}d${best.sides}`
 }
 
 /**
