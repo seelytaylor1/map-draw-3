@@ -1,6 +1,7 @@
 import type { D6Random } from './random'
-import { getMagicItemsForSources, MAGIC_ITEM_SOURCES, pickRandomMagicItems } from './magicItemSources'
+import { getTreasureMagicItemsForSources, MAGIC_ITEM_SOURCES, pickRandomMagicItems } from './magicItemSources'
 import type { MagicItemSourceId, TreasureDisposition, TreasureFind, TreasurePlan, TreasureTier } from './missionTypes'
+import { generateTreasureItem } from './treasureItems'
 
 export interface TreasureBand {
   levelLabel: string
@@ -96,12 +97,13 @@ const MAX_TREASURE_REROLLS = 20
 
 function rollAffordableTreasure(
   random: Pick<D6Random, 'nextD6'>,
+  levelLabel: string,
   definition: TreasureBand[TreasureTier],
   isMagicTier: boolean,
   magicItemSources: readonly MagicItemSourceId[],
   hasMagicItems: boolean,
   remainingGp: number,
-): { gp?: number; magicItems?: NonNullable<TreasureFind['magicItems']>; valueGp: number } | undefined {
+): { gp?: number; treasureItem?: NonNullable<TreasureFind['treasureItem']>; magicItems?: NonNullable<TreasureFind['magicItems']>; valueGp: number } | undefined {
   for (let attempt = 0; attempt < MAX_TREASURE_REROLLS; attempt += 1) {
     if (isMagicTier && hasMagicItems && random.nextD6() <= 2) {
       const count = rollBetween(random, definition.magicItems)
@@ -112,14 +114,18 @@ function rollAffordableTreasure(
       }
     } else {
       const gp = rollBetween(random, definition.gp)
-      if (gp <= remainingGp) return { gp, valueGp: gp }
+      if (gp <= remainingGp) {
+        const treasureItem = generateTreasureItem(random, levelLabel, gp, remainingGp, magicItemSources)
+        return { gp: treasureItem.valueGp, treasureItem, valueGp: treasureItem.valueGp }
+      }
     }
   }
 
   // A bounded reroll cannot get stuck on an unaffordable outcome.
   if (definition.gp[0] > remainingGp) return undefined
   const gp = rollBetween(random, [definition.gp[0], Math.min(definition.gp[1], remainingGp)])
-  return { gp, valueGp: gp }
+  const treasureItem = generateTreasureItem(random, levelLabel, gp, remainingGp, magicItemSources)
+  return { gp: treasureItem.valueGp, treasureItem, valueGp: treasureItem.valueGp }
 }
 
 function formatMagicItem(item: NonNullable<TreasureFind['magicItems']>[number]): string {
@@ -130,9 +136,6 @@ function formatMagicItem(item: NonNullable<TreasureFind['magicItems']>[number]):
 }
 
 export function formatTreasureFind(find: TreasureFind): string {
-  const amount = find.magicItems && find.magicItems.length > 0
-    ? find.magicItems.map(formatMagicItem).join('\n')
-    : find.gp === undefined ? 'Treasure' : `${find.gp} gp`
   const context = find.disposition === 'owned'
     ? ' Monster owns it.'
     : find.disposition === 'protected'
@@ -143,8 +146,16 @@ export function formatTreasureFind(find: TreasureFind): string {
   const magicNote = find.magicItemUnavailable
     ? ' (no enabled magic-item source)'
     : find.magicItemPossible && find.magicItemRange && !find.magicItems?.length
-      ? ` (or ${find.magicItemRange[0]}-${find.magicItemRange[1]} magic item${find.magicItemRange[1] === 1 ? '' : 's'}; this find resolved to GP)`
+      ? ` (or ${find.magicItemRange[0]}-${find.magicItemRange[1]} magic item${find.magicItemRange[1] === 1 ? '' : 's'}; this find resolved to itemized treasure)`
       : ''
+
+  if (find.treasureItem) {
+    return `Treasure: ${tierLabel(find.tier)} find — ${find.treasureItem.name} (${find.treasureItem.valueGp} gp)${magicNote}. ${find.treasureItem.detail}${context}`
+  }
+
+  const amount = find.magicItems && find.magicItems.length > 0
+    ? find.magicItems.map(formatMagicItem).join('\n')
+    : find.gp === undefined ? 'Treasure' : `${find.gp} gp`
   return `Treasure: ${tierLabel(find.tier)} find — ${amount}${magicNote}.${context}`
 }
 
@@ -158,7 +169,7 @@ export function generateTreasurePlan(
   const band = bandForLevel(playerLevel)
   const roomsById = new Map(rooms.map(room => [room.id, room]))
   const availableRoomIds = new Set(roomsById.keys())
-  const availableMagicItems = getMagicItemsForSources(magicItemSources)
+  const availableMagicItems = getTreasureMagicItemsForSources(magicItemSources)
   const magicSourceLabels = MAGIC_ITEM_SOURCES.filter(source => magicItemSources.includes(source.id) && source.items.length > 0).map(source => source.label)
   const finds: TreasureFind[] = []
   const tiers: TreasureTier[] = ['fabulous', 'legend', 'poor', 'normal']
@@ -179,7 +190,7 @@ export function generateTreasurePlan(
         unplacedFinds += 1
         continue
       }
-      const outcome = rollAffordableTreasure(random, definition, isMagicTier, magicItemSources, availableMagicItems.length > 0, band.gpTotal - spentGp)
+      const outcome = rollAffordableTreasure(random, band.levelLabel, definition, isMagicTier, magicItemSources, availableMagicItems.length > 0, band.gpTotal - spentGp)
       if (!outcome) {
         unaffordableFinds += 1
         continue
@@ -192,6 +203,7 @@ export function generateTreasurePlan(
         tier,
         moduleId,
         ...(outcome.gp === undefined ? {} : { gp: outcome.gp }),
+        ...(outcome.treasureItem ? { treasureItem: outcome.treasureItem } : {}),
         ...(isMagicTier
           ? {
               magicItemPossible: true,
@@ -218,10 +230,11 @@ export function generateTreasurePlan(
       'Each room has at most one treasure find. The first Fabulous or Legend find goes in the gold room; additional high-tier finds use other rooms.',
       ...(unplacedFinds > 0 ? [`${unplacedFinds} rolled treasure find${unplacedFinds === 1 ? '' : 's'} could not be placed because all eligible rooms were occupied.`] : []),
       ...(unaffordableFinds > 0 ? [`${unaffordableFinds} rolled treasure find${unaffordableFinds === 1 ? '' : 's'} could not fit the remaining GP budget after rerolling.`] : []),
-      'Magic item values count toward generated treasure value: Weak consumables are 1d6 × 100 gp; Strong items are 2d6 × 100 gp.',
+      'GP-valued finds are described as specific coins, gems, gear, luxury goods, weapons, scrolls, potions, wands, or magic items; close item values may leave up to 3 gp unassigned.',
+      'Magic item values count toward generated treasure value: Weak consumables are 1d6 × 100 gp; Strong items are 2d6 × 100 gp. Magic weapon, magic armor, and genie-lamp entries are excluded.',
       availableMagicItems.length > 0
         ? `Magic items: ${magicSourceLabels.join(', ')} selected when a Fabulous or Legend find rolls the magic-item outcome.`
-        : 'No magic-item source is enabled; Fabulous and Legend finds resolve to GP.',
+        : 'No magic-item source is enabled; Fabulous and Legend finds resolve to itemized treasure.',
     ],
   }
 }

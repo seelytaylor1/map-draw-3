@@ -3458,12 +3458,12 @@ export default function App() {
                 )}
                 {generationResult.ok && generationResult.space && (() => {
                   const plan = generationResult.space.treasurePlan
-                  const generatedGoldGp = plan.finds.reduce((total, find) => total + (find.gp ?? 0), 0)
+                  const itemizedFindGp = plan.finds.reduce((total, find) => total + (find.gp ?? 0), 0)
                   const magicItemValueGp = plan.finds.reduce(
                     (total, find) => total + (find.magicItems ?? []).reduce((itemTotal, item) => itemTotal + (item.valueGp ?? 0), 0),
                     0,
                   )
-                  const generatedGp = generatedGoldGp + magicItemValueGp
+                  const generatedGp = itemizedFindGp + magicItemValueGp
                   const magicItemCount = plan.finds.reduce((total, find) => total + (find.magicItems?.length ?? 0), 0)
                   const tierLabels = [
                     { tier: 'poor', label: 'Poor' },
@@ -3476,7 +3476,7 @@ export default function App() {
                     <section className="treasure-summary" aria-label="Generated treasure plan">
                       <div className="treasure-summary-heading">
                         <strong>Treasure allocation</strong>
-                        <span>Level {plan.levelLabel} · Budget: {generatedGp} / {plan.gpTotal} gp ({generatedGoldGp} gp + {magicItemValueGp} gp in magic items) · {magicItemCount} magic item{magicItemCount === 1 ? '' : 's'}</span>
+                        <span>Level {plan.levelLabel} · Budget: {generatedGp} / {plan.gpTotal} gp ({itemizedFindGp} gp in itemized finds + {magicItemValueGp} gp in magic items) · {magicItemCount} magic item{magicItemCount === 1 ? '' : 's'}</span>
                       </div>
                       <div className="treasure-tier-counts" aria-label="Treasure finds by tier">
                         {tierLabels.map(({ tier, label }) => (
@@ -3496,11 +3496,13 @@ export default function App() {
                           const roomName = roomLabel?.text ?? missionNode?.label ?? (module?.type === 'hub' ? 'Hub' : 'Room')
                           const value = find.magicItems?.length
                             ? find.magicItems.map(item => `${item.name} (${item.strength}, ${item.valueGp ?? 0} gp)`).join(', ')
-                            : `${find.gp ?? 0} gp`
+                            : find.treasureItem
+                              ? `${find.treasureItem.name} (${find.gp ?? find.treasureItem.valueGp} gp)`
+                              : `${find.gp ?? 0} gp`
                           const note = find.magicItemUnavailable
-                            ? ' · no item source'
+                            ? ' · no magic-item source'
                             : find.magicItemPossible && !find.magicItems?.length
-                              ? ' · rolled as GP'
+                              ? ' · itemized treasure'
                               : ''
 
                           return (

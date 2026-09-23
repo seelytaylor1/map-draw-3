@@ -192,6 +192,12 @@ export type TreasureTier = 'poor' | 'normal' | 'fabulous' | 'legend'
 export type TreasureDisposition = 'unattended' | 'owned' | 'protected' | 'hidden'
 export type MagicItemSourceId = 'shadowdark-core' | 'custom'
 
+export interface TreasureItem {
+  name: string
+  detail: string
+  valueGp: number
+}
+
 export interface MagicItemTrait {
   name: string
   description: string
@@ -216,6 +222,8 @@ export interface TreasureFind {
   tier: TreasureTier
   moduleId: string
   gp?: number
+  /** A concrete item generated to flavor a GP-valued find. */
+  treasureItem?: TreasureItem
   /** Fabulous and Legend finds may roll magic items when an enabled source has items. */
   magicItemPossible?: boolean
   magicItemRange?: readonly [number, number]

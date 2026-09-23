@@ -33,6 +33,8 @@ function parseCoreDatabase(database: string): readonly MagicItemRecord[] {
 
 export const SHADOWDARK_CORE_MAGIC_ITEMS: readonly MagicItemRecord[] = parseCoreDatabase(coreDatabase)
 
+const EXCLUDED_TREASURE_MAGIC_ITEM = /\b(genie lamp|weapon|armor|armour|shield|sword|blade|axe|dagger|knife|bow|crossbow|mace|javelin|trident|warhammer|spear|flail|whip|scimitar|staff|chainmail|plate mail|helmet|helm)\b/i
+
 /**
  * Source modules keep the database boundary separate from treasure rolling.
  * Custom items can be added as another source without changing the picker.
@@ -45,6 +47,12 @@ export const MAGIC_ITEM_SOURCES: readonly MagicItemSource[] = [
 export function getMagicItemsForSources(sourceIds: readonly MagicItemSourceId[] = ['shadowdark-core']): MagicItemRecord[] {
   const enabled = new Set(sourceIds)
   return MAGIC_ITEM_SOURCES.filter(source => enabled.has(source.id)).flatMap(source => source.items)
+}
+
+export function getTreasureMagicItemsForSources(sourceIds: readonly MagicItemSourceId[] = ['shadowdark-core']): MagicItemRecord[] {
+  return getMagicItemsForSources(sourceIds).filter(item =>
+    !EXCLUDED_TREASURE_MAGIC_ITEM.test(item.name) && !/\b(chainmail|plate mail)\b/i.test(item.description),
+  )
 }
 
 function rollBetween(random: Pick<D6Random, 'nextD6'>, minimum: number, maximum: number): number {
@@ -70,7 +78,7 @@ export function pickRandomMagicItems(
   count: number,
   sourceIds: readonly MagicItemSourceId[] = ['shadowdark-core'],
 ): MagicItemRecord[] {
-  const items = getMagicItemsForSources(sourceIds)
+  const items = getTreasureMagicItemsForSources(sourceIds)
   if (items.length === 0 || count <= 0) return []
   return Array.from({ length: count }, () => {
     const item = items[rollBetween(random, 0, items.length - 1)]!
