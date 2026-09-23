@@ -521,11 +521,13 @@ describe('mission-first dungeon generation', () => {
     expect(monsterRooms.length).toBeGreaterThan(0)
     expect(assignments.length).toBe(monsterRooms.length)
     expect(assignments.every(monster => table.some(entry => entry.name === monster.name))).toBe(true)
-    expect(first.space!.generalNotes[0]).toBe([
+    const encounterTableNote = first.space!.generalNotes[0]!
+    expect(encounterTableNote.split('\n').slice(0, 2)).toEqual([
       'Random Encounter Table:',
       '1. Torch extinguished',
-      ...table.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
-    ].join('\n'))
+    ])
+    expect(encounterTableNote.split('\n').slice(2)).toHaveLength(table.length)
+    expect(encounterTableNote.split('\n').slice(2).every(line => /^\d+\. \d+d(?:2|4|6|8|10|12|20) .+ \(LV .+\)$/.test(line))).toBe(true)
     expect(first.space!.generalNotes.join('\n')).not.toMatch(/Monster budget:|Treasure budget:|Treasure finds:|Monster levels used:|Magic items:|Rejected monster encounters:/)
     expect(second.space!.monsterEncounterTable).toEqual(table)
     expect(second.space!.modules.flatMap(room => room.monsterDetails ?? [])).toEqual(assignments)

@@ -67,6 +67,31 @@ export function minimumMonsterEncounterCost(monsterLevel: number, encounterBudge
   return Math.ceil(encounterBudget / cost) * cost
 }
 
+const STANDARD_DICE_SIDES = [2, 4, 6, 8, 10, 12, 20] as const
+
+/**
+ * Choose a quantity roll whose expected creature count is close to the
+ * encounter budget divided by the monster's level.
+ */
+export function monsterCountDiceNotation(monsterLevel: number, encounterBudget: number): string {
+  const cost = Math.max(1, monsterLevel)
+  const targetCount = Math.max(0, encounterBudget) / cost
+  const maxDice = Math.max(1, Math.ceil(targetCount) + 1)
+  let best: { count: number; sides: number; average: number; difference: number } | undefined
+
+  for (let count = 1; count <= maxDice; count += 1) {
+    for (const sides of STANDARD_DICE_SIDES) {
+      const average = count * (sides + 1) / 2
+      const difference = Math.abs(average - targetCount)
+      if (!best || difference < best.difference || (difference === best.difference && (count < best.count || (count === best.count && average > best.average)))) {
+        best = { count, sides, average, difference }
+      }
+    }
+  }
+
+  return `${best!.count}d${best!.sides}`
+}
+
 /**
  * Keep one standard encounter's worth of dungeon budget available for each
  * future monster room before allowing the current room to spend the surplus.

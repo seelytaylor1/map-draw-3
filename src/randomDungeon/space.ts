@@ -14,7 +14,7 @@ import type { Label } from '../labels'
 import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 import { createMonsterEncounterTable, MONSTER_CATALOG, pickRandomMonsterFromTable, type MonsterRecord } from './monsterCatalog'
-import { minimumMonsterEncounterCost, monsterFitsLevelBudget, numericMonsterLevel, remainingMonsterRoomBudget, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
+import { minimumMonsterEncounterCost, monsterCountDiceNotation, monsterFitsLevelBudget, numericMonsterLevel, remainingMonsterRoomBudget, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -320,7 +320,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   plan.generalNotes.push([
     'Random Encounter Table:',
     '1. Torch extinguished',
-    ...plan.monsterEncounterTable.map((monster, index) => `${index + 2}. ${monster.name} (LV ${monster.level})`),
+    ...plan.monsterEncounterTable.map((monster, index) => `${index + 2}. ${monsterCountDiceNotation(numericMonsterLevel(monster) ?? 1, plan.dungeonLevelBudget.encounterBudget)} ${monster.name} (LV ${monster.level})`),
   ].join('\n'))
   const roomHazardNames = new Set<string>()
   for (const module of plan.modules.filter(candidate => candidate.footprint.length > 0)) {
