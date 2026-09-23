@@ -19,7 +19,7 @@ export const TREASURE_BANDS: readonly TreasureBand[] = [
     poor: { finds: [5, 5], gp: [20, 30], magicItems: [0, 0] },
     normal: { finds: [3, 3], gp: [50, 80], magicItems: [0, 0] },
     fabulous: { finds: [1, 2], gp: [100, 150], magicItems: [1, 2] },
-    legend: { finds: [0, 1], gp: [200, 200], magicItems: [0, 1] },
+    legend: { finds: [0, 0], gp: [200, 200], magicItems: [0, 1] },
   },
   {
     levelLabel: '4-6',
