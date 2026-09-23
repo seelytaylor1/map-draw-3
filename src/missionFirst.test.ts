@@ -527,7 +527,7 @@ describe('mission-first dungeon generation', () => {
       '1. Torch extinguished',
     ])
     expect(encounterTableNote.split('\n').slice(2)).toHaveLength(table.length)
-    expect(encounterTableNote.split('\n').slice(2).every(line => /^\d+\. \d+d(?:2|4|6|8|10|12|20) .+ \(LV .+\)$/.test(line))).toBe(true)
+    expect(encounterTableNote.split('\n').slice(2).every(line => /^\d+\. (?:d(?:2|3|4|6|8|10|12)|2d(?:3|4|8|10)) .+ \(LV .+\)$/.test(line))).toBe(true)
     expect(first.space!.generalNotes.join('\n')).not.toMatch(/Monster budget:|Treasure budget:|Treasure finds:|Monster levels used:|Magic items:|Rejected monster encounters:/)
     expect(second.space!.monsterEncounterTable).toEqual(table)
     expect(second.space!.modules.flatMap(room => room.monsterDetails ?? [])).toEqual(assignments)
