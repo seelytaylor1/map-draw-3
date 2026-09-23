@@ -19,9 +19,9 @@ describe('monster level budgets', () => {
   it('maps party levels to the supplied monster and dungeon budgets', () => {
     expect(getDungeonLevelBudget(1)).toMatchObject({ monsterLevelLabel: '0-3', levelsPerPlayer: 1, encounterBudget: 4, dungeonBudget: 20 })
     expect(getDungeonLevelBudget(3)).toMatchObject({ monsterLevelLabel: '0-3', encounterBudget: 4, dungeonBudget: 20 })
-    expect(getDungeonLevelBudget(4)).toMatchObject({ monsterLevelLabel: '4-6', levelsPerPlayer: 3, encounterBudget: 12, dungeonBudget: 60 })
-    expect(getDungeonLevelBudget(7)).toMatchObject({ monsterLevelLabel: '7-9', levelsPerPlayer: 5, encounterBudget: 20, dungeonBudget: 100 })
-    expect(getDungeonLevelBudget(10)).toMatchObject({ monsterLevelLabel: '10', levelsPerPlayer: 7, encounterBudget: 28, dungeonBudget: 140 })
+    expect(getDungeonLevelBudget(4)).toMatchObject({ monsterLevelLabel: '0-6', levelsPerPlayer: 3, encounterBudget: 12, dungeonBudget: 60 })
+    expect(getDungeonLevelBudget(7)).toMatchObject({ monsterLevelLabel: '0-9', levelsPerPlayer: 5, encounterBudget: 20, dungeonBudget: 100 })
+    expect(getDungeonLevelBudget(10)).toMatchObject({ monsterLevelLabel: '0-10', levelsPerPlayer: 7, encounterBudget: 28, dungeonBudget: 140 })
     expect(() => getDungeonLevelBudget(0)).toThrow(RangeError)
   })
 

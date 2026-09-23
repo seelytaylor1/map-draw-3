@@ -18,7 +18,7 @@ import { minimumMonsterEncounterCost, monsterCountDiceNotation, monsterFitsLevel
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
-import { formatTreasureFind, generateTreasurePlan } from './treasureGenerator'
+import { formatTreasureFind, generateTreasurePlan, resolveTreasureBand } from './treasureGenerator'
 
 const keyOf = (point: Point) => `${point.col},${point.row}`
 const directions: Direction[] = ['N', 'E', 'S', 'W']
@@ -256,7 +256,7 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     dungeonLevelBudget,
     monsterLevelsUsed: 0,
     monsterRejections: [],
-    treasurePlan: { levelLabel: dungeonLevelBudget.monsterLevelLabel === '10' ? '10+' : dungeonLevelBudget.monsterLevelLabel, gpTotal: 0, goldRoomId: '', finds: [], notes: [] },
+    treasurePlan: { levelLabel: resolveTreasureBand(request.playerLevel).levelLabel, gpTotal: 0, goldRoomId: '', finds: [], notes: [] },
     generalNotes: [],
     diagnostics,
   }
@@ -309,9 +309,8 @@ function createAmbientMonsterRoster(random: ReturnType<typeof createD6Random>, b
 function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan: SpacePlan): void {
   const random = createD6Random(normalizeSeed(request.seed) ^ 0x51ed270b)
   plan.dungeonLevelBudget = resolveDungeonLevelBudget(request.playerLevel)
-  // The ambient roster is party-tier compatible before it is assigned to
-  // rooms, preventing one affordable entry from monopolizing a table of
-  // otherwise unusable threats.
+  // Keep lower-tier monsters eligible in higher-level dungeons, and prefer
+  // roster entries that can fill one standard encounter before assigning them.
   plan.monsterEncounterTable = createAmbientMonsterRoster(random, plan.dungeonLevelBudget)
   const highLevelContractCycles = mission.cycles.filter(cycle => cycle.challenge === 'dangerous-route' || cycle.challenge === 'patrolled-cycle' || cycle.challenge === 'gambit')
   const highLevelContractMonsterCandidates = highLevelContractCycles.length > 0

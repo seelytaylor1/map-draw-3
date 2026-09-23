@@ -35,9 +35,9 @@ export interface MonsterRejection {
 
 const LEVEL_BUDGETS: readonly DungeonLevelBudget[] = [
   { playerLevelMin: 1, playerLevelMax: 3, monsterLevelMin: 0, monsterLevelMax: 3, monsterLevelLabel: '0-3', levelsPerPlayer: 1, encounterBudget: 4, dungeonBudget: 20 },
-  { playerLevelMin: 4, playerLevelMax: 6, monsterLevelMin: 4, monsterLevelMax: 6, monsterLevelLabel: '4-6', levelsPerPlayer: 3, encounterBudget: 12, dungeonBudget: 60 },
-  { playerLevelMin: 7, playerLevelMax: 9, monsterLevelMin: 7, monsterLevelMax: 9, monsterLevelLabel: '7-9', levelsPerPlayer: 5, encounterBudget: 20, dungeonBudget: 100 },
-  { playerLevelMin: 10, playerLevelMax: 10, monsterLevelMin: 10, monsterLevelMax: 10, monsterLevelLabel: '10', levelsPerPlayer: 7, encounterBudget: 28, dungeonBudget: 140 },
+  { playerLevelMin: 4, playerLevelMax: 6, monsterLevelMin: 0, monsterLevelMax: 6, monsterLevelLabel: '0-6', levelsPerPlayer: 3, encounterBudget: 12, dungeonBudget: 60 },
+  { playerLevelMin: 7, playerLevelMax: 9, monsterLevelMin: 0, monsterLevelMax: 9, monsterLevelLabel: '0-9', levelsPerPlayer: 5, encounterBudget: 20, dungeonBudget: 100 },
+  { playerLevelMin: 10, playerLevelMax: 10, monsterLevelMin: 0, monsterLevelMax: 10, monsterLevelLabel: '0-10', levelsPerPlayer: 7, encounterBudget: 28, dungeonBudget: 140 },
 ]
 
 export const DUNGEON_LEVEL_BUDGETS = LEVEL_BUDGETS
