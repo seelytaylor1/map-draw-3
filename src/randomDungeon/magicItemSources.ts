@@ -1,6 +1,6 @@
 import coreDatabase from './data/magic-items-core.jsonl?raw'
 import type { D6Random } from './random'
-import type { MagicItemRecord, MagicItemSourceId, MagicItemTrait } from './missionTypes'
+import type { MagicItemRecord, MagicItemSourceId, MagicItemStrength, MagicItemTrait } from './missionTypes'
 
 export interface MagicItemSource {
   id: MagicItemSourceId
@@ -14,16 +14,20 @@ function parseCoreDatabase(database: string): readonly MagicItemRecord[] {
     .map(line => line.trim())
     .filter(Boolean)
     .map((line, index) => {
-      const record = JSON.parse(line) as { name?: unknown; slug?: unknown; description?: unknown; traits?: unknown }
+      const record = JSON.parse(line) as { name?: unknown; slug?: unknown; description?: unknown; traits?: unknown; strength?: unknown }
       if (typeof record.name !== 'string' || typeof record.slug !== 'string' || typeof record.description !== 'string' || !Array.isArray(record.traits)) {
         throw new Error(`Invalid Shadowdark Core magic item record at line ${index + 1}.`)
+      }
+      if (record.strength !== undefined && record.strength !== 'weak' && record.strength !== 'strong') {
+        throw new Error(`Invalid strength for Shadowdark Core magic item at line ${index + 1}.`)
       }
       const traits = record.traits.map(trait => {
         const parsed = trait as { name?: unknown; description?: unknown }
         if (typeof parsed.name !== 'string' || typeof parsed.description !== 'string') throw new Error(`Invalid trait in Shadowdark Core magic item at line ${index + 1}.`)
         return { name: parsed.name, description: parsed.description } satisfies MagicItemTrait
       })
-      return { name: record.name, slug: record.slug, description: record.description, traits, source: 'shadowdark-core' } satisfies MagicItemRecord
+      const strength: MagicItemStrength = record.strength === 'weak' ? 'weak' : 'strong'
+      return { name: record.name, slug: record.slug, description: record.description, traits, source: 'shadowdark-core', strength } satisfies MagicItemRecord
     })
 }
 
@@ -68,5 +72,11 @@ export function pickRandomMagicItems(
 ): MagicItemRecord[] {
   const items = getMagicItemsForSources(sourceIds)
   if (items.length === 0 || count <= 0) return []
-  return Array.from({ length: count }, () => items[rollBetween(random, 0, items.length - 1)]!)
+  return Array.from({ length: count }, () => {
+    const item = items[rollBetween(random, 0, items.length - 1)]!
+    const dice = item.strength === 'weak' ? 1 : 2
+    let valueGp = 0
+    for (let die = 0; die < dice; die += 1) valueGp += random.nextD6() * 100
+    return { ...item, valueGp }
+  })
 }

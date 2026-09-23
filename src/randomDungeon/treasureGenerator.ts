@@ -92,9 +92,41 @@ function tierLabel(tier: TreasureTier): string {
   return tier[0]!.toUpperCase() + tier.slice(1)
 }
 
+const MAX_TREASURE_REROLLS = 20
+
+function rollAffordableTreasure(
+  random: Pick<D6Random, 'nextD6'>,
+  definition: TreasureBand[TreasureTier],
+  isMagicTier: boolean,
+  magicItemSources: readonly MagicItemSourceId[],
+  hasMagicItems: boolean,
+  remainingGp: number,
+): { gp?: number; magicItems?: NonNullable<TreasureFind['magicItems']>; valueGp: number } | undefined {
+  for (let attempt = 0; attempt < MAX_TREASURE_REROLLS; attempt += 1) {
+    if (isMagicTier && hasMagicItems && random.nextD6() <= 2) {
+      const count = rollBetween(random, definition.magicItems)
+      if (count > 0) {
+        const magicItems = pickRandomMagicItems(random, count, magicItemSources)
+        const valueGp = magicItems.reduce((total, item) => total + (item.valueGp ?? 0), 0)
+        if (magicItems.length > 0 && valueGp <= remainingGp) return { magicItems, valueGp }
+      }
+    } else {
+      const gp = rollBetween(random, definition.gp)
+      if (gp <= remainingGp) return { gp, valueGp: gp }
+    }
+  }
+
+  // A bounded reroll cannot get stuck on an unaffordable outcome.
+  if (definition.gp[0] > remainingGp) return undefined
+  const gp = rollBetween(random, [definition.gp[0], Math.min(definition.gp[1], remainingGp)])
+  return { gp, valueGp: gp }
+}
+
 function formatMagicItem(item: NonNullable<TreasureFind['magicItems']>[number]): string {
   const traits = item.traits.map(trait => `${trait.name}: ${trait.description}`).join('\n')
-  return [`Magic item: ${item.name}`, item.description, traits].filter(Boolean).join('\n')
+  const strength = item.strength[0]!.toUpperCase() + item.strength.slice(1)
+  const value = item.valueGp === undefined ? undefined : `Value: ${item.valueGp} gp (${strength})`
+  return [`Magic item: ${item.name}`, value, item.description, traits].filter(Boolean).join('\n')
 }
 
 export function formatTreasureFind(find: TreasureFind): string {
@@ -125,35 +157,46 @@ export function generateTreasurePlan(
 ): TreasurePlan {
   const band = bandForLevel(playerLevel)
   const roomsById = new Map(rooms.map(room => [room.id, room]))
-  const otherRoomIds = rooms.filter(room => room.id !== goldRoomId).map(room => room.id)
+  const availableRoomIds = new Set(roomsById.keys())
   const availableMagicItems = getMagicItemsForSources(magicItemSources)
   const magicSourceLabels = MAGIC_ITEM_SOURCES.filter(source => magicItemSources.includes(source.id) && source.items.length > 0).map(source => source.label)
   const finds: TreasureFind[] = []
   const tiers: TreasureTier[] = ['fabulous', 'legend', 'poor', 'normal']
+  let unplacedFinds = 0
+  let unaffordableFinds = 0
+  let spentGp = 0
 
   for (const tier of tiers) {
     const definition = band[tier]
     const count = rollBetween(random, definition.finds)
     for (let index = 0; index < count; index += 1) {
-      const moduleId = tier === 'fabulous' || tier === 'legend' || otherRoomIds.length === 0
-        ? goldRoomId
-        : chooseRoom(random, otherRoomIds)
-      const room = roomsById.get(moduleId)
       const isMagicTier = tier === 'fabulous' || tier === 'legend'
-      const magicItemCount = isMagicTier && availableMagicItems.length > 0 && random.nextD6() <= 2
-        ? rollBetween(random, definition.magicItems)
-        : 0
-      const magicItems = magicItemCount > 0 ? pickRandomMagicItems(random, magicItemCount, magicItemSources) : []
+      const otherRoomIds = [...availableRoomIds].filter(id => id !== goldRoomId)
+      const moduleId = isMagicTier && availableRoomIds.has(goldRoomId)
+        ? goldRoomId
+        : otherRoomIds.length > 0 ? chooseRoom(random, otherRoomIds) : undefined
+      if (!moduleId) {
+        unplacedFinds += 1
+        continue
+      }
+      const outcome = rollAffordableTreasure(random, definition, isMagicTier, magicItemSources, availableMagicItems.length > 0, band.gpTotal - spentGp)
+      if (!outcome) {
+        unaffordableFinds += 1
+        continue
+      }
+      availableRoomIds.delete(moduleId)
+      spentGp += outcome.valueGp
+      const room = roomsById.get(moduleId)
       const find: TreasureFind = {
         id: `treasure-${tier}-${index + 1}`,
         tier,
         moduleId,
-        ...(magicItems.length > 0 ? {} : { gp: rollBetween(random, definition.gp) }),
+        ...(outcome.gp === undefined ? {} : { gp: outcome.gp }),
         ...(isMagicTier
           ? {
               magicItemPossible: true,
               magicItemRange: definition.magicItems,
-              ...(magicItems.length > 0 ? { magicItems } : {}),
+              ...(outcome.magicItems ? { magicItems: outcome.magicItems } : {}),
               ...(availableMagicItems.length === 0 ? { magicItemUnavailable: true } : {}),
             }
           : {}),
@@ -170,9 +213,12 @@ export function generateTreasurePlan(
     goldRoomId,
     finds,
     notes: [
-      `Treasure GP reference: dungeon level ${band.levelLabel} · ${band.gpTotal} gp for manual distribution; generated find amounts are rolled individually.`,
+      `Treasure budget: dungeon level ${band.levelLabel} · ${spentGp} of ${band.gpTotal} gp used, including magic item values.`,
       `Treasure finds: ${counts}.`,
-      'Fabulous and Legend finds are in the gold room. Poor and Normal finds are distributed among the other rooms.',
+      'Each room has at most one treasure find. The first Fabulous or Legend find goes in the gold room; additional high-tier finds use other rooms.',
+      ...(unplacedFinds > 0 ? [`${unplacedFinds} rolled treasure find${unplacedFinds === 1 ? '' : 's'} could not be placed because all eligible rooms were occupied.`] : []),
+      ...(unaffordableFinds > 0 ? [`${unaffordableFinds} rolled treasure find${unaffordableFinds === 1 ? '' : 's'} could not fit the remaining GP budget after rerolling.`] : []),
+      'Magic item values count toward generated treasure value: Weak consumables are 1d6 × 100 gp; Strong items are 2d6 × 100 gp.',
       availableMagicItems.length > 0
         ? `Magic items: ${magicSourceLabels.join(', ')} selected when a Fabulous or Legend find rolls the magic-item outcome.`
         : 'No magic-item source is enabled; Fabulous and Legend finds resolve to GP.',

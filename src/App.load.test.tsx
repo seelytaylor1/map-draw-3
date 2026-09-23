@@ -497,8 +497,10 @@ describe('App load lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: /generate dungeon/i }))
 
     const treasurePlan = screen.getByRole('region', { name: 'Generated treasure plan' })
-    expect(treasurePlan).toHaveTextContent(/GP reference: 300 gp \(manual method\)/)
-    expect(treasurePlan.querySelectorAll('li').length).toBeGreaterThanOrEqual(9)
+    const budget = treasurePlan.textContent?.match(/Budget: (\d+) \/ 300 gp/)
+    expect(budget).not.toBeNull()
+    expect(Number(budget![1])).toBeLessThanOrEqual(300)
+    expect(treasurePlan.querySelectorAll('li').length).toBeGreaterThan(0)
     expect(treasurePlan).toHaveTextContent(/Poor/)
     expect(treasurePlan).toHaveTextContent(/Normal/)
     expect(treasurePlan).toHaveTextContent(/Goal/)

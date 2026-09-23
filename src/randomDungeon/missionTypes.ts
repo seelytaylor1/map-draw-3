@@ -197,12 +197,18 @@ export interface MagicItemTrait {
   description: string
 }
 
+export type MagicItemStrength = 'weak' | 'strong'
+
 export interface MagicItemRecord {
   name: string
   slug: string
   description: string
   traits: MagicItemTrait[]
   source: MagicItemSourceId
+  /** Consumable items are weak; all other Shadowdark Core items are strong. */
+  strength: MagicItemStrength
+  /** Seeded GP value assigned when this item is generated as treasure. */
+  valueGp?: number
 }
 
 export interface TreasureFind {
