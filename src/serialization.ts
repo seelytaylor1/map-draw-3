@@ -2,6 +2,7 @@ import { STAMP_TYPES, OBJECT_STAMP_TYPES, type CustomImageAsset, type Stamp, typ
 import { type StepDirection, type StepRun } from './steps'
 import { type RampDirection, type RampRun } from './ramps'
 import { type Label } from './labels'
+import type { RoomLedgerEntry } from './roomLedgerData'
 import { normalizeLayers, type MapLayer } from './layers'
 import { createLayerGrids, type LayerGrids } from './layerGrids'
 import { FLOOR_COLOR, WATER_COLOR, LAVA_COLOR, DARKNESS_COLOR, normalizeTilesPerInch, TILES_PER_INCH } from './constants'
@@ -39,6 +40,8 @@ export interface MapSave {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  roomLedgerEntries?: RoomLedgerEntry[]
+  generalNotes?: string[]
   layers: MapLayer[]
   activeLayerId?: string
   environmentalColors?: Record<string, string>
@@ -76,6 +79,8 @@ export interface DeserializedMap {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  roomLedgerEntries: RoomLedgerEntry[]
+  generalNotes: string[]
   layers: MapLayer[]
   activeLayerId: string
   environmentalColors: Map<number, string>
@@ -112,6 +117,8 @@ export function serialize(params: {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  roomLedgerEntries?: RoomLedgerEntry[]
+  generalNotes?: string[]
   layers?: MapLayer[]
   activeLayerId?: string
   environmentalColors: Map<number, string>
@@ -173,6 +180,8 @@ export function serialize(params: {
       return out
     }),
     labels: params.labels,
+    roomLedgerEntries: params.roomLedgerEntries ?? [],
+    generalNotes: params.generalNotes ?? [],
     layers,
     activeLayerId: layers.some(layer => layer.id === params.activeLayerId) ? params.activeLayerId : layers[0].id,
     environmentalColors: Object.fromEntries(Array.from(params.environmentalColors.entries())),
@@ -355,6 +364,29 @@ export function deserialize(raw: unknown): DeserializedMap {
     if (typeof o['layerId'] === 'string') label.layerId = o['layerId']
     return label
   })
+  const roomLedgerEntries: RoomLedgerEntry[] = []
+  if (Array.isArray(s['roomLedgerEntries'])) {
+    const seenIds = new Set<string>()
+    for (const rawEntry of s['roomLedgerEntries']) {
+      if (typeof rawEntry !== 'object' || rawEntry === null) continue
+      const entry = rawEntry as Record<string, unknown>
+      if (typeof entry['id'] !== 'string' || seenIds.has(entry['id'])) continue
+      if (typeof entry['number'] !== 'number' || !Number.isSafeInteger(entry['number']) || entry['number'] < 1) continue
+      if (typeof entry['name'] !== 'string' || typeof entry['details'] !== 'string') continue
+      const ledgerEntry: RoomLedgerEntry = {
+        id: entry['id'],
+        number: entry['number'],
+        name: entry['name'],
+        details: entry['details'],
+      }
+      if (typeof entry['moduleId'] === 'string') ledgerEntry.moduleId = entry['moduleId']
+      seenIds.add(ledgerEntry.id)
+      roomLedgerEntries.push(ledgerEntry)
+    }
+  }
+  const generalNotes = Array.isArray(s['generalNotes'])
+    ? s['generalNotes'].filter((note): note is string => typeof note === 'string')
+    : []
   const layers = normalizeLayers(s['layers'])
   const activeLayerId = typeof s['activeLayerId'] === 'string' && layers.some(layer => layer.id === s['activeLayerId'])
     ? s['activeLayerId']
@@ -411,6 +443,8 @@ export function deserialize(raw: unknown): DeserializedMap {
     steps,
     ramps,
     labels,
+    roomLedgerEntries,
+    generalNotes,
     layers,
     activeLayerId,
     environmentalColors,

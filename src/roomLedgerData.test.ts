@@ -21,8 +21,7 @@ describe('room ledger export text', () => {
 
   it('includes general notes and room records in plain text', () => {
     const text = formatRoomLedgerText({
-      modules, mission,
-      labels: [{ id: 'label-room-1', col: 1, row: 1, text: 'Library', number: 1, details: 'A dusty archive.' }],
+      entries: [{ id: 'room-1', number: 1, name: 'Library', details: 'A dusty archive.' }],
       generalNotes: ['Bring a lantern.', 'The east door is trapped.'],
     })
 

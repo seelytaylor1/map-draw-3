@@ -1,56 +1,39 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { Label } from './labels'
-import type { Mission, SpatialModule } from './randomDungeon/missionTypes'
-import { buildRoomLedgerEntries, type RoomLedgerEntry } from './roomLedgerData'
+import type { RoomLedgerEntry } from './roomLedgerData'
 
 export interface RoomLedgerProps {
-  modules: readonly SpatialModule[]
-  mission: Mission
-  labels: readonly Label[]
+  entries: readonly RoomLedgerEntry[]
   generalNotes: readonly string[]
   onCommitGeneralNotes: (notes: string[]) => void
-  onCommitRoomName: (moduleId: string, text: string) => void
-  onCommitRoomDetails: (moduleId: string, details: string) => void
+  onCommitRoomEntry: (entryId: string, changes: Partial<Pick<RoomLedgerEntry, 'number' | 'name' | 'details'>>) => void
+  onAddEntry: (entry: RoomLedgerEntry) => void
+  onRemoveEntry: (entryId: string) => void
 }
 
 function formatGeneralNotes(notes: readonly string[]): string {
   return notes.join('\n\n')
 }
 
-function RoomNameInput({ room, value, onChange, onCommit }: {
-  room: RoomLedgerEntry
-  value: string
-  onChange: (value: string) => void
-  onCommit: () => void
-}) {
-  return (
-    <input
-      className="room-name-input"
-      value={value}
-      aria-label={`Room ${room.number} name`}
-      onChange={event => onChange(event.target.value)}
-      onBlur={onCommit}
-      onKeyDown={event => {
-        if (event.key === 'Enter') event.currentTarget.blur()
-      }}
-    />
-  )
+function newEntryId(): string {
+  return `manual-room-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGeneralNotes, onCommitRoomName, onCommitRoomDetails }: RoomLedgerProps) {
-  const rooms = useMemo(() => buildRoomLedgerEntries(modules, mission, labels), [labels, mission, modules])
-  const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
-  const [detailsDrafts, setDetailsDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
+export function RoomLedger({ entries, generalNotes, onCommitGeneralNotes, onCommitRoomEntry, onAddEntry, onRemoveEntry }: RoomLedgerProps) {
+  const rooms = useMemo(() => [...entries].sort((a, b) => a.number - b.number || a.id.localeCompare(b.id)), [entries])
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.id, room.name])))
+  const [numberDrafts, setNumberDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.id, String(room.number)])))
+  const [detailsDrafts, setDetailsDrafts] = useState<Record<string, string>>(() => Object.fromEntries(rooms.map(room => [room.id, room.details])))
   const [generalNotesDraft, setGeneralNotesDraft] = useState(() => formatGeneralNotes(generalNotes))
   const [selectedEntryId, setSelectedEntryId] = useState<'general-notes' | string>('general-notes')
   const [panelWidth, setPanelWidth] = useState(430)
   const resizingPanelRef = useRef(false)
 
   useEffect(() => {
-    setDrafts(Object.fromEntries(rooms.map(room => [room.module.id, room.name])))
-    setDetailsDrafts(Object.fromEntries(rooms.map(room => [room.module.id, room.details])))
-    setSelectedEntryId(previous => previous === 'general-notes' || rooms.some(room => room.module.id === previous) ? previous : 'general-notes')
-  }, [rooms.length, rooms.map(room => room.module.id).join('|')])
+    setNameDrafts(Object.fromEntries(rooms.map(room => [room.id, room.name])))
+    setNumberDrafts(Object.fromEntries(rooms.map(room => [room.id, String(room.number)])))
+    setDetailsDrafts(Object.fromEntries(rooms.map(room => [room.id, room.details])))
+    setSelectedEntryId(previous => previous === 'general-notes' || rooms.some(room => room.id === previous) ? previous : 'general-notes')
+  }, [rooms])
 
   useEffect(() => { setGeneralNotesDraft(formatGeneralNotes(generalNotes)) }, [generalNotes])
 
@@ -72,28 +55,8 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
     }
   }, [])
 
-  const selectedRoom = rooms.find(room => room.module.id === selectedEntryId) ?? rooms[0]
+  const selectedRoom = rooms.find(room => room.id === selectedEntryId)
   const generalNotesSelected = selectedEntryId === 'general-notes'
-  if (!selectedRoom && !generalNotesSelected) return null
-
-  const updateDraft = (room: RoomLedgerEntry, value: string) => {
-    setDrafts(previous => ({ ...previous, [room.module.id]: value }))
-  }
-
-  const commit = (room: RoomLedgerEntry) => {
-    const value = (drafts[room.module.id] ?? room.name).trim()
-    if (value && value !== room.name) onCommitRoomName(room.module.id, value)
-    if (!value) setDrafts(previous => ({ ...previous, [room.module.id]: room.name }))
-  }
-
-  const updateDetails = (room: RoomLedgerEntry, value: string) => {
-    setDetailsDrafts(previous => ({ ...previous, [room.module.id]: value }))
-  }
-
-  const commitDetails = (room: RoomLedgerEntry) => {
-    const value = detailsDrafts[room.module.id] ?? room.details
-    if (value !== room.details) onCommitRoomDetails(room.module.id, value)
-  }
 
   const commitGeneralNotes = () => {
     const blocks = generalNotesDraft.includes('\n\n') ? generalNotesDraft.split(/\n[ \t]*\n/) : generalNotesDraft.split('\n')
@@ -101,18 +64,29 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
     if (formatGeneralNotes(notes) !== formatGeneralNotes(generalNotes)) onCommitGeneralNotes(notes)
   }
 
+  const addEntry = () => {
+    const entry: RoomLedgerEntry = {
+      id: newEntryId(),
+      number: Math.max(0, ...rooms.map(room => room.number)) + 1,
+      name: 'Room',
+      details: '',
+    }
+    onAddEntry(entry)
+    setSelectedEntryId(entry.id)
+  }
+
   const resizeByKeyboard = (direction: 'wider' | 'narrower') => {
     setPanelWidth(width => Math.min(640, Math.max(320, width + (direction === 'wider' ? 16 : -16))))
   }
 
   return (
-    <details className="room-ledger" aria-label="Generated room ledger" style={{ '--room-ledger-width': `${panelWidth}px` } as CSSProperties}>
+    <details className="room-ledger" aria-label="Room ledger" open style={{ '--room-ledger-width': `${panelWidth}px` } as CSSProperties}>
       <summary className="room-ledger-summary">
         <span className="room-ledger-summary-copy">
           <span className="room-ledger-summary-eyebrow">Room records</span>
           <strong>Room ledger</strong>
         </span>
-        <span className="room-count">{rooms.length} rooms</span>
+        <span className="room-count">{rooms.length} {rooms.length === 1 ? 'room' : 'rooms'}</span>
       </summary>
       <div
         className="room-ledger-resizer"
@@ -140,16 +114,17 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
       />
       <div className="room-window room-ledger-panel" role="region" aria-label="Room ledger editor">
         <div className="room-ledger-list">
+          <button className="room-ledger-add" type="button" onClick={addEntry}>＋ Add room</button>
           <button className={`room-ledger-row${generalNotesSelected ? ' selected' : ''}`} type="button" onClick={() => setSelectedEntryId('general-notes')}>
             <span className="room-number">00</span>
             <span className="room-ledger-row-name">General notes</span>
             <span className="room-ledger-row-arrow">{generalNotesSelected ? '●' : '›'}</span>
           </button>
           {rooms.map(room => (
-            <button className={`room-ledger-row${room.module.id === selectedEntryId ? ' selected' : ''}`} type="button" key={room.module.id} onClick={() => setSelectedEntryId(room.module.id)}>
+            <button className={`room-ledger-row${room.id === selectedEntryId ? ' selected' : ''}`} type="button" key={room.id} onClick={() => setSelectedEntryId(room.id)}>
               <span className="room-number">{String(room.number).padStart(2, '0')}</span>
-              <span className="room-ledger-row-name">{drafts[room.module.id] ?? room.name}</span>
-              <span className="room-ledger-row-arrow">{room.module.id === selectedEntryId ? '●' : '›'}</span>
+              <span className="room-ledger-row-name">{nameDrafts[room.id] ?? room.name}</span>
+              <span className="room-ledger-row-arrow">{room.id === selectedEntryId ? '●' : '›'}</span>
             </button>
           ))}
         </div>
@@ -162,36 +137,77 @@ export function RoomLedger({ modules, mission, labels, generalNotes, onCommitGen
             </label>
             <label className="room-editor-field room-details-field">
               <span>Details</span>
-            <textarea
-              className="room-details-input"
-              aria-label="Room 0 details"
-              value={generalNotesDraft}
-              placeholder="Describe what happens here, what the players notice, or what this room is for…"
-              onChange={event => setGeneralNotesDraft(event.target.value)}
-              onBlur={commitGeneralNotes}
-            />
+              <textarea
+                className="room-details-input"
+                aria-label="Room 0 details"
+                value={generalNotesDraft}
+                placeholder="Describe what happens here, what the players notice, or what this room is for…"
+                onChange={event => setGeneralNotesDraft(event.target.value)}
+                onBlur={commitGeneralNotes}
+              />
             </label>
-            <div className="room-editor-hint">Details save to the room record when you leave the field. Use blank lines to separate formatted note blocks.</div>
+            <div className="room-editor-hint">Details save to the map with your room records. Use blank lines to separate note blocks.</div>
           </div>
         ) : selectedRoom && (
           <div className="room-ledger-editor">
-            <div className="room-ledger-editor-kicker">ROOM {String(selectedRoom.number).padStart(2, '0')} / ENCOUNTER</div>
+            <div className="room-ledger-editor-kicker">ROOM {String(selectedRoom.number).padStart(2, '0')}</div>
+            <label className="room-editor-field">
+              <span>Number label</span>
+              <input
+                className="room-number-input"
+                type="number"
+                min={1}
+                step={1}
+                aria-label={`Number label for ${selectedRoom.name}`}
+                value={numberDrafts[selectedRoom.id] ?? String(selectedRoom.number)}
+                onChange={event => setNumberDrafts(previous => ({ ...previous, [selectedRoom.id]: event.target.value }))}
+                onBlur={() => {
+                  const value = Number(numberDrafts[selectedRoom.id])
+                  if (!Number.isSafeInteger(value) || value < 1) {
+                    setNumberDrafts(previous => ({ ...previous, [selectedRoom.id]: String(selectedRoom.number) }))
+                    return
+                  }
+                  if (value !== selectedRoom.number) onCommitRoomEntry(selectedRoom.id, { number: value })
+                }}
+                onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+              />
+            </label>
             <label className="room-editor-field">
               <span>Name</span>
-              <RoomNameInput room={selectedRoom} value={drafts[selectedRoom.module.id] ?? selectedRoom.name} onChange={value => updateDraft(selectedRoom, value)} onCommit={() => commit(selectedRoom)} />
+              <input
+                className="room-name-input"
+                value={nameDrafts[selectedRoom.id] ?? selectedRoom.name}
+                aria-label={`Room ${selectedRoom.number} name`}
+                onChange={event => setNameDrafts(previous => ({ ...previous, [selectedRoom.id]: event.target.value }))}
+                onBlur={() => {
+                  const value = (nameDrafts[selectedRoom.id] ?? selectedRoom.name).trim()
+                  if (value && value !== selectedRoom.name) onCommitRoomEntry(selectedRoom.id, { name: value })
+                  else if (!value) setNameDrafts(previous => ({ ...previous, [selectedRoom.id]: selectedRoom.name }))
+                }}
+                onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+              />
             </label>
             <label className="room-editor-field room-details-field">
               <span>Details</span>
               <textarea
                 className="room-details-input"
                 aria-label={`Room ${selectedRoom.number} details`}
-                value={detailsDrafts[selectedRoom.module.id] ?? selectedRoom.details}
+                value={detailsDrafts[selectedRoom.id] ?? selectedRoom.details}
                 placeholder="Describe what happens here, what the players notice, or what this room is for…"
-                onChange={event => updateDetails(selectedRoom, event.target.value)}
-                onBlur={() => commitDetails(selectedRoom)}
+                onChange={event => setDetailsDrafts(previous => ({ ...previous, [selectedRoom.id]: event.target.value }))}
+                onBlur={() => {
+                  const value = detailsDrafts[selectedRoom.id] ?? selectedRoom.details
+                  if (value !== selectedRoom.details) onCommitRoomEntry(selectedRoom.id, { details: value })
+                }}
               />
             </label>
-            <div className="room-editor-hint">Details save to the room record when you leave the field.</div>
+            <div className="room-ledger-editor-actions">
+              <div className="room-editor-hint">Changes save to the map with your room records.</div>
+              <button className="room-ledger-remove" type="button" onClick={() => {
+                onRemoveEntry(selectedRoom.id)
+                setSelectedEntryId('general-notes')
+              }}>Remove room</button>
+            </div>
           </div>
         )}
       </div>

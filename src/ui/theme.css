@@ -1077,6 +1077,20 @@ input[type='range'] {
 }
 .room-ledger-row:hover { background: rgba(207,155,70,0.07); }
 .room-number { color: var(--accent-strong); font: 600 12px var(--font-mono); }
+.room-ledger-add {
+  width: 100%;
+  min-height: 34px;
+  margin-bottom: 5px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font: 600 10px var(--font-mono);
+  text-align: left;
+}
+.room-ledger-add:hover { background: rgba(255,255,255,0.05); }
 .room-ledger-panel {
   display: flex;
   flex-direction: column;
@@ -1122,6 +1136,18 @@ input[type='range'] {
 }
 .room-ledger-editor-kicker { color: var(--accent-strong); font: 600 9px var(--font-mono); letter-spacing: 0.14em; }
 .room-editor-field { display: flex; flex-direction: column; gap: 6px; color: var(--text-dim); font-size: 10px; }
+.room-number-input {
+  box-sizing: border-box;
+  width: 92px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255,255,255,0.11);
+  border-radius: 4px;
+  outline: 0;
+  color: #f7ecd8;
+  background: rgba(0,0,0,0.22);
+  font: 600 11px var(--font-mono);
+}
+.room-number-input:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 3px rgba(207,155,70,0.12); }
 .room-details-field { flex: 1; min-height: 0; }
 .room-details-input {
   box-sizing: border-box;
@@ -1140,6 +1166,18 @@ input[type='range'] {
 .room-details-input::placeholder { color: var(--text-faint); }
 .room-details-input:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 3px rgba(207,155,70,0.12); }
 .room-editor-hint { color: var(--text-faint); font-size: 9px; line-height: 1.35; }
+.room-ledger-editor-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.room-ledger-remove {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid rgba(204,107,77,0.34);
+  border-radius: 4px;
+  color: #d9957c;
+  background: transparent;
+  cursor: pointer;
+  font: 10px var(--font-body);
+}
+.room-ledger-remove:hover { border-color: rgba(204,107,77,0.7); background: rgba(204,107,77,0.1); }
 
 .room-ledger[open] {
   position: fixed;

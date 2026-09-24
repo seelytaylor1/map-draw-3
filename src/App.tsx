@@ -56,7 +56,7 @@ import { createLightingCanvas, DEFAULT_LIGHTING_SETTINGS, type LightingSettings,
 import { MapLegend } from './MapLegend'
 import { RoomLedger } from './RoomLedger'
 import { applyPlayerViewSecretDoors, buildPlayerViewExport } from './playerView'
-import { formatRoomLedgerText } from './roomLedgerData'
+import { buildRoomLedgerEntries, formatRoomLedgerText, type RoomLedgerEntry } from './roomLedgerData'
 import { buildHtmlExport, buildMarkdownExport, buildUniversalVttExport, fileName, getMapExportExtension, getMapExportMimeType, siblingFilePath, type MapExportFormat } from './exportFormats'
 import torchAndTileLogo from './assets/torch-and-tile-logo.png'
 
@@ -113,6 +113,8 @@ type AppSnapshot = {
   steps: StepRun[]
   ramps: RampRun[]
   labels: Label[]
+  roomLedgerEntries: RoomLedgerEntry[]
+  generalNotes: string[]
   layers: MapLayer[]
   environmentalColors: Map<number, string>
   styleFrame?: VisualStyle | null
@@ -149,9 +151,9 @@ export default function App() {
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() => {
     const grid = createGrid(DEFAULT_COLS, DEFAULT_ROWS)
-    return createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() })
+    return createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], roomLedgerEntries: [], generalNotes: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() })
   })
-  const { grids, layerGrids, stamps, steps, ramps, labels, layers, environmentalColors } = history.present
+  const { grids, layerGrids, stamps, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, environmentalColors } = history.present
   const lights = history.present.lights ?? []
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
@@ -427,6 +429,8 @@ export default function App() {
           steps: [],
           ramps: [],
           labels: [],
+          roomLedgerEntries: [],
+          generalNotes: [],
           lights: [],
           layers: [createDefaultLayer()],
           environmentalColors: new Map(),
@@ -1983,7 +1987,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, newRows))
       }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
     setRows(newRows)
@@ -2003,7 +2007,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
       }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, rows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, rows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
     pendingFitRef.current = true
@@ -2021,7 +2025,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
       }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, cols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, cols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setRows(newRows)
     pendingFitRef.current = true
@@ -2043,7 +2047,7 @@ export default function App() {
       for (const [z, g] of h.present.grids) {
         resized.set(z, resizeGrid(g, cols, rows, newCols, newRows))
       }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: resized, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, grids: resized, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(rows)
     setRows(cols)
@@ -2203,14 +2207,11 @@ export default function App() {
   }, [activeGrid, activeZ, renderGrids, layerGrids, activeLayer, textureSettings, layerTileColorOverrides, layers, visibleLights, lightingSettings, visibleStamps, cols, rows, exportPixelsPerCell, exportRegion, wallColor, wallOpacity, showGrid, show3D, showIso, stampImages, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, environmentalColors])
 
   const getRoomLedgerText = useCallback(() => {
-    if (!generationResult?.ok || !generationResult.space) return null
     return formatRoomLedgerText({
-      modules: generationResult.space.modules,
-      mission: generationResult.mission,
-      labels,
-      generalNotes: generationResult.space.generalNotes,
+      entries: roomLedgerEntries,
+      generalNotes,
     })
-  }, [generationResult, labels])
+  }, [roomLedgerEntries, generalNotes])
 
   const downloadText = (name: string, content: string) => {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }))
@@ -2309,7 +2310,7 @@ export default function App() {
   }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
 
   const getSerializedMap = () => {
-    const mapSave = serialize({ grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, layers, activeLayerId, environmentalColors: environmentalColors as Map<number, string>, textureSettings, customStylePresets, lights, lightingSettings })
+    const mapSave = serialize({ grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors: environmentalColors as Map<number, string>, textureSettings, customStylePresets, lights, lightingSettings })
     return JSON.stringify(mapSave, null, 2)
   }
 
@@ -2334,7 +2335,7 @@ export default function App() {
       setSavedHistoryLength(history.past.length)
       setSavedStyleSignature(currentStyleSignature())
     }
-  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
+  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
 
   const handleSaveAs = useCallback(async () => {
     if (!isTauri()) return
@@ -2348,7 +2349,7 @@ export default function App() {
       setSavedHistoryLength(history.past.length)
       setSavedStyleSignature(currentStyleSignature())
     }
-  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
+  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
@@ -2374,7 +2375,7 @@ export default function App() {
       if (!confirmed) return
     }
     const grid = createGrid(DEFAULT_COLS, DEFAULT_ROWS)
-    setHistory(createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() }))
+    setHistory(createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], roomLedgerEntries: [], generalNotes: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() }))
     setActiveLayerId('map')
     setCustomImages([])
     setCols(DEFAULT_COLS)
@@ -2435,7 +2436,14 @@ export default function App() {
         return
       }
       const snapshot = result.snapshot
-      setHistory(h => push(h, { ...snapshot, activeLayerId: 'map', layerGrids: createLayerGrids(undefined, snapshot.grids), layers: [createDefaultLayer()] }))
+      setHistory(h => push(h, {
+        ...snapshot,
+        activeLayerId: 'map',
+        layerGrids: createLayerGrids(undefined, snapshot.grids),
+        layers: [createDefaultLayer()],
+        roomLedgerEntries: buildRoomLedgerEntries(result.space!.modules, result.mission, snapshot.labels),
+        generalNotes: result.space!.generalNotes,
+      }))
       setActiveLayerId('map')
       setActiveZ(0)
       activeZRef.current = 0
@@ -2467,28 +2475,49 @@ export default function App() {
     return generateRandomDungeonWithSeed(createRandomSeed())
   }, [generateRandomDungeonWithSeed])
 
-  const handleCommitRoomName = useCallback((moduleId: string, text: string) => {
-    const labelId = `label-${moduleId}`
+  const handleCommitRoomEntry = useCallback((entryId: string, changes: Partial<Pick<RoomLedgerEntry, 'number' | 'name' | 'details'>>) => {
     setHistory(h => {
-      const current = h.present.labels.find(label => label.id === labelId)
-      if (!current || current.text === text) return h
-      return push(h, { ...h.present, labels: updateLabel(h.present.labels, labelId, { text }) })
+      const current = h.present.roomLedgerEntries.find(entry => entry.id === entryId)
+      if (!current) return h
+      const nextEntry = { ...current, ...changes }
+      if (nextEntry.number === current.number && nextEntry.name === current.name && nextEntry.details === current.details) return h
+
+      let labels = h.present.labels
+      if (current.moduleId) {
+        const labelId = `label-${current.moduleId}`
+        const label = labels.find(item => item.id === labelId)
+        if (label) {
+          const labelChanges: Partial<Label> = {}
+          if (changes.number !== undefined) labelChanges.number = changes.number
+          if (changes.name !== undefined) labelChanges.text = changes.name
+          if (changes.details !== undefined) labelChanges.details = changes.details
+          labels = updateLabel(labels, labelId, labelChanges)
+        }
+      }
+      return push(h, {
+        ...h.present,
+        labels,
+        roomLedgerEntries: h.present.roomLedgerEntries.map(entry => entry.id === entryId ? nextEntry : entry),
+      })
     })
   }, [])
 
-  const handleCommitRoomDetails = useCallback((moduleId: string, details: string) => {
-    const labelId = `label-${moduleId}`
-    setHistory(h => {
-      const current = h.present.labels.find(label => label.id === labelId)
-      if (!current || current.details === details) return h
-      return push(h, { ...h.present, labels: updateLabel(h.present.labels, labelId, { details }) })
-    })
+  const handleAddRoomEntry = useCallback((entry: RoomLedgerEntry) => {
+    setHistory(h => h.present.roomLedgerEntries.some(current => current.id === entry.id)
+      ? h
+      : push(h, { ...h.present, roomLedgerEntries: [...h.present.roomLedgerEntries, entry] }))
   }, [])
 
-  const handleCommitGeneralNotes = useCallback((generalNotes: string[]) => {
-    setGenerationResult(result => result?.space
-      ? { ...result, space: { ...result.space, generalNotes } }
-      : result)
+  const handleRemoveRoomEntry = useCallback((entryId: string) => {
+    setHistory(h => h.present.roomLedgerEntries.some(entry => entry.id === entryId)
+      ? push(h, { ...h.present, roomLedgerEntries: h.present.roomLedgerEntries.filter(entry => entry.id !== entryId) })
+      : h)
+  }, [])
+
+  const handleCommitGeneralNotes = useCallback((notes: string[]) => {
+    setHistory(h => JSON.stringify(h.present.generalNotes) === JSON.stringify(notes)
+      ? h
+      : push(h, { ...h.present, generalNotes: notes }))
   }, [])
 
   const isDirtyRef = useRef(isDirty)
@@ -2561,7 +2590,7 @@ export default function App() {
         wallOutlineStyle: save.wallOutlineStyle, texture: save.textureSettings,
       }
       setSavedStyleSignature(styleSignature(loadedStyle, loadedPresets, save.lights, save.lightingSettings))
-      setHistory(createHistory({ activeLayerId: save.activeLayerId, grids: save.grids, layerGrids: save.layerGrids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, lights: save.lights, layers: save.layers, environmentalColors: save.environmentalColors }))
+      setHistory(createHistory({ activeLayerId: save.activeLayerId, grids: save.grids, layerGrids: save.layerGrids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, roomLedgerEntries: save.roomLedgerEntries, generalNotes: save.generalNotes, lights: save.lights, layers: save.layers, environmentalColors: save.environmentalColors }))
       setCustomImages(save.customImages)
       setActiveLayerId(save.activeLayerId)
       setActiveZ(save.layers.find(layer => layer.id === save.activeLayerId)?.targetZ ?? save.layers[0].targetZ)
@@ -2705,6 +2734,7 @@ export default function App() {
           layerGrids: new Map([[layer.id, new Map([[0, nextGrid]])]]),
           stamps: imported.stamps,
           steps: [], ramps: [], labels: imported.labels,
+          roomLedgerEntries: [], generalNotes: [],
           layers: [layer], environmentalColors: new Map(), lights: [],
         }))
         setCols(imported.cols)
@@ -3795,18 +3825,14 @@ export default function App() {
       </aside>
 
       <div className="map-reference-controls">
-        {generationResult?.ok && generationResult.space && (
-          <RoomLedger
-            key={generationResult.summary.seed}
-            modules={generationResult.space.modules}
-            mission={generationResult.mission}
-            labels={labels}
-            generalNotes={generationResult.space.generalNotes}
-            onCommitGeneralNotes={handleCommitGeneralNotes}
-            onCommitRoomName={handleCommitRoomName}
-            onCommitRoomDetails={handleCommitRoomDetails}
-          />
-        )}
+        <RoomLedger
+          entries={roomLedgerEntries}
+          generalNotes={generalNotes}
+          onCommitGeneralNotes={handleCommitGeneralNotes}
+          onCommitRoomEntry={handleCommitRoomEntry}
+          onAddEntry={handleAddRoomEntry}
+          onRemoveEntry={handleRemoveRoomEntry}
+        />
         <MapLegend />
       </div>
       <div className="canvas-status" aria-live="polite">
