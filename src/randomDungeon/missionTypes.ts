@@ -3,7 +3,8 @@ import type { AppSnapshotShape, Direction, Point } from './commonTypes'
 import type { TrapRecord } from './trapGenerator'
 import type { HazardRecord } from './hazardGenerator'
 import type { MonsterRecord } from './monsterCatalog'
-import type { DungeonLevelBudget, MonsterEncounterGroup, MonsterRejection } from './monsterBudget'
+import type { DungeonLevelBudget, MonsterRejection } from './monsterBudget'
+import type { MonsterEncounterGroupWithContext } from './monsterContext'
 
 export type { AppSnapshotShape, Direction, GeneratedMarkerSemantic, Point } from './commonTypes'
 
@@ -273,7 +274,7 @@ export interface SpatialModule {
   /** Structured monster assignments selected from the dungeon encounter table. */
   monsterDetails?: MonsterRecord[]
   /** Rolled quantities and level totals for each monster group in this room. */
-  monsterEncounterGroups?: MonsterEncounterGroup[]
+  monsterEncounterGroups?: MonsterEncounterGroupWithContext[]
   /** Structured generated room traps used to render their ledger prose. */
   trapDetails?: TrapRecord[]
   /** Structured generated room hazards used to render their ledger prose. */

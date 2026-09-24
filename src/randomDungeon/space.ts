@@ -15,6 +15,7 @@ import { resolveGeneratedStamp } from './generatedContent'
 import { GENERATED_DECORATION_STAMP_TYPES, GENERATED_DOORWAY_STAMP_TYPES } from './generatedStampCatalog'
 import { createMonsterEncounterTable, MONSTER_CATALOG, pickRandomMonsterFromTable, type MonsterRecord } from './monsterCatalog'
 import { minimumMonsterEncounterCost, monsterCountDiceNotation, monsterFitsLevelBudget, numericMonsterLevel, remainingMonsterRoomBudget, resolveDungeonLevelBudget, rollMonsterEncounter, type DungeonLevelBudget } from './monsterBudget'
+import { createMonsterRoomContext, formatMonsterRoomContext } from './monsterContext'
 import { createTrapRecord, formatTrapRecord } from './trapGenerator'
 import { createHazardRecord, createUniqueHazardRecord, formatHazardRecord } from './hazardGenerator'
 import { resolveDangerKind, rollRoomEncounter } from './roomPopulation'
@@ -388,7 +389,7 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   const usedAmbientMonsters = new Set<MonsterRecord>()
   for (const module of modulesByMonsterPriority) {
     const resolvedEncounters: RoomEncounter[] = []
-    const monsterGroups = [] as NonNullable<SpatialModule['monsterEncounterGroups']>
+    const monsterGroups: NonNullable<SpatialModule['monsterEncounterGroups']> = []
     const monsterDetails = [] as NonNullable<SpatialModule['monsterDetails']>
     const contractMonsters = contractMonsterAssignments.get(module.missionNodeId ?? '') ?? []
     const hasMonsterRoom = module.encounters?.includes('monster') ?? false
@@ -440,7 +441,10 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
         continue
       }
       resolvedEncounters.push('monster')
-      monsterGroups.push(group)
+      monsterGroups.push({
+        ...group,
+        context: createMonsterRoomContext(createD6Random(`${normalizeSeed(request.seed)}:room-monster:${module.id}:${monsterGroups.length}`)),
+      })
       monsterDetails.push(group.monster)
       if (!contractMonster) usedAmbientMonsters.add(group.monster)
       monsterLevelsUsed += group.levelTotal
@@ -465,7 +469,10 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       : resolvedEncounters.flatMap(encounter => {
         if (encounter === 'monster') {
           const group = module.monsterEncounterGroups![monsterIndex++]!
-          return [`Monster: ${group.count} ${group.monster.name.toLowerCase()} (LV ${group.monster.level})\n${group.monster.flavor}`]
+          return [
+            `Monster: ${group.count} ${group.monster.name.toLowerCase()} (LV ${group.monster.level})\n${group.monster.flavor}`,
+            ...formatMonsterRoomContext(group.context),
+          ]
         }
         if (encounter === 'trap') return [formatTrapRecord(module.trapDetails![trapIndex++]!)]
         if (encounter === 'hazard') return [formatHazardRecord(module.hazardDetails![hazardIndex++]!)]
