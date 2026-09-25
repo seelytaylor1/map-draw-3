@@ -292,6 +292,8 @@ export interface SpatialConnection {
   path: Point[]
   /** True when two room footprints meet directly with no corridor tiles between them. */
   direct?: boolean
+  /** True when exactly one corridor tile separates the two room apertures. */
+  singleTile?: boolean
   width: 1 | 2 | 4
   semantic: SpatialConnectionSemantic
   missionEdgeId?: string

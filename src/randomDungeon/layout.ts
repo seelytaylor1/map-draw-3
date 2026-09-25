@@ -130,6 +130,42 @@ function safeToAbut(parent: SpatialModule, child: SpatialModule, candidate: read
   return candidateCells.size === candidate.length
 }
 
+function oneTileGapPaths(left: readonly Point[], right: readonly Point[]): Point[][] {
+  const rightCells = new Set(right.map(point => `${point.col},${point.row}`))
+  const leftCells = new Set(left.map(point => `${point.col},${point.row}`))
+  const paths: Point[][] = []
+  for (const start of left) for (const direction of directions) {
+    const middle = { col: start.col + direction.dc, row: start.row + direction.dr }
+    const end = { col: middle.col + direction.dc, row: middle.row + direction.dr }
+    if (rightCells.has(`${end.col},${end.row}`) && !leftCells.has(`${middle.col},${middle.row}`) && !rightCells.has(`${middle.col},${middle.row}`)) paths.push([start, middle, end])
+  }
+  return paths
+}
+
+function safeToPlaceOneTileApart(parent: SpatialModule, child: SpatialModule, candidate: readonly Point[], modules: readonly SpatialModule[], request: GenerationRequest): boolean {
+  const candidateCells = new Set(candidate.map(point => `${point.col},${point.row}`))
+  const gapPaths = oneTileGapPaths(parent.footprint, candidate)
+  if (gapPaths.length === 0 || cellsTouch(candidate, parent.footprint)) return false
+  if (candidate.some(point => point.col <= 0 || point.row <= 0 || point.col >= request.cols - 1 || point.row >= request.rows - 1)) return false
+  if (candidate.some(point => parent.footprint.some(other => other.col === point.col && other.row === point.row))) return false
+  const hasClearGap = gapPaths.some(path => !modules.some(other => {
+    if (other === parent || other === child) return false
+    const otherCells = new Set(other.footprint.map(point => `${point.col},${point.row}`))
+    return otherCells.has(`${path[1]!.col},${path[1]!.row}`)
+      || directions.some(direction => otherCells.has(`${path[1]!.col + direction.dc},${path[1]!.row + direction.dr}`))
+  }))
+  if (!hasClearGap) return false
+  for (const other of modules) {
+    if (other === parent || other === child) continue
+    const otherCells = new Set(other.footprint.map(point => `${point.col},${point.row}`))
+    for (const point of candidate) {
+      if (otherCells.has(`${point.col},${point.row}`)) return false
+      if (directions.some(direction => otherCells.has(`${point.col + direction.dc},${point.row + direction.dr}`))) return false
+    }
+  }
+  return candidateCells.size === candidate.length
+}
+
 function abutRoom(parent: SpatialModule, child: SpatialModule, modules: readonly SpatialModule[], request: GenerationRequest, random: () => number): boolean {
   const original = { ...child.origin }
   const offsets = [-2, -1, 0, 1, 2]
@@ -154,11 +190,39 @@ function abutRoom(parent: SpatialModule, child: SpatialModule, modules: readonly
   return true
 }
 
+function placeRoomOneTileApart(parent: SpatialModule, child: SpatialModule, modules: readonly SpatialModule[], request: GenerationRequest, random: () => number): boolean {
+  const original = { ...child.origin }
+  const localFootprint = child.footprint.map(point => ({ col: point.col - child.origin.col, row: point.row - child.origin.row }))
+  const positions = new Map<string, Point>()
+  for (const point of parent.footprint) for (const direction of directions) for (const local of localFootprint) {
+    const position = { col: point.col + direction.dc * 2 - local.col, row: point.row + direction.dr * 2 - local.row }
+    positions.set(`${position.col},${position.row}`, position)
+  }
+  const candidates: Array<Point & { order: number; footprint: Point[] }> = []
+  for (const position of positions.values()) {
+    const footprint = translateFootprint(child, position.col, position.row)
+    if (!safeToPlaceOneTileApart(parent, child, footprint, modules, request)) continue
+    const distance = Math.abs(position.col - original.col) + Math.abs(position.row - original.row)
+    candidates.push({ ...position, footprint, order: distance + random() * 0.25 })
+  }
+  candidates.sort((a, b) => a.order - b.order)
+  const selected = candidates[0]
+  if (!selected) return false
+  child.origin = { col: selected.col, row: selected.row }
+  child.footprint = selected.footprint
+  return true
+}
+
+export interface RoomConnectionLayout {
+  direct: Set<string>
+  oneTile: Set<string>
+}
+
 // Optimize a graph embedding before carving. Empty slots are important: they
 // reserve wall and routing space, rather than maximizing painted floor area.
-// A few ordinary progression links deliberately collapse that gap into a
-// shared open boundary, while all other rooms keep protected routing lanes.
-export function arrangeRooms(request: GenerationRequest, mission: Mission, modules: SpatialModule[], edges: LayoutEdge[], attempt: number): Set<string> {
+// Some ordinary progression and loop links use a shared boundary or a one-tile
+// threshold. Contract links and entrance links keep protected routing lanes.
+export function arrangeRooms(request: GenerationRequest, mission: Mission, modules: SpatialModule[], edges: LayoutEdge[], attempt: number): RoomConnectionLayout {
   const random = layoutRandom(normalizeSeed(request.seed) + attempt * 7919)
   const n = modules.length
   let spacing = Math.min(13, Math.max(6, Math.floor(Math.sqrt((request.cols - 4) * (request.rows - 4) / (n * 1.15)))))
@@ -167,7 +231,7 @@ export function arrangeRooms(request: GenerationRequest, mission: Mission, modul
   const rows = Math.max(1, Math.floor((request.rows - 2) / spacing))
   const slots: Point[] = []
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) slots.push({ col: x, row: y })
-  if (slots.length < n) return new Set()
+  if (slots.length < n) return { direct: new Set(), oneTile: new Set() }
   const indices = new Map(modules.map((m, i) => [m.missionNodeId ?? m.id, i]))
   const links = edges.map(e => [indices.get(e.from)!, indices.get(e.to)!]).filter(e => e.every(i => i !== undefined))
   const positions = slots.map((_, i) => i)
@@ -216,22 +280,30 @@ export function arrangeRooms(request: GenerationRequest, mission: Mission, modul
     module.footprint = roomFootprint(width, height, shape, random).map(point => ({ col: origin.col + point.col, row: origin.row + point.row }))
   })
 
-  const cycleEdges = new Set(mission.cycles.flatMap(cycle => cycle.routeEdgeIds))
   const candidates = edges.filter(edge => {
     const id = edge.originalId ?? edge.id
-    return Boolean(id) && edge.kind === 'progression' && edge.from !== 'start' && edge.to !== 'start'
-      && !cycleEdges.has(id!) && !edge.lockId && !edge.secret && !edge.blocked && !edge.oneWay && !edge.dangerous
+    return Boolean(id) && (edge.kind === 'progression' || edge.kind === 'cycle-route') && edge.from !== 'start' && edge.to !== 'start'
+      && !edge.lockId && !edge.secret && !edge.blocked && !edge.oneWay && !edge.dangerous
   })
   for (let i = candidates.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!] }
-  const targetDirectCount = Math.ceil(candidates.length * 0.4)
+  const targetOneTileCount = candidates.length > 0 ? Math.min(candidates.length, Math.max(1, Math.round(candidates.length * 0.15))) : 0
+  const targetDirectCount = Math.min(Math.ceil(candidates.length * 0.3), candidates.length - targetOneTileCount)
   const directConnections = new Set<string>()
+  const oneTileConnections = new Set<string>()
   for (const edge of candidates) {
-    if (directConnections.size >= targetDirectCount) break
-    if (random() > 0.55) continue
+    if (directConnections.size >= targetDirectCount && oneTileConnections.size >= targetOneTileCount) break
     const parent = modules.find(module => module.missionNodeId === edge.from)
     const child = modules.find(module => module.missionNodeId === edge.to)
     const id = edge.originalId ?? edge.id
-    if (parent && child && id && abutRoom(parent, child, modules, request, random)) directConnections.add(id)
+    if (!parent || !child || !id) continue
+    const needsDirect = directConnections.size < targetDirectCount
+    const needsOneTile = oneTileConnections.size < targetOneTileCount
+    const preferOneTile = needsOneTile && (!needsDirect || random() < 1 / 3)
+    if (preferOneTile) {
+      if (placeRoomOneTileApart(parent, child, modules, request, random)) oneTileConnections.add(id)
+      else if (needsDirect && abutRoom(parent, child, modules, request, random)) directConnections.add(id)
+    } else if (abutRoom(parent, child, modules, request, random)) directConnections.add(id)
+    else if (needsOneTile && placeRoomOneTileApart(parent, child, modules, request, random)) oneTileConnections.add(id)
   }
-  return directConnections
+  return { direct: directConnections, oneTile: oneTileConnections }
 }
