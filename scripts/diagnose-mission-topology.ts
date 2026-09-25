@@ -1,5 +1,6 @@
 import { ALL_LOOP_CHALLENGES, assessMapTopology, generateMissionDungeon, validateLoopChallengeContract } from '../src/randomDungeon/missionFirst'
 import type { GenerationRequest, LoopChallenge, MissionGenerationResult, SpatialConnection } from '../src/randomDungeon/missionFirst'
+import { DARKNESS, FLOOR, WATER } from '../src/constants'
 
 const sampleSize = Number(process.argv[2] ?? 20)
 const firstSeed = Number(process.argv[3] ?? 1)
@@ -36,6 +37,8 @@ function validateContractRendering(result: MissionGenerationResult): string[] {
   if (!result.snapshot || !result.space) return ['No rendered snapshot or space plan was produced.']
   const problems: string[] = []
   const connectionsFor = (edgeId: string): SpatialConnection[] => result.space!.connections.filter(connection => connection.missionEdgeId === edgeId)
+  const grid = result.snapshot.grids.get(0)!
+  const gridState = (point: { col: number; row: number }) => grid[point.row * result.request.cols + point.col]
 
   for (const key of result.mission.keys) {
     if (!result.snapshot.stamps.some(stamp => stamp.id === `generated-${key.id}` && stamp.type === 'Key1x1')) problems.push(`${key.id} is missing its rendered Key marker.`)
@@ -54,6 +57,41 @@ function validateContractRendering(result: MissionGenerationResult): string[] {
       if (edge.dangerous && connection.semantic !== 'dangerous') problems.push(`${edge.id} is missing its dangerous-route rendering.`)
       if (edge.oneWay && (connection.semantic !== 'one-way' || connection.traversable !== 'one-way')) problems.push(`${edge.id} is missing its one-way rendering.`)
       if (edge.blocked && connection.traversable !== 'blocked') problems.push(`${edge.id} is missing its blocked-route rendering.`)
+    }
+  }
+  const dramaticCycle = result.mission.cycles.find(cycle => cycle.challenge === 'dramatic-arc')
+  if (dramaticCycle) {
+    const chamber = result.space.modules.find(module => module.id === result.space!.anchors[dramaticCycle.roles.objectiveNode])
+    if (!chamber) problems.push(`${dramaticCycle.id} has no room for its dark barrier.`)
+    else {
+      const axis = chamber.width >= chamber.height ? 'row' : 'col'
+      const axisOrigin = axis === 'row' ? chamber.origin.row : chamber.origin.col
+      const span = axis === 'row' ? chamber.width : chamber.height
+      const maximum = axis === 'row' ? chamber.height : chamber.width
+      const bandLength = Math.min(6, Math.max(3, Math.min(4, maximum - 2)))
+      const bandStart = Math.floor((maximum - bandLength) / 2)
+      for (let offset = 0; offset < bandLength; offset++) {
+        const coordinate = axisOrigin + bandStart + offset
+        const cells = chamber.footprint.filter(point => point[axis] === coordinate)
+        if (cells.length !== span || cells.some(point => gridState(point) !== DARKNESS)) problems.push(`${dramaticCycle.id} dark section does not span the chamber as a continuous barrier.`)
+      }
+      const chamberCells = new Map(chamber.footprint.filter(point => gridState(point) === FLOOR || gridState(point) === WATER).map(point => [`${point.col},${point.row}`, point]))
+      let components = 0
+      while (chamberCells.size > 0) {
+        components++
+        const first = chamberCells.values().next().value!
+        const queue = [first]
+        chamberCells.delete(`${first.col},${first.row}`)
+        for (let head = 0; head < queue.length; head++) {
+          const point = queue[head]!
+          for (const neighbor of [{ col: point.col, row: point.row - 1 }, { col: point.col + 1, row: point.row }, { col: point.col, row: point.row + 1 }, { col: point.col - 1, row: point.row }]) {
+            const key = `${neighbor.col},${neighbor.row}`
+            const next = chamberCells.get(key)
+            if (next) { chamberCells.delete(key); queue.push(next) }
+          }
+        }
+      }
+      if (components < 2) problems.push(`${dramaticCycle.id} dark section does not divide the chamber into separate sides.`)
     }
   }
   return problems

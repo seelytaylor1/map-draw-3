@@ -70,12 +70,29 @@ function orderRoomsFromEntrance(modules: readonly SpatialModule[], connections: 
   return orderedIds.map(id => roomsById.get(id)!).filter(Boolean)
 }
 
-function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationRequest, modules: SpatialModule[], connections: SpatialConnection[], direct = false): Point[] | null {
+type DramaticRoomSide = 'before' | 'after'
+interface DramaticRoomSideConstraint {
+  moduleId: string
+  axis: 'row' | 'col'
+  origin: number
+  bandStart: number
+  bandLength: number
+  side: DramaticRoomSide
+}
+
+function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationRequest, modules: SpatialModule[], connections: SpatialConnection[], direct = false, sideConstraint?: DramaticRoomSideConstraint): Point[] | null {
+  const pointOnRequestedSide = (module: SpatialModule, point: Point) => {
+    if (!sideConstraint || module.id !== sideConstraint.moduleId) return true
+    const position = (sideConstraint.axis === 'row' ? point.row : point.col) - sideConstraint.origin
+    return sideConstraint.side === 'before'
+      ? position < sideConstraint.bandStart
+      : position >= sideConstraint.bandStart + sideConstraint.bandLength
+  }
   if (direct) {
     const usedFrom = new Set(from.ports.map(port => keyOf(port.point)))
     const usedTo = new Set(to.ports.map(port => keyOf(port.point)))
     const contacts = from.footprint.flatMap(start => adjacent(start)
-      .filter(end => to.footprint.some(point => keyOf(point) === keyOf(end)) && !usedFrom.has(keyOf(start)) && !usedTo.has(keyOf(end)))
+      .filter(end => to.footprint.some(point => keyOf(point) === keyOf(end)) && !usedFrom.has(keyOf(start)) && !usedTo.has(keyOf(end)) && pointOnRequestedSide(from, start) && pointOnRequestedSide(to, end))
       .map(end => ({ start, end })))
     const centerDistance = (point: Point, module: SpatialModule) => Math.abs(point.col - center(module).col) + Math.abs(point.row - center(module).row)
     contacts.sort((a, b) => centerDistance(a.start, from) - centerDistance(b.start, from)
@@ -101,6 +118,7 @@ function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationR
     const portSpacing = module.type === 'hub' ? 2 : 3
     for (const door of module.footprint) {
       if (excluded.has(keyOf(door))) continue
+      if (!pointOnRequestedSide(module, door)) continue
       if (used.some(p => Math.abs(p.col - door.col) + Math.abs(p.row - door.row) < portSpacing)) continue
       for (const outside of adjacent(door)) {
         if (own.has(keyOf(outside))) continue
@@ -149,14 +167,14 @@ function edgeSemantic(edge: MissionEdge): SpatialConnectionSemantic {
   return 'corridor'
 }
 
-function addConnection(connections: SpatialConnection[], modules: Map<string, SpatialModule>, missionEdge: MissionEdge, request: GenerationRequest, directConnectionIds: ReadonlySet<string>, cycleId?: string, missionEdgeId = missionEdge.id): SpatialConnection | null {
+function addConnection(connections: SpatialConnection[], modules: Map<string, SpatialModule>, missionEdge: MissionEdge, request: GenerationRequest, directConnectionIds: ReadonlySet<string>, cycleId?: string, missionEdgeId = missionEdge.id, sideConstraint?: DramaticRoomSideConstraint): SpatialConnection | null {
   const from = modules.get(missionEdge.from)
   const to = modules.get(missionEdge.to)
   if (!from || !to) return null
   const width: 1 | 2 | 4 = 1
   const semantic = edgeSemantic(missionEdge) === 'corridor' && (from.type === 'hub' || to.type === 'hub') ? 'spoke' : edgeSemantic(missionEdge)
   const direct = directConnectionIds.has(missionEdgeId)
-  const path = routeRooms(from, to, request, [...modules.values()], connections, direct)
+  const path = routeRooms(from, to, request, [...modules.values()], connections, direct, sideConstraint)
   if (!path) return null
   const apertureFrom = path[0]!, apertureTo = path[path.length - 1]!
   const explicitJunction = false
@@ -231,19 +249,30 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
     }
   }
   const directConnectionIds = arrangeRooms(request, mission, modules, edges, attempt)
+  let dramaticSplit: Omit<DramaticRoomSideConstraint, 'side'> | undefined
   if (dramaticCycle) {
     const dramaticRoomId = dramaticGoalInStart ? 'start' : dramaticCycle.roles.objectiveNode
     const dramaticRoom = modules.find(module => module.missionNodeId === dramaticRoomId)
     if (dramaticRoom) {
-      const axis = dramaticRoom.width >= dramaticRoom.height ? 'vertical' : 'horizontal'
-      const maximum = axis === 'vertical' ? dramaticRoom.height : dramaticRoom.width
+      const axis = dramaticRoom.width >= dramaticRoom.height ? 'row' : 'col'
+      const maximum = axis === 'row' ? dramaticRoom.height : dramaticRoom.width
       const bandLength = Math.min(6, Math.max(3, Math.min(4, maximum - 2)))
       const bandStart = Math.floor((maximum - bandLength) / 2)
+      dramaticSplit = { moduleId: dramaticRoom.id, axis, origin: axis === 'row' ? dramaticRoom.origin.row : dramaticRoom.origin.col, bandStart, bandLength }
       dramaticRoom.excludedPortPoints = dramaticRoom.footprint.filter(point => {
-        const position = axis === 'vertical' ? point.row - dramaticRoom.origin.row : point.col - dramaticRoom.origin.col
+        const position = (axis === 'row' ? point.row : point.col) - dramaticSplit!.origin
         return position >= bandStart && position < bandStart + bandLength
       })
     }
+  }
+  const dramaticStartSideByEdgeId = new Map<string, DramaticRoomSide>()
+  if (dramaticGoalInStart && dramaticCycle) {
+    const routeAFirstNode = dramaticCycle.routeA[1]
+    const routeBLastNode = dramaticCycle.routeB[dramaticCycle.routeB.length - 2]
+    const routeAStartEdge = edges.find(edge => edge.from === dramaticCycle.routeA[0] && edge.to === routeAFirstNode && dramaticCycle.routeEdgeIds.includes(edge.originalId))
+    const routeBGoalEdge = edges.find(edge => edge.from === routeBLastNode && edge.to === dramaticCycle.roles.objectiveNode && dramaticCycle.routeEdgeIds.includes(edge.originalId))
+    if (routeAStartEdge) dramaticStartSideByEdgeId.set(routeAStartEdge.originalId, 'before')
+    if (routeBGoalEdge) dramaticStartSideByEdgeId.set(routeBGoalEdge.originalId, 'after')
   }
   const lookup = new Map(modules.map(m => [m.missionNodeId ?? m.id, m]))
   if (dramaticGoalInStart) lookup.set(mission.goalNodeId, lookup.get('start')!)
@@ -256,7 +285,9 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   })
   const diagnostics: GenerationDiagnostic[] = []
   for (const edge of edges) {
-    if (!addConnection(connections, lookup, edge, request, directConnectionIds, cycleByEdge.get(edge.originalId), edge.originalId)) diagnostics.push({ stage: 'space', code: 'unroutable-relationship', message: `Could not route ${edge.from} to ${edge.to} without an unintended connection.`, style: request.style, seed: normalizeSeed(request.seed), nodeId: edge.from, constraint: edge.originalId && directConnectionIds.has(edge.originalId) ? 'direct room connection' : 'separated corridor routing' })
+    const side = dramaticStartSideByEdgeId.get(edge.originalId)
+    const sideConstraint = side && dramaticSplit ? { ...dramaticSplit, side } : undefined
+    if (!addConnection(connections, lookup, edge, request, directConnectionIds, cycleByEdge.get(edge.originalId), edge.originalId, sideConstraint)) diagnostics.push({ stage: 'space', code: 'unroutable-relationship', message: `Could not route ${edge.from} to ${edge.to} without an unintended connection.`, style: request.style, seed: normalizeSeed(request.seed), nodeId: edge.from, constraint: edge.originalId && directConnectionIds.has(edge.originalId) ? 'direct room connection' : 'separated corridor routing' })
   }
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
   const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
@@ -918,6 +949,54 @@ export function rasterizeSpacePlan(request: GenerationRequest, mission: Mission,
           })[0]
         : roomDecorationPoint(module)
       if (point) addOptional(GENERATED_DECORATION_STAMP_TYPES.treasure, `generated-room-treasure-${module.id}`, point)
+    }
+  }
+  if (dramaticCycle && dramaticLayout) {
+    const chamber = dramaticLayout.start
+    const axis = dramaticLayout.axis === 'vertical' ? 'row' : 'col'
+    const axisOrigin = axis === 'row' ? chamber.origin.row : chamber.origin.col
+    const span = axis === 'row' ? chamber.width : chamber.height
+    let fullDarkBand = true
+    for (let offset = 0; offset < dramaticLayout.bandLength; offset++) {
+      const coordinate = axisOrigin + dramaticLayout.bandStart + offset
+      const bandCells = chamber.footprint.filter(point => point[axis] === coordinate)
+      if (bandCells.length !== span || bandCells.some(point => grid[point.row * request.cols + point.col] !== DARKNESS)) fullDarkBand = false
+    }
+    if (!fullDarkBand) diagnostics.push({ stage: 'rasterization', code: 'dramatic-arc-dark-band-open', message: 'The Dramatic Arc darkness section must span the room as a continuous barrier.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'Dramatic Arc darkness barrier' })
+
+    const unvisited = new Map(chamber.footprint.filter(isWalkable).map(point => [keyOf(point), point]))
+    const chamberComponents: Point[][] = []
+    while (unvisited.size > 0) {
+      const first = unvisited.values().next().value as Point
+      const queue = [first]
+      const component: Point[] = []
+      unvisited.delete(keyOf(first))
+      for (let head = 0; head < queue.length; head++) {
+        const point = queue[head]!
+        component.push(point)
+        for (const neighbor of adjacent(point)) {
+          const key = keyOf(neighbor)
+          const next = unvisited.get(key)
+          if (next) { unvisited.delete(key); queue.push(next) }
+        }
+      }
+      chamberComponents.push(component)
+    }
+    if (chamberComponents.length < 2) diagnostics.push({ stage: 'rasterization', code: 'dramatic-arc-darkness-not-blocking', message: 'The Dramatic Arc dark section must split the chamber into separate walkable sides.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'Dramatic Arc darkness barrier' })
+    else {
+      const blockedConnectionCells = new Set(plan.connections.filter(connection => connection.traversable === 'blocked').map(connection => {
+        const point = connection.path.length > 2 ? connection.path[connection.path.length - 2]! : connection.path[connection.path.length - 1]!
+        return keyOf(point)
+      }))
+      const reached = new Set<string>([keyOf(chamberComponents[0]![0]!)])
+      const queue = [chamberComponents[0]![0]!]
+      for (let head = 0; head < queue.length; head++) for (const neighbor of adjacent(queue[head]!)) {
+        const key = keyOf(neighbor)
+        if (reached.has(key) || blockedConnectionCells.has(key) || !isWalkable(neighbor)) continue
+        reached.add(key)
+        queue.push(neighbor)
+      }
+      if (!chamberComponents.slice(1).every(component => component.some(point => reached.has(keyOf(point))))) diagnostics.push({ stage: 'rasterization', code: 'dramatic-arc-loop-unreachable', message: 'The open loop must connect both sides of the Dramatic Arc darkness barrier.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'Dramatic Arc alternate route' })
     }
   }
   if (diagnostics.length > 0) return { diagnostics }
