@@ -290,6 +290,8 @@ export interface SpatialConnection {
   fromModuleId: string
   toModuleId: string
   path: Point[]
+  /** True when two room footprints meet directly with no corridor tiles between them. */
+  direct?: boolean
   width: 1 | 2 | 4
   semantic: SpatialConnectionSemantic
   missionEdgeId?: string

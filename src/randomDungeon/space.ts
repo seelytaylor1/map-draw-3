@@ -70,7 +70,19 @@ function orderRoomsFromEntrance(modules: readonly SpatialModule[], connections: 
   return orderedIds.map(id => roomsById.get(id)!).filter(Boolean)
 }
 
-function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationRequest, modules: SpatialModule[], connections: SpatialConnection[]): Point[] | null {
+function routeRooms(from: SpatialModule, to: SpatialModule, request: GenerationRequest, modules: SpatialModule[], connections: SpatialConnection[], direct = false): Point[] | null {
+  if (direct) {
+    const usedFrom = new Set(from.ports.map(port => keyOf(port.point)))
+    const usedTo = new Set(to.ports.map(port => keyOf(port.point)))
+    const contacts = from.footprint.flatMap(start => adjacent(start)
+      .filter(end => to.footprint.some(point => keyOf(point) === keyOf(end)) && !usedFrom.has(keyOf(start)) && !usedTo.has(keyOf(end)))
+      .map(end => ({ start, end })))
+    const centerDistance = (point: Point, module: SpatialModule) => Math.abs(point.col - center(module).col) + Math.abs(point.row - center(module).row)
+    contacts.sort((a, b) => centerDistance(a.start, from) - centerDistance(b.start, from)
+      || centerDistance(a.end, to) - centerDistance(b.end, to))
+    const contact = contacts[0]
+    return contact ? [contact.start, contact.end] : null
+  }
   const cells = request.cols * request.rows
   const index = (p: Point) => p.row * request.cols + p.col
   const point = (i: number): Point => ({ col: i % request.cols, row: Math.floor(i / request.cols) })
@@ -137,13 +149,14 @@ function edgeSemantic(edge: MissionEdge): SpatialConnectionSemantic {
   return 'corridor'
 }
 
-function addConnection(connections: SpatialConnection[], modules: Map<string, SpatialModule>, missionEdge: MissionEdge, request: GenerationRequest, cycleId?: string, missionEdgeId = missionEdge.id): SpatialConnection | null {
+function addConnection(connections: SpatialConnection[], modules: Map<string, SpatialModule>, missionEdge: MissionEdge, request: GenerationRequest, directConnectionIds: ReadonlySet<string>, cycleId?: string, missionEdgeId = missionEdge.id): SpatialConnection | null {
   const from = modules.get(missionEdge.from)
   const to = modules.get(missionEdge.to)
   if (!from || !to) return null
   const width: 1 | 2 | 4 = 1
   const semantic = edgeSemantic(missionEdge) === 'corridor' && (from.type === 'hub' || to.type === 'hub') ? 'spoke' : edgeSemantic(missionEdge)
-  const path = routeRooms(from, to, request, [...modules.values()], connections)
+  const direct = directConnectionIds.has(missionEdgeId)
+  const path = routeRooms(from, to, request, [...modules.values()], connections, direct)
   if (!path) return null
   const apertureFrom = path[0]!, apertureTo = path[path.length - 1]!
   const explicitJunction = false
@@ -152,6 +165,7 @@ function addConnection(connections: SpatialConnection[], modules: Map<string, Sp
     fromModuleId: from.id,
     toModuleId: to.id,
     path,
+    ...(direct ? { direct: true } : {}),
     width,
     semantic,
     missionEdgeId,
@@ -216,7 +230,7 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
       if (junction) junction.type = 'junction'
     }
   }
-  arrangeRooms(request, mission, modules, edges, attempt)
+  const directConnectionIds = arrangeRooms(request, mission, modules, edges, attempt)
   if (dramaticCycle) {
     const dramaticRoomId = dramaticGoalInStart ? 'start' : dramaticCycle.roles.objectiveNode
     const dramaticRoom = modules.find(module => module.missionNodeId === dramaticRoomId)
@@ -242,7 +256,7 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   })
   const diagnostics: GenerationDiagnostic[] = []
   for (const edge of edges) {
-    if (!addConnection(connections, lookup, edge, request, cycleByEdge.get(edge.originalId), edge.originalId)) diagnostics.push({ stage: 'space', code: 'unroutable-relationship', message: `Could not route ${edge.from} to ${edge.to} without an unintended connection.`, style: request.style, seed: normalizeSeed(request.seed), nodeId: edge.from, constraint: 'separated corridor routing' })
+    if (!addConnection(connections, lookup, edge, request, directConnectionIds, cycleByEdge.get(edge.originalId), edge.originalId)) diagnostics.push({ stage: 'space', code: 'unroutable-relationship', message: `Could not route ${edge.from} to ${edge.to} without an unintended connection.`, style: request.style, seed: normalizeSeed(request.seed), nodeId: edge.from, constraint: edge.originalId && directConnectionIds.has(edge.originalId) ? 'direct room connection' : 'separated corridor routing' })
   }
   if (modules.some(m => m.footprint.length === 0)) diagnostics.push({ stage: 'space', code: 'placement-capacity', message: 'The fixed mission does not fit with separated rooms and routing lanes.', style: request.style, seed: normalizeSeed(request.seed), constraint: 'buffered room footprints' })
   const anchors = Object.fromEntries(modules.filter(m => m.missionNodeId).map(m => [m.missionNodeId!, m.id]))
@@ -329,7 +343,11 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
   }
   for (const connection of plan.connections) {
     const roll = random.nextD6()
-    connection.condition = roll <= 3 ? 'open' : roll === 4 ? 'flooded' : roll === 5 ? 'trap' : 'hazard'
+    connection.condition = connection.direct ? 'open' : roll <= 3 ? 'open' : roll === 4 ? 'flooded' : roll === 5 ? 'trap' : 'hazard'
+    if (connection.direct) {
+      connection.doorways = []
+      continue
+    }
     const missionEdge = mission.edges.find(edge => edge.id === connection.missionEdgeId)
     const doorways: GeneratedDoorway[] = []
     const hallwayStart = connection.path[1]!
@@ -591,7 +609,11 @@ export function validateSpacePlan(request: GenerationRequest, plan: SpacePlan, m
     const left = plan.modules[leftIndex]!
     const right = plan.modules[rightIndex]!
     const rightCells = new Set(right.footprint.map(keyOf))
-    if (left.footprint.some(point => adjacent(point).some(neighbor => rightCells.has(keyOf(neighbor))))) addDiagnostic(diagnostics, request, 'room-buffer', `Modules ${left.id} and ${right.id} lose their one-cell Wall buffer.`, 'one-cell room buffer')
+    const roomsTouch = left.footprint.some(point => adjacent(point).some(neighbor => rightCells.has(keyOf(neighbor))))
+    const declaredDirectConnection = plan.connections.some(connection => connection.direct
+      && ((connection.fromModuleId === left.id && connection.toModuleId === right.id)
+        || (connection.fromModuleId === right.id && connection.toModuleId === left.id)))
+    if (roomsTouch && !declaredDirectConnection) addDiagnostic(diagnostics, request, 'room-buffer', `Modules ${left.id} and ${right.id} lose their one-cell Wall buffer.`, 'one-cell room buffer')
   }
   const occupiedConnections = new Map<string, SpatialConnection>()
   for (const connection of plan.connections) {
@@ -602,7 +624,9 @@ export function validateSpacePlan(request: GenerationRequest, plan: SpacePlan, m
     const fromPort = from.ports.find(port => port.connectionId === connection.id)
     const toPort = to.ports.find(port => port.connectionId === connection.id)
     if (!fromPort || !toPort || keyOf(fromPort.point) !== keyOf(connection.apertureFrom) || keyOf(toPort.point) !== keyOf(connection.apertureTo)) addDiagnostic(diagnostics, request, 'incompatible-aperture', `Connection ${connection.id} does not terminate at its declared room apertures.`, 'Room Connection Aperture')
-    if (connection.path.length < 3 || keyOf(connection.path[0]!) !== keyOf(connection.apertureFrom) || keyOf(connection.path[connection.path.length - 1]!) !== keyOf(connection.apertureTo) || !pointInModule(connection.apertureFrom, from) || !pointInModule(connection.apertureTo, to)) addDiagnostic(diagnostics, request, 'invalid-corridor-endpoints', `Connection ${connection.id} must connect its two declared room doorways.`, 'corridor endpoints')
+    const pathLengthValid = connection.direct ? connection.path.length === 2 : connection.path.length >= 3
+    if (!pathLengthValid || keyOf(connection.path[0]!) !== keyOf(connection.apertureFrom) || keyOf(connection.path[connection.path.length - 1]!) !== keyOf(connection.apertureTo) || !pointInModule(connection.apertureFrom, from) || !pointInModule(connection.apertureTo, to)) addDiagnostic(diagnostics, request, 'invalid-corridor-endpoints', `Connection ${connection.id} must connect its two declared room doorways.`, 'corridor endpoints')
+    if (connection.direct && (Math.abs(connection.apertureFrom.col - connection.apertureTo.col) + Math.abs(connection.apertureFrom.row - connection.apertureTo.row) !== 1 || !['corridor', 'spoke'].includes(connection.semantic) || connection.condition !== 'open' || (connection.doorways?.length ?? 0) > 0)) addDiagnostic(diagnostics, request, 'invalid-direct-connection', `Direct connection ${connection.id} must be a single open boundary between adjacent rooms.`, 'direct room connection')
     for (let index = 1; index < connection.path.length; index++) {
       const previous = connection.path[index - 1]!
       const point = connection.path[index]!
