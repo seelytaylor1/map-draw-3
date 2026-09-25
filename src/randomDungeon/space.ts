@@ -352,7 +352,12 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
     const doorways: GeneratedDoorway[] = []
     const hallwayStart = connection.path[1]!
     const hallwayEnd = connection.path[connection.path.length - 2]!
-    if (missionEdge?.lockId) doorways.push({ point: hallwayEnd, direction: directionForPath(connection.path.slice(-2)), style: 'locked', location: 'room-aperture' })
+    const contractDoorways: GeneratedDoorway[] = []
+    if (missionEdge?.lockId) {
+      const lockedDoorway = { point: hallwayEnd, direction: directionForPath(connection.path.slice(-2)), style: 'locked' as const, location: 'room-aperture' as const }
+      doorways.push(lockedDoorway)
+      contractDoorways.push(lockedDoorway)
+    }
     const apertures = [
       { point: hallwayStart, direction: directionForPath(connection.path.slice(0, 2)), locked: false },
       { point: hallwayEnd, direction: directionForPath(connection.path.slice(-2)), locked: Boolean(missionEdge?.lockId) },
@@ -368,6 +373,11 @@ function rollGeneratedContent(request: GenerationRequest, mission: Mission, plan
       if (connection.condition === 'trap' || connection.condition === 'hazard' || ['secret', 'dangerous', 'blocked-return', 'one-way'].includes(connection.semantic)) index = Math.min(connection.path.length - 2, index + 1)
       const point = connection.path[index]!
       doorways.push({ point, direction: directionForPath([connection.path[index - 1]!, point]), style: rollDoorwayStyle(random), location: 'hallway' })
+    }
+    // Short halls keep at most one optional door, while preserving every door required by a mission contract.
+    if (hallwayLength <= 6) {
+      const optionalDoorways = doorways.filter(doorway => !contractDoorways.includes(doorway))
+      doorways.splice(0, doorways.length, ...contractDoorways, ...optionalDoorways.slice(0, Math.max(0, 1 - contractDoorways.length)))
     }
     connection.doorways = doorways
   }

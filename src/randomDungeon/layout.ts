@@ -223,11 +223,11 @@ export function arrangeRooms(request: GenerationRequest, mission: Mission, modul
       && !cycleEdges.has(id!) && !edge.lockId && !edge.secret && !edge.blocked && !edge.oneWay && !edge.dangerous
   })
   for (let i = candidates.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!] }
-  const targetDirectCount = Math.ceil(candidates.length * 0.25)
+  const targetDirectCount = Math.ceil(candidates.length * 0.4)
   const directConnections = new Set<string>()
   for (const edge of candidates) {
     if (directConnections.size >= targetDirectCount) break
-    if (random() > 0.22) continue
+    if (random() > 0.55) continue
     const parent = modules.find(module => module.missionNodeId === edge.from)
     const child = modules.find(module => module.missionNodeId === edge.to)
     const id = edge.originalId ?? edge.id
