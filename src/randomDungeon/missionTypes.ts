@@ -38,6 +38,8 @@ export interface GenerationRequest {
   loopPreference: LoopPreference
   /** Party level used to select the monster and dungeon budgets. */
   playerLevel?: number
+  /** Optional fixed monster results for table entries 2–6. Omitted means roll a level-appropriate roster. */
+  monsterEncounterTable?: readonly MonsterRecord[]
   /** Enabled magic-item source modules. Omitted means Shadowdark Core. */
   magicItemSources?: readonly MagicItemSourceId[]
   loopChallenges?: readonly (LoopPreference | undefined)[]

@@ -99,6 +99,24 @@ export function validateGenerationRequest(request: Partial<GenerationRequest>): 
   if (!Number.isFinite(request.tilesPerInch) || ![2, 4, 8].includes(request.tilesPerInch ?? 0)) add('invalid-tile-size', 'Tile size must use 2, 4, or 8 tiles per inch.')
   if (!request.complexity || !['compact', 'standard', 'dense'].includes(request.complexity)) add('invalid-complexity', 'Choose Compact, Standard, or Dense complexity.')
   if (request.playerLevel !== undefined && (!Number.isInteger(request.playerLevel) || request.playerLevel < 1 || request.playerLevel > 10)) add('invalid-player-level', 'Dungeon level must be an integer from 1 to 10.')
+  if (request.monsterEncounterTable !== undefined) {
+    if (!Array.isArray(request.monsterEncounterTable) || request.monsterEncounterTable.length !== 5) {
+      add('invalid-monster-encounter-table', 'A manual random encounter table must contain exactly five monster entries.')
+    } else {
+      const validPlayerLevel = Number.isInteger(request.playerLevel ?? 1) && (request.playerLevel ?? 1) >= 1 && (request.playerLevel ?? 1) <= 10
+      const monsterLevelMax = validPlayerLevel ? resolveDungeonLevelBudget(request.playerLevel).monsterLevelMax : null
+      request.monsterEncounterTable.forEach((monster, index) => {
+        if (!monster || typeof monster.name !== 'string' || monster.name.trim() === '') add('invalid-monster-encounter-name', `Random encounter ${index + 2} needs a monster name.`)
+        if (!monster || typeof monster.flavor !== 'string') add('invalid-monster-encounter-description', `Random encounter ${index + 2} has an invalid description.`)
+        const level = monster && typeof monster.level === 'number' ? monster.level : null
+        if (level === null || !Number.isInteger(level) || level < 0 || level > 10) {
+          add('invalid-monster-encounter-level', `Random encounter ${index + 2} needs a monster level from 0 to 10.`)
+        } else if (monsterLevelMax !== null && level > monsterLevelMax) {
+          add('monster-encounter-level-out-of-range', `Random encounter ${index + 2} is above this dungeon's monster level range (0–${monsterLevelMax}).`)
+        }
+      })
+    }
+  }
   if (request.magicItemSources !== undefined) {
     if (!Array.isArray(request.magicItemSources)) add('invalid-magic-item-sources', 'Magic-item sources must be a list.')
     else if (request.magicItemSources.some(source => source !== 'shadowdark-core' && source !== 'custom')) add('invalid-magic-item-source', 'Choose a supported magic-item source.')
@@ -175,6 +193,7 @@ export function createGenerationRequest(input: Partial<GenerationRequest> & Pick
     loopCount: input.loopCount ?? 0,
     loopPreference: input.loopPreference ?? 'varied',
     playerLevel: input.playerLevel ?? 1,
+    ...(input.monsterEncounterTable ? { monsterEncounterTable: input.monsterEncounterTable } : {}),
     ...(input.magicItemSources ? { magicItemSources: input.magicItemSources } : {}),
     ...(input.loopChallenges ? { loopChallenges: input.loopChallenges } : {}),
     ...(input.availableStampTypes ? { availableStampTypes: input.availableStampTypes } : {}),
