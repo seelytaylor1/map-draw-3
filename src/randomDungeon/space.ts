@@ -229,8 +229,8 @@ export function buildSpacePlan(request: GenerationRequest, mission: Mission, att
   // Dramatic Arc's one-loop Spine contract is a single room-spanning cycle:
   // Start and Goal share room 1, Route A runs into the room's obstacle, and
   // Route B continues from Route A's far end before returning to the Goal side.
-  // The blocked mission edge is represented by the darkness band itself, so it
-  // must not become a second physical corridor back into the shared room.
+  // The blocked mission edge is represented by the dark band through the shared
+  // Start/Goal room, so it must not become a second physical corridor back in.
   const dramaticBlockedEdge = dramaticGoalInStart
     ? mission.edges.find(edge => edge.blocked && dramaticCycle.routeEdgeIds.includes(edge.id))
     : undefined

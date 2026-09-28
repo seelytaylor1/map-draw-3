@@ -42,6 +42,7 @@ import { useUpdater } from './hooks/useUpdater'
 import { UpdateNotification } from './ui/UpdateNotification'
 import { ALL_LOOP_CHALLENGES, formatLoopChallenge, generateMissionDungeon, getDungeonLevelBudget, LOOP_CHALLENGE_DESCRIPTIONS, preflightGeneration } from './randomDungeon/missionFirst'
 import { createRandomSeed } from './randomDungeon/random'
+import type { MonsterRecord } from './randomDungeon/monsterCatalog'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
 import { createDefaultLayer, type MapLayer } from './layers'
@@ -121,6 +122,8 @@ type AppSnapshot = {
   styleFrame?: VisualStyle | null
   lights?: MapLight[]
 }
+
+type ManualMonsterEntry = Omit<MonsterRecord, 'level'> & { level: number }
 
 type StructureKind = 'step' | 'ramp'
 
@@ -328,6 +331,10 @@ export default function App() {
   const [generationComplexity, setGenerationComplexity] = useState<ComplexityPreset>('standard')
   const [generationDungeonLevel, setGenerationDungeonLevel] = useState(1)
   const [generationShadowdarkCoreMagicItems, setGenerationShadowdarkCoreMagicItems] = useState(true)
+  const [generationMonsterTableMode, setGenerationMonsterTableMode] = useState<'random' | 'manual'>('random')
+  const [generationManualMonsterTable, setGenerationManualMonsterTable] = useState<ManualMonsterEntry[]>(() =>
+    Array.from({ length: 5 }, () => ({ name: '', flavor: '', level: 1 })),
+  )
   const [generationLoopCount, setGenerationLoopCount] = useState(1)
   const [generationLoopChallenges, setGenerationLoopChallenges] = useState<Array<LoopPreference | undefined>>([undefined])
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null)
@@ -345,6 +352,7 @@ export default function App() {
     playerLevel: generationDungeonLevel,
     loopCount: generationLoopCount,
     loopPreference: 'varied',
+    ...(generationMonsterTableMode === 'manual' ? { monsterEncounterTable: generationManualMonsterTable } : {}),
     magicItemSources: generationShadowdarkCoreMagicItems ? ['shadowdark-core'] : [],
     loopChallenges: generationLoopChallenges.slice(0, Math.max(0, generationLoopCount)),
   }
@@ -3380,6 +3388,74 @@ export default function App() {
                   {generationShadowdarkCoreMagicItems ? 'On' : 'Off'}
                 </button>
               </div>
+            </div>
+          </Section>
+
+          <Section title="Random encounters" icon={<IconCave size={14} />}>
+            <div className="field-stack">
+              <label className="field-row" htmlFor="generation-monster-table-mode">
+                <span>Monster results</span>
+                <select
+                  id="generation-monster-table-mode"
+                  className="num-field"
+                  value={generationMonsterTableMode}
+                  onChange={event => setGenerationMonsterTableMode(event.target.value as 'random' | 'manual')}
+                  aria-label="Random encounter table mode"
+                >
+                  <option value="random">Random</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </label>
+              {generationMonsterTableMode === 'random' ? (
+                <div className="label-dim">Rolls five level-appropriate monsters. Table result 1 remains “Torch extinguished.”</div>
+              ) : (
+                <div className="manual-encounter-table">
+                  <div className="label-dim">Set results 2–6. Result 1 remains “Torch extinguished.” Monster levels set encounter group sizes.</div>
+                  {generationManualMonsterTable.map((monster, index) => (
+                    <div className="manual-encounter-row" key={`manual-monster-${index}`}>
+                      <span className="manual-encounter-result">{index + 2}</span>
+                      <div className="manual-encounter-copy">
+                        <input
+                          className="text-field"
+                          value={monster.name}
+                          placeholder={index === 0 ? 'Monster or orc clan' : 'Monster name'}
+                          aria-label={`Monster for table result ${index + 2}`}
+                          onChange={event => setGenerationManualMonsterTable(previous => previous.map((entry, entryIndex) => entryIndex === index ? { ...entry, name: event.target.value } : entry))}
+                        />
+                        <input
+                          className="text-field"
+                          value={monster.flavor}
+                          placeholder="Optional description"
+                          aria-label={`Description for table result ${index + 2}`}
+                          onChange={event => setGenerationManualMonsterTable(previous => previous.map((entry, entryIndex) => entryIndex === index ? { ...entry, flavor: event.target.value } : entry))}
+                        />
+                      </div>
+                      <label className="manual-encounter-level">
+                        <span>LV</span>
+                        <input
+                          className="num-field"
+                          type="number"
+                          min={0}
+                          max={10}
+                          step={1}
+                          value={Number.isFinite(monster.level) ? monster.level : ''}
+                          aria-label={`Monster level for table result ${index + 2}`}
+                          onChange={event => setGenerationManualMonsterTable(previous => previous.map((entry, entryIndex) => entryIndex === index ? { ...entry, level: event.target.value === '' ? Number.NaN : Number(event.target.value) } : entry))}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                  {!generationManualMonsterTable.every(monster => monster.name.trim()) && (
+                    <div className="manual-encounter-hint">Enter a name for each of the five results to enable generation.</div>
+                  )}
+                  {generationManualMonsterTable.some(monster => !Number.isInteger(monster.level) || monster.level < 0 || monster.level > 10) && (
+                    <div className="manual-encounter-hint">Each result needs a whole monster level from 0 to 10.</div>
+                  )}
+                  {generationLevelBudget.monsterLevelMax !== null && generationManualMonsterTable.some(monster => Number.isInteger(monster.level) && monster.level > generationLevelBudget.monsterLevelMax!) && (
+                    <div className="manual-encounter-hint">Monster levels must fit the selected dungeon tier: {generationLevelBudget.monsterLevelLabel}.</div>
+                  )}
+                </div>
+              )}
             </div>
           </Section>
 

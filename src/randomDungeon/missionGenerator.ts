@@ -19,7 +19,13 @@ function failure(request: GenerationRequest, mission: Mission, preflight: Return
 }
 
 export function normalizeGenerationRequest(request: GenerationRequest): GenerationRequest {
-  return { ...request, seed: normalizeSeed(request.seed), playerLevel: request.playerLevel ?? 1, orientation: request.orientation ?? (request.cols >= request.rows ? 'landscape' : 'portrait') }
+  return {
+    ...request,
+    seed: normalizeSeed(request.seed),
+    playerLevel: request.playerLevel ?? 1,
+    orientation: request.orientation ?? (request.cols >= request.rows ? 'landscape' : 'portrait'),
+    ...(request.monsterEncounterTable ? { monsterEncounterTable: request.monsterEncounterTable.map(monster => ({ ...monster })) } : {}),
+  }
 }
 
 export function generateMissionDungeon(input: GenerationRequest): MissionGenerationResult {

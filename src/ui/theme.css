@@ -545,6 +545,24 @@ body.resizing-panel, body.resizing-panel * { cursor: ew-resize !important; user-
 .generation-actions .btn:disabled { opacity: 0.42; cursor: not-allowed; filter: saturate(0.4); }
 
 .field-stack { display: flex; flex-direction: column; gap: 8px; }
+.manual-encounter-table { display: flex; flex-direction: column; gap: 7px; }
+.manual-encounter-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 58px;
+  align-items: start;
+  gap: 6px;
+}
+.manual-encounter-result {
+  padding-top: 6px;
+  color: var(--text-dim);
+  font: 10px/1.2 var(--font-mono);
+  text-align: center;
+}
+.manual-encounter-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.manual-encounter-copy .text-field { width: 100%; min-width: 0; }
+.manual-encounter-level { display: flex; align-items: center; gap: 4px; color: var(--text-dim); font-size: 9px; }
+.manual-encounter-level .num-field { width: 42px; min-width: 0; padding: 4px 3px; text-align: center; }
+.manual-encounter-hint { color: #e1b76c; font-size: 10px; line-height: 1.35; }
 .field-row {
   display: grid;
   grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1.2fr);
