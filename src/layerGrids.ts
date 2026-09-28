@@ -36,6 +36,22 @@ export function composeLayerGrid(layers: readonly MapLayer[], layerGrids: LayerG
   return output
 }
 
+/** Composes every visible Z Level, optionally including empty levels requested by the caller. */
+export function composeLayerGridStack(
+  layers: readonly MapLayer[],
+  layerGrids: LayerGrids,
+  cols: number,
+  rows: number,
+  requiredLevels: Iterable<number> = [],
+): Map<number, Uint8Array> {
+  const levels = new Set(requiredLevels)
+  for (const layer of layers) {
+    if (!layer.visible) continue
+    for (const z of layerGrids.get(layer.id)?.keys() ?? []) levels.add(z)
+  }
+  return new Map([...levels].map(z => [z, composeLayerGrid(layers, layerGrids, z, cols, rows)] as const))
+}
+
 function parseColor(hex: string): [number, number, number] {
   const normalized = /^#[\da-f]{6}$/i.test(hex) ? hex : '#000000'
   return [1, 3, 5].map(offset => Number.parseInt(normalized.slice(offset, offset + 2), 16)) as [number, number, number]

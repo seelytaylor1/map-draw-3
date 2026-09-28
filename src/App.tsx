@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
@@ -7,7 +7,7 @@ import { buildIsoScene } from './isoScene'
 import { drawIsoBatch, getIsoShapeBounds, groupIsoShapes } from './isoRender'
 import { buildIsoDiagnosticGrids, normalizeIsoDiagnosticConfig, summarizeFrameTimes, type IsoDiagnosticApi, type IsoDiagnosticConfig, type IsoDiagnosticReport } from './isoDiagnostics'
 import { deriveFaceColors } from './faceColors'
-import { createGrid, getTile, paintTiles, resizeGrid, rectTiles, circleBrushTiles, getGrid, setGrid } from './grid'
+import { createGrid, getTile, paintTiles, rectTiles, circleBrushTiles, getGrid } from './grid'
 import { createHistory, push, redo, undo, type History } from './history'
 import { serialize, deserialize } from './serialization'
 import {
@@ -45,7 +45,7 @@ import { createRandomSeed } from './randomDungeon/random'
 import type { ComplexityPreset, GenerationRequest, GenerationStyle, LoopPreference, MissionGenerationResult } from './randomDungeon/missionFirst'
 import { formatTileCoordinate } from './coordinates'
 import { createDefaultLayer, type MapLayer } from './layers'
-import { composeLayerGrid, composeLayerTileColors, createLayerGrids, getLayerGrid, resizeLayerGrids, setLayerGrid, type LayerGrids } from './layerGrids'
+import { composeLayerGridStack, composeLayerTileColors, createLayerGrids, getLayerGrid, resizeLayerGrids, setLayerGrid, type LayerGrids } from './layerGrids'
 import { exportCropRect, exportDimensions, normalizeExportRegion, wholeMapRegion, type ExportRegion } from './exportRegion'
 import { copySelectedMapObjects, duplicateSelectedMapObjects, expandSelectionToGroups, groupSelectedMapObjects, moveSelectedMapObjects, pasteMapObjects, reorderSelectedMapObjects, rotateSelectedMapObjects, scaleSelectedStamps, selectMapObjects, ungroupSelectedMapObjects, type MapObjectClipboard, type MapObjectSelection } from './selection'
 import { getShapePreviewPoints, isClosedShapePath, rasterizeShape, snapShapePoint, type ShapeDraft, type ShapePoint, type ShapeToolKind } from './shapeTools'
@@ -106,8 +106,9 @@ function getAccessibleTextColor(hex: string): string {
 }
 
 type AppSnapshot = {
+  /** Stored with document history so undo restores the active editing target. */
   activeLayerId: string
-  grids: Map<number, Uint8Array>
+  /** Authoritative Tile Grids; the legacy Level Stack is projected only when saving. */
   layerGrids: LayerGrids
   stamps: Stamp[]
   steps: StepRun[]
@@ -151,9 +152,9 @@ export default function App() {
 
   const [history, setHistory] = useState<History<AppSnapshot>>(() => {
     const grid = createGrid(DEFAULT_COLS, DEFAULT_ROWS)
-    return createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], roomLedgerEntries: [], generalNotes: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() })
+    return createHistory({ activeLayerId: 'map', layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], roomLedgerEntries: [], generalNotes: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() })
   })
-  const { grids, layerGrids, stamps, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, environmentalColors } = history.present
+  const { activeLayerId, layerGrids, stamps, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, environmentalColors } = history.present
   const lights = history.present.lights ?? []
   const [cols, setCols] = useState(DEFAULT_COLS)
   const [rows, setRows] = useState(DEFAULT_ROWS)
@@ -208,22 +209,16 @@ export default function App() {
   const [hoverPointer, setHoverPointer] = useState<{ x: number; y: number } | null>(null)
   const hoverTileRef = useRef<Tile | null>(null)
   const [activeZ, setActiveZ] = useState(0)
-  const [activeLayerId, setActiveLayerId] = useState(createDefaultLayer().id)
   const activeZRef = useRef(0)
   const isPanningRef = useRef(false)
   const panLastRef = useRef({ x: 0, y: 0 })
 
   const activeLayer = layers.find(layer => layer.id === activeLayerId) ?? layers[0]
-  const activeGrid = activeLayer ? getLayerGrid(layerGrids, activeLayer, activeZ, cols, rows) : getGrid(grids, activeZ, cols, rows)
-  useEffect(() => {
-    const restored = layers.find(layer => layer.id === history.present.activeLayerId) ?? layers[0]
-    if (!restored) return
-    if (activeLayerId !== restored.id) setActiveLayerId(restored.id)
-  }, [activeLayerId, history.present.activeLayerId, layers])
-  const renderGrids = new Map<number, Uint8Array>()
-  const renderedZs = new Set<number>([activeZ])
-  for (const layer of layers) for (const z of layerGrids.get(layer.id)?.keys() ?? []) renderedZs.add(z)
-  for (const z of renderedZs) renderGrids.set(z, composeLayerGrid(layers, layerGrids, z, cols, rows))
+  const activeGrid = activeLayer ? getLayerGrid(layerGrids, activeLayer, activeZ, cols, rows) : createGrid(cols, rows)
+  const renderGrids = useMemo(
+    () => composeLayerGridStack(layers, layerGrids, cols, rows, [activeZ]),
+    [layers, layerGrids, cols, rows, activeZ],
+  )
   const isLayerObjectVisible = (item: { layerId?: string; z: number }) => {
     const layer = layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))
     return layer?.visible === true
@@ -243,7 +238,6 @@ export default function App() {
     return {
       ...snapshot,
       layerGrids: setLayerGrid(snapshot.layerGrids, layerId, z, grid),
-      grids: layerId === createDefaultLayer().id ? setGrid(snapshot.grids, z, grid) : snapshot.grids,
     }
   }
 
@@ -423,7 +417,6 @@ export default function App() {
         isoDiagnosticRequestRef.current = { requestId, config }
         setHistory(createHistory({
           activeLayerId: 'map',
-          grids: buildIsoDiagnosticGrids(config),
           layerGrids: createLayerGrids(undefined, buildIsoDiagnosticGrids(config)),
           stamps: [],
           steps: [],
@@ -1628,15 +1621,14 @@ export default function App() {
     layer.destroyChildren()
 
     const isLight = isLightBackdrop(wallColor, wallOpacity)
-    const dotZs = new Set(grids.keys())
-    dotZs.add(activeZ)
+    const dotZs = new Set(renderGrids.keys())
     const sortedZsForDots = [...dotZs].filter(z => z <= activeZ).sort((a, b) => a - b)
     for (const z of sortedZsForDots) {
         const levelOpacity = 0.2 * Math.pow(0.5, activeZ - z)
         const dotColor = isLight
           ? `rgba(0,0,0,${levelOpacity})`
           : `rgba(255,255,255,${levelOpacity})`
-        const levelGrid = applyPlayerViewSecretDoors(getGrid(grids, z, cols, rows), cols, rows, z, playerView ? stamps : [])
+        const levelGrid = applyPlayerViewSecretDoors(getGrid(renderGrids, z, cols, rows), cols, rows, z, playerView ? stamps : [])
         for (let r = 0; r < rows; r += 2) {
           for (let c = 0; c < cols; c += 2) {
             if (getTile(levelGrid, cols, c, r) === WALL) {
@@ -1825,7 +1817,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, selectionDrag, cropMode, cropDrag, exportRegion, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor, shapeDraft, polygonSides, pathSimplification])
+  }, [renderGrids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, selectionDrag, cropMode, cropDrag, exportRegion, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor, shapeDraft, polygonSides, pathSimplification])
 
   // Labels layer
   useEffect(() => {
@@ -1983,11 +1975,7 @@ export default function App() {
     const newRows = Math.max(1, Math.round(heightInches * snappedTiles))
 
     setHistory(h => {
-      const newGrids = new Map<number, Uint8Array>()
-      for (const [z, g] of h.present.grids) {
-        newGrids.set(z, resizeGrid(g, cols, rows, newCols, newRows))
-      }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
     setRows(newRows)
@@ -2003,11 +1991,7 @@ export default function App() {
     const newCols = Math.round(snappedInches * tilesPerInch)
     if (newCols === cols) return
     setHistory(h => {
-      const newGrids = new Map<number, Uint8Array>()
-      for (const [z, g] of h.present.grids) {
-        newGrids.set(z, resizeGrid(g, cols, rows, newCols, rows))
-      }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, rows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, rows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(newCols)
     pendingFitRef.current = true
@@ -2021,11 +2005,7 @@ export default function App() {
     const newRows = Math.round(snappedInches * tilesPerInch)
     if (newRows === rows) return
     setHistory(h => {
-      const newGrids = new Map<number, Uint8Array>()
-      for (const [z, g] of h.present.grids) {
-        newGrids.set(z, resizeGrid(g, cols, rows, cols, newRows))
-      }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: newGrids, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, cols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, cols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setRows(newRows)
     pendingFitRef.current = true
@@ -2043,11 +2023,7 @@ export default function App() {
     setHistory(h => {
       const newCols = rows
       const newRows = cols
-      const resized = new Map<number, Uint8Array>()
-      for (const [z, g] of h.present.grids) {
-        resized.set(z, resizeGrid(g, cols, rows, newCols, newRows))
-      }
-      return createHistory({ activeLayerId: h.present.activeLayerId, grids: resized, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
+      return createHistory({ activeLayerId: h.present.activeLayerId, layerGrids: resizeLayerGrids(h.present.layerGrids, cols, rows, newCols, newRows), stamps: h.present.stamps, steps: h.present.steps, ramps: h.present.ramps, labels: h.present.labels, roomLedgerEntries: h.present.roomLedgerEntries, generalNotes: h.present.generalNotes, lights: h.present.lights, layers: h.present.layers, environmentalColors: h.present.environmentalColors })
     })
     setCols(rows)
     setRows(cols)
@@ -2310,7 +2286,9 @@ export default function App() {
   }, [getRoomLedgerText, playerView, renderExportImage, stampImages])
 
   const getSerializedMap = () => {
-    const mapSave = serialize({ grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors: environmentalColors as Map<number, string>, textureSettings, customStylePresets, lights, lightingSettings })
+    // Keep the old Level Stack field readable by flattening visible Named Layers at save time.
+    const legacyGridProjection = composeLayerGridStack(layers, layerGrids, cols, rows, [0])
+    const mapSave = serialize({ grids: legacyGridProjection, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors: environmentalColors as Map<number, string>, textureSettings, customStylePresets, lights, lightingSettings })
     return JSON.stringify(mapSave, null, 2)
   }
 
@@ -2335,7 +2313,7 @@ export default function App() {
       setSavedHistoryLength(history.past.length)
       setSavedStyleSignature(currentStyleSignature())
     }
-  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
+  }, [currentFilePath, history.past.length, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
 
   const handleSaveAs = useCallback(async () => {
     if (!isTauri()) return
@@ -2349,7 +2327,7 @@ export default function App() {
       setSavedHistoryLength(history.past.length)
       setSavedStyleSignature(currentStyleSignature())
     }
-  }, [currentFilePath, history.past.length, grids, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
+  }, [currentFilePath, history.past.length, layerGrids, cols, rows, tilesPerInch, wallColor, wallOpacity, brushShape, showGrid, playerView, show3D, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, stamps, customImages, steps, ramps, labels, roomLedgerEntries, generalNotes, layers, activeLayerId, environmentalColors, textureSettings, customStylePresets, lights, lightingSettings])
 
   const handleOpen = useCallback(async () => {
     if (!isTauri()) return
@@ -2375,8 +2353,7 @@ export default function App() {
       if (!confirmed) return
     }
     const grid = createGrid(DEFAULT_COLS, DEFAULT_ROWS)
-    setHistory(createHistory({ activeLayerId: 'map', grids: new Map([[0, grid]]), layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], roomLedgerEntries: [], generalNotes: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() }))
-    setActiveLayerId('map')
+    setHistory(createHistory({ activeLayerId: 'map', layerGrids: new Map([['map', new Map([[0, grid]])]]), stamps: [], steps: [], ramps: [], labels: [], roomLedgerEntries: [], generalNotes: [], lights: [], layers: [createDefaultLayer()], environmentalColors: new Map() }))
     setCustomImages([])
     setCols(DEFAULT_COLS)
     setRows(DEFAULT_ROWS)
@@ -2435,16 +2412,15 @@ export default function App() {
         setLoadError(`Generation stopped: ${failure?.message ?? 'The fixed request could not be realized. Choose different inputs.'}`)
         return
       }
-      const snapshot = result.snapshot
+      const { grids: generatedGridStack, ...snapshot } = result.snapshot
       setHistory(h => push(h, {
         ...snapshot,
         activeLayerId: 'map',
-        layerGrids: createLayerGrids(undefined, snapshot.grids),
+        layerGrids: createLayerGrids(undefined, generatedGridStack),
         layers: [createDefaultLayer()],
         roomLedgerEntries: buildRoomLedgerEntries(result.space!.modules, result.mission, snapshot.labels),
         generalNotes: result.space!.generalNotes,
       }))
-      setActiveLayerId('map')
       setActiveZ(0)
       activeZRef.current = 0
       setHoverTile(null)
@@ -2590,9 +2566,8 @@ export default function App() {
         wallOutlineStyle: save.wallOutlineStyle, texture: save.textureSettings,
       }
       setSavedStyleSignature(styleSignature(loadedStyle, loadedPresets, save.lights, save.lightingSettings))
-      setHistory(createHistory({ activeLayerId: save.activeLayerId, grids: save.grids, layerGrids: save.layerGrids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, roomLedgerEntries: save.roomLedgerEntries, generalNotes: save.generalNotes, lights: save.lights, layers: save.layers, environmentalColors: save.environmentalColors }))
+      setHistory(createHistory({ activeLayerId: save.activeLayerId, layerGrids: save.layerGrids, stamps: save.stamps, steps: save.steps, ramps: save.ramps, labels: save.labels, roomLedgerEntries: save.roomLedgerEntries, generalNotes: save.generalNotes, lights: save.lights, layers: save.layers, environmentalColors: save.environmentalColors }))
       setCustomImages(save.customImages)
-      setActiveLayerId(save.activeLayerId)
       setActiveZ(save.layers.find(layer => layer.id === save.activeLayerId)?.targetZ ?? save.layers[0].targetZ)
       setGenerationResult(null)
       setCols(save.cols)
@@ -2730,7 +2705,6 @@ export default function App() {
         const nextGrid = imported.grid
         setHistory(createHistory({
           activeLayerId: layer.id,
-          grids: new Map([[0, nextGrid]]),
           layerGrids: new Map([[layer.id, new Map([[0, nextGrid]])]]),
           stamps: imported.stamps,
           steps: [], ramps: [], labels: imported.labels,
@@ -2739,7 +2713,6 @@ export default function App() {
         }))
         setCols(imported.cols)
         setRows(imported.rows)
-        setActiveLayerId(layer.id)
         setActiveZ(0)
         activeZRef.current = 0
         setCustomImages([])
