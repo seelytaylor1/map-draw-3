@@ -189,23 +189,23 @@ describe('buildExportShapes – ISO mode', () => {
     expect(img.y).toBe(expected.y)
   })
 
-  it('ISO stamp rotation=0 gets iso floor projection: rotation≈26.6°, scaleX, scaleY, skewX≈-0.6', () => {
+  it('ISO stamp rotation=0 gets iso floor projection: rotation≈26.6°, scaleX, scaleY, skewX=-0.75', () => {
     const stamp = { id: 'x', type: 'star' as const, col: 1, row: 1, rotation: 0 as const, z: 0 }
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
     const img = shapes.find(s => s.kind === 'image') as any
     expect(img.rotation).toBeCloseTo(Math.atan(0.5) * 180 / Math.PI, 2)
     expect(img.scaleX).toBeCloseTo(Math.sqrt(5) / 2, 4)
     expect(img.scaleY).toBeCloseTo(2 / Math.sqrt(5), 4)
-    expect(img.skewX).toBeCloseTo(-0.6, 4)
+    expect(img.skewX).toBeCloseTo(-0.75, 4)
   })
 
-  it('ISO stamp rotation=90 gets different iso rotation and skewX≈+0.6', () => {
+  it('ISO stamp rotation=90 gets different iso rotation and skewX=+0.75', () => {
     const stamp = { id: 'x', type: 'star' as const, col: 1, row: 1, rotation: 90 as const, z: 0 }
     const { shapes } = buildExportShapes({ ...baseParams(3, 3), showIso: true, stamps: [stamp] })
     const img = shapes.find(s => s.kind === 'image') as any
     const ISO_ANGLE = Math.atan(0.5) * 180 / Math.PI
     expect(img.rotation).toBeCloseTo(180 - ISO_ANGLE, 2)
-    expect(img.skewX).toBeCloseTo(0.6, 4)
+    expect(img.skewX).toBeCloseTo(0.75, 4)
   })
 
   it('ISO water tile produces a polygon with WATER_COLOR fill', () => {

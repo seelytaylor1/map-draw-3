@@ -62,11 +62,13 @@ export function isoWaterPoints(col: number, row: number, tileW: number, tileH: n
 }
 
 // Parameters to project a flat stamp image onto the iso floor plane via Konva transform.
-// Derived from the 2:1 iso projection matrix [[1,-1],[0.5,0.5]] decomposed into R·S·SK.
+// Derived from the 2:1 iso projection matrix [[1,-1],[0.5,0.5]]. Konva
+// composes these attributes as rotation → skew → scale, so the exact shear
+// factor is -3/4 (and changes sign for odd quarter-turns).
 const ISO_ANGLE_DEG = Math.atan(0.5) * 180 / Math.PI  // ≈ 26.565°
 const ISO_SX = Math.sqrt(5) / 2                        // ≈ 1.118
 const ISO_SY = 2 / Math.sqrt(5)                        // ≈ 0.894
-const ISO_SKEW_BASE = -0.6                              // -(1 - a²)/(1 + a²) for a=0.5
+const ISO_SKEW_BASE = -0.75
 
 export type IsoStampTransform = { rotation: number; scaleX: number; scaleY: number; skewX: number }
 
