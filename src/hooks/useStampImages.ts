@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { OBJECT_ASSET_MAP, STAMP_ASSET_MAP, type CustomImageAsset, type ObjectStampType, type StampType } from '../stamps'
 
 export function useStampImages(customAssets: readonly CustomImageAsset[] = []): Map<StampType | ObjectStampType, HTMLImageElement> | null {
@@ -61,6 +61,5 @@ export function useStampImages(customAssets: readonly CustomImageAsset[] = []): 
     return () => { cancelled = true }
   }, [customAssets])
 
-  if (!images) return null
-  return new Map([...images, ...customImages])
+  return useMemo(() => images ? new Map([...images, ...customImages]) : null, [customImages, images])
 }

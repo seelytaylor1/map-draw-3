@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
 import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
@@ -219,8 +219,9 @@ export default function App() {
   const selectedStepId: string | null = drawingState.tool === 'steps' ? drawingState.selectedId : null
   const selectedRampId: string | null = drawingState.tool === 'ramps' ? drawingState.selectedId : null
   const selectedLabelId: string | null = drawingState.tool === 'label' && drawingState.phase === 'idle' ? drawingState.selectedId : null
-  const selectedObjectIds = (kind: MapObjectSelection['kind']) => objectSelection.filter(item => item.kind === kind).map(item => item.id)
-  const selectedStamps = stamps.filter(stamp => selectedObjectIds('stamp').includes(stamp.id))
+  const selectedObjectIds = useCallback((kind: MapObjectSelection['kind']) => objectSelection.filter(item => item.kind === kind).map(item => item.id), [objectSelection])
+  const selectedStampIds = useMemo(() => new Set(selectedObjectIds('stamp')), [selectedObjectIds])
+  const selectedStamps = useMemo(() => stamps.filter(stamp => selectedStampIds.has(stamp.id)), [selectedStampIds, stamps])
   const selectedStampScale = selectedStamps[0]?.scale ?? 1
   const labelMode: 'none' | 'place' = drawingState.tool === 'label' && drawingState.phase === 'placing' ? 'place' : 'none'
   const mode: Mode = drawingState.tool === 'stamp' ? drawingState.stampType
@@ -229,13 +230,17 @@ export default function App() {
   const roughPhase = drawingState.tool === 'rough' ? drawingState.phase : 'idle' as const
   const roughStart: Tile | null = drawingState.tool === 'rough' && drawingState.phase !== 'idle' ? drawingState.start : null
   const roughEnd: Tile | null = drawingState.tool === 'rough' && drawingState.phase !== 'idle' ? drawingState.end : null
-  const roughPreview: TileFlip[] = drawingState.tool === 'rough' && drawingState.phase === 'placed2' ? drawingState.preview : []
+  const roughPreview: TileFlip[] = useMemo(
+    () => drawingState.tool === 'rough' && drawingState.phase === 'placed2' ? drawingState.preview : [],
+    [drawingState],
+  )
   const areaStart: Tile | null = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? drawingState.start : null
   const areaEnd: Tile | null = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? drawingState.end : null
   const areaPhase: 'idle' | 'selecting' = drawingState.tool === 'paint' && drawingState.phase === 'selecting' ? 'selecting' : 'idle'
 
   const [hoverTile, setHoverTile] = useState<Tile | null>(null)
   const [hoverPointer, setHoverPointer] = useState<{ x: number; y: number } | null>(null)
+  const coordinateReadoutRef = useRef<HTMLDivElement>(null)
   const hoverTileRef = useRef<Tile | null>(null)
   const [activeZ, setActiveZ] = useState(0)
   const [activeLayerId, setActiveLayerId] = useState(createDefaultLayer().id)
@@ -259,48 +264,58 @@ export default function App() {
     if (!restored) return
     if (activeLayerId !== restored.id) setActiveLayerId(restored.id)
   }, [activeLayerId, history.present.activeLayerId, layers])
-  const renderGrids = new Map<number, Uint8Array>()
-  const renderedZs = new Set<number>([activeZ])
-  for (const layer of layers) for (const z of layerGrids.get(layer.id)?.keys() ?? []) renderedZs.add(z)
-  for (const z of renderedZs) renderGrids.set(z, composeLayerGrid(layers, layerGrids, z, cols, rows))
-  const isLayerObjectVisible = (item: { layerId?: string; z: number }) => {
-    const layer = layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))
+  const renderGrids = useMemo(() => {
+    const gridsForRender = new Map<number, Uint8Array>()
+    const renderedZs = new Set<number>([activeZ])
+    for (const layer of layers) for (const z of layerGrids.get(layer.id)?.keys() ?? []) renderedZs.add(z)
+    for (const z of renderedZs) gridsForRender.set(z, composeLayerGrid(layers, layerGrids, z, cols, rows))
+    return gridsForRender
+  }, [activeZ, cols, layerGrids, layers, rows])
+  const layersById = useMemo(() => new Map(layers.map(layer => [layer.id, layer])), [layers])
+  const isLayerObjectVisible = useCallback((item: { layerId?: string; z: number }) => {
+    const layer = layersById.get(item.layerId ?? createDefaultLayer().id)
     return layer?.visible === true
-  }
-  const layerOpacityFor = (item: { layerId?: string }) => (layers.find(candidate => candidate.id === (item.layerId ?? createDefaultLayer().id))?.opacity ?? 100) / 100
-  const visibleStamps = stamps.filter(isLayerObjectVisible)
-  const visibleSteps = steps.filter(isLayerObjectVisible)
-  const visibleRamps = ramps.filter(isLayerObjectVisible)
-  const visibleLabels = labels.filter(label => isLayerObjectVisible({ ...label, z: label.z ?? 0 }))
-  const visibleLights = lights.filter(light => {
-    const layer = layers.find(candidate => candidate.id === (light.layerId ?? createDefaultLayer().id))
-    return layer?.visible === true
-  })
+  }, [layersById])
+  const layerOpacityFor = useCallback((item: { layerId?: string }) => (layersById.get(item.layerId ?? createDefaultLayer().id)?.opacity ?? 100) / 100, [layersById])
+  const visibleStamps = useMemo(() => stamps.filter(isLayerObjectVisible), [isLayerObjectVisible, stamps])
+  const visibleSteps = useMemo(() => steps.filter(isLayerObjectVisible), [isLayerObjectVisible, steps])
+  const visibleRamps = useMemo(() => ramps.filter(isLayerObjectVisible), [isLayerObjectVisible, ramps])
+  const visibleLabels = useMemo(() => labels.filter(label => isLayerObjectVisible({ ...label, z: label.z ?? 0 })), [isLayerObjectVisible, labels])
+  const visibleLights = useMemo(() => lights.filter(isLayerObjectVisible), [isLayerObjectVisible, lights])
   const roomZRangeIncludesActive = roomZMin <= roomZMax && roomZMin <= activeZ && activeZ <= roomZMax
   const roomPreviewZOffset = roomZRangeIncludesActive
     ? Math.min(roomZMax - activeZ, Math.max(roomZMin - activeZ, roomPreviewZOffsetState))
     : 0
   const roomPreviewZ = activeZ + roomPreviewZOffset
-  let roomFragment: MapFragment | null = null
-  let roomFragmentError: string | null = null
   const roomCommandLayerIds = roomCommand?.layerIds ?? roomLayerIds
-  if (roomSelection && roomCommandLayerIds.length > 0) {
+  const { roomFragment, roomFragmentError } = useMemo(() => {
+    if (!roomSelection) return { roomFragment: null, roomFragmentError: null }
+    if (roomCommandLayerIds.length === 0) return { roomFragment: null, roomFragmentError: 'Select at least one unlocked layer.' }
     try {
-      roomFragment = extractMapFragment({
-        ...history.present, cols, rows, z: activeZ, zRange: { minZ: roomZMin, maxZ: roomZMax }, bounds: roomSelection, layerIds: roomCommandLayerIds,
-      })
+      return {
+        roomFragment: extractMapFragment({
+          ...history.present, cols, rows, z: activeZ,
+          zRange: { minZ: roomZMin, maxZ: roomZMax }, bounds: roomSelection, layerIds: roomCommandLayerIds,
+        }),
+        roomFragmentError: null,
+      }
     } catch (error) {
-      roomFragment = null
-      roomFragmentError = error instanceof Error ? error.message : 'The room selection is invalid.'
+      return {
+        roomFragment: null,
+        roomFragmentError: error instanceof Error ? error.message : 'The room selection is invalid.',
+      }
     }
-  } else if (roomSelection) {
-    roomFragmentError = 'Select at least one unlocked layer.'
-  }
-  const transformedRoomFragment = roomFragment && roomCommand
-    ? roomCommand.transforms.reduce((fragment, transform) => transformMapFragment(fragment, transform), roomFragment)
-    : roomFragment
-  const roomPlacementPreview = transformedRoomFragment && roomCommand?.destination
-    ? roomCommand.mode === 'copy'
+  }, [activeZ, cols, history.present, roomCommandLayerIds, roomSelection, roomZMax, roomZMin, rows])
+  const roomTransforms = roomCommand?.transforms
+  const transformedRoomFragment = useMemo(
+    () => roomFragment && roomTransforms
+      ? roomTransforms.reduce((fragment, transform) => transformMapFragment(fragment, transform), roomFragment)
+      : roomFragment,
+    [roomFragment, roomTransforms],
+  )
+  const roomPlacementPreview = useMemo(() => {
+    if (!transformedRoomFragment || !roomCommand?.destination) return null
+    return roomCommand.mode === 'copy'
       ? applyMapFragment({
           snapshot: history.present, fragment: transformedRoomFragment,
           destination: roomCommand.destination, mode: 'copy', cols, rows,
@@ -311,15 +326,15 @@ export default function App() {
           snapshot: history.present, fragment: transformedRoomFragment,
           destination: roomCommand.destination, mode: 'move', cols, rows,
         })
-    : null
-  const roomDisplayBounds = roomSelectionDrag
+  }, [cols, history.present, roomCommand?.destination, roomCommand?.mode, rows, transformedRoomFragment])
+  const roomDisplayBounds = useMemo(() => roomSelectionDrag
     ? {
         minCol: Math.min(roomSelectionDrag.start.col, roomSelectionDrag.end.col),
         minRow: Math.min(roomSelectionDrag.start.row, roomSelectionDrag.end.row),
         maxCol: Math.max(roomSelectionDrag.start.col, roomSelectionDrag.end.col),
         maxRow: Math.max(roomSelectionDrag.start.row, roomSelectionDrag.end.row),
       }
-    : roomSelection
+    : roomSelection, [roomSelection, roomSelectionDrag])
 
   const chooseRoomAction = (action: RoomAction) => {
     if (!roomSelection) return
@@ -484,9 +499,9 @@ export default function App() {
     // A frame changes only when a style preset is applied or undone/redone.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history.present.styleFrame])
-  const layerTileColorOverrides = new Map([...renderGrids.keys()].map(z => [z, composeLayerTileColors(
+  const layerTileColorOverrides = useMemo(() => new Map([...renderGrids.keys()].map(z => [z, composeLayerTileColors(
     layers, layerGrids, z, cols, rows, wallColor, wallOpacity, environmentalColors as Map<TileState, string>,
-  )]))
+  )])), [cols, environmentalColors, layerGrids, layers, renderGrids, rows, wallColor, wallOpacity])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [imageImportError, setImageImportError] = useState<string | null>(null)
   const [dungeonImportError, setDungeonImportError] = useState<string | null>(null)
@@ -505,7 +520,7 @@ export default function App() {
   const [savedHistoryLength, setSavedHistoryLength] = useState(0)
   const isDirty = history.past.length !== savedHistoryLength || savedStyleSignature !== currentStyleSignature()
   const generationPreviewSeed = generationSeedInput.trim() === '' ? 0 : generationSeedInput
-  const generationRequest: GenerationRequest = {
+  const generationRequest: GenerationRequest = useMemo(() => ({
     style: generationStyle,
     seed: generationPreviewSeed,
     cols,
@@ -518,8 +533,8 @@ export default function App() {
     loopPreference: 'varied',
     magicItemSources: generationShadowdarkCoreMagicItems ? ['shadowdark-core'] : [],
     loopChallenges: generationLoopChallenges.slice(0, Math.max(0, generationLoopCount)),
-  }
-  const generationPreflight = preflightGeneration(generationRequest)
+  }), [cols, generationComplexity, generationDungeonLevel, generationLoopChallenges, generationLoopCount, generationPreviewSeed, generationShadowdarkCoreMagicItems, generationStyle, rows, tilesPerInch])
+  const generationPreflight = useMemo(() => preflightGeneration(generationRequest), [generationRequest])
   const generationLevelBudget = getDungeonLevelBudget(generationDungeonLevel)
 
   const setRequestedLoopCount = (value: number) => {
@@ -550,6 +565,7 @@ export default function App() {
   const lightingLayerRef = useRef<Konva.Layer>(null)
   const lightMarkersLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
+  const overlayLayerRef = useRef<Konva.Layer>(null)
   const labelsLayerRef = useRef<Konva.Layer>(null)
   const roomOverwriteLayerRef = useRef<Konva.Layer>(null)
   const labelEditorRef = useRef<HTMLInputElement>(null)
@@ -1195,8 +1211,17 @@ export default function App() {
         return
       }
 
-      setHoverTile(tile)
-      setHoverPointer({ x: e.evt.clientX, y: e.evt.clientY })
+      const previousHoverTile = hoverTileRef.current
+      const changedHoverTile = tile?.col !== previousHoverTile?.col || tile?.row !== previousHoverTile?.row
+      if (changedHoverTile) {
+        setHoverTile(tile)
+        setHoverPointer(tile ? { x: e.evt.clientX, y: e.evt.clientY } : null)
+      }
+      const coordinateReadout = coordinateReadoutRef.current
+      if (coordinateReadout) {
+        coordinateReadout.style.left = `${e.evt.clientX}px`
+        coordinateReadout.style.top = `${e.evt.clientY}px`
+      }
       hoverTileRef.current = tile
 
       const ds = drawingStateRef.current
@@ -1209,6 +1234,7 @@ export default function App() {
             col: placementDrag.startDestination.col + deltaCol,
             row: placementDrag.startDestination.row + deltaRow,
           }
+          if (roomCommand?.destination?.col === destination.col && roomCommand.destination.row === destination.row) return
           const nextDrag = {
             ...placementDrag,
             destination,
@@ -1220,6 +1246,7 @@ export default function App() {
         }
         const drag = roomSelectionDragRef.current
         if (drag && tile) {
+          if (drag.end.col === tile.col && drag.end.row === tile.row) return
           const next = { ...drag, end: tile }
           roomSelectionDragRef.current = next
           setRoomSelectionDrag(next)
@@ -1230,6 +1257,7 @@ export default function App() {
       }
       const selection = selectionDragRef.current
       if (selectionMode && selection && tile) {
+        if (selection.end.col === tile.col && selection.end.row === tile.row) return
         const next = { ...selection, end: tile }
         selectionDragRef.current = next
         setSelectionDrag(next)
@@ -1505,9 +1533,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [fitView])
 
-  const ghostTiles: Tile[] = areaStart && areaEnd && areaPhase === 'selecting'
-    ? getAreaTiles(areaStart, areaEnd, brushShape)
-    : []
+  const ghostTiles: Tile[] = useMemo(
+    () => areaStart && areaEnd && areaPhase === 'selecting' ? getAreaTiles(areaStart, areaEnd, brushShape) : [],
+    [areaEnd, areaPhase, areaStart, brushShape],
+  )
 
   // Exported layer: walls, floor tiles, optional grid overlay
   useEffect(() => {
@@ -1616,7 +1645,7 @@ export default function App() {
             dotNodeCount: dotLayerRef.current?.getChildren().length ?? 0,
             stampNodeCount: stampLayerRef.current?.getChildren().length ?? 0,
             labelNodeCount: labelsLayerRef.current?.getChildren().length ?? 0,
-            totalNodeCount: [layer, dotLayerRef.current, stampLayerRef.current, lightingLayerRef.current, lightMarkersLayerRef.current, labelsLayerRef.current]
+            totalNodeCount: [layer, stampLayerRef.current, lightingLayerRef.current, lightMarkersLayerRef.current, dotLayerRef.current, overlayLayerRef.current, labelsLayerRef.current]
               .reduce((total, current) => total + (current?.getChildren().length ?? 0), 0),
             sceneBuildMs: sceneBuildEnd - diagnosticStart,
             groupingMs: groupingEnd - groupingStart,
@@ -1790,7 +1819,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [renderGrids, layerGrids, activeLayer, textureSettings, visibleStamps, visibleSteps, visibleRamps, selectedStepId, selectedRampId, objectSelection, selectionMode, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, playerView, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor])
+  }, [renderGrids, layerGrids, activeLayer, textureSettings, visibleStamps, visibleSteps, visibleRamps, selectedStepId, selectedRampId, selectedObjectIds, objectSelection, selectionMode, activeZ, cols, rows, wallColor, wallOpacity, showGrid, show3D, showIso, playerView, isoFaceColor, showHatching, hatchColor, showWallOutline, wallOutlineColor, wallOutlineStyle, floorColor, waterColor, lavaColor, darknessColor, layerTileColorOverrides])
 
   // Stamp layer
   useEffect(() => {
@@ -1900,9 +1929,9 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [visibleStamps, selectedStampId, objectSelection, selectionMode, stampImages, cols, rows, showIso, activeZ, playerView])
+  }, [visibleStamps, selectedStampId, selectedObjectIds, objectSelection, selectionMode, stampImages, cols, rows, showIso, activeZ, playerView])
 
-  // Non-exported layer: dot pattern + ghost cursor preview
+  // Non-exported layer: stable wall-dot pattern
   useEffect(() => {
     const layer = dotLayerRef.current
     if (!layer) return
@@ -1912,6 +1941,7 @@ export default function App() {
     const dotZs = new Set(grids.keys())
     dotZs.add(activeZ)
     const sortedZsForDots = [...dotZs].filter(z => z <= activeZ).sort((a, b) => a - b)
+    const dotsByColor = new Map<string, number[]>()
     for (const z of sortedZsForDots) {
         const levelOpacity = 0.2 * Math.pow(0.5, activeZ - z)
         const dotColor = isLight
@@ -1924,16 +1954,42 @@ export default function App() {
               const dotPos = showIso
                 ? isoProjectAtZ(c + 0.5, r + 0.5, TILE_PX * 2, TILE_PX, z)
                 : { x: c * TILE_PX + TILE_PX, y: r * TILE_PX + TILE_PX }
-              layer.add(new Konva.Circle({
-                x: dotPos.x,
-                y: dotPos.y,
-                radius: DOT_RADIUS,
-                fill: dotColor,
-              }))
+              const points = dotsByColor.get(dotColor) ?? []
+              points.push(dotPos.x, dotPos.y)
+              dotsByColor.set(dotColor, points)
             }
           }
         }
       }
+
+    if (dotsByColor.size > 0) {
+      layer.add(new Konva.Shape({
+        listening: false,
+        perfectDrawEnabled: false,
+        sceneFunc: context => {
+          for (const [color, points] of dotsByColor) {
+            context.beginPath()
+            context.fillStyle = color
+            for (let index = 0; index < points.length; index += 2) {
+              const x = points[index]
+              const y = points[index + 1]
+              context.moveTo(x + DOT_RADIUS, y)
+              context.arc(x, y, DOT_RADIUS, 0, Math.PI * 2)
+            }
+            context.fill()
+          }
+        },
+      }))
+    }
+
+    layer.batchDraw()
+  }, [grids, stamps, playerView, activeZ, cols, rows, wallColor, wallOpacity, showIso])
+
+  // Transient previews redraw independently so selection drags leave wall dots untouched.
+  useEffect(() => {
+    const layer = overlayLayerRef.current
+    if (!layer) return
+    layer.destroyChildren()
 
     const ghostFill =
       selectedPaintState === FLOOR    ? hexToRgba(floorColor,    0.45) :
@@ -2479,7 +2535,7 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [activeZ, cols, visibleLabels, objectSelection, selectionMode, playerView, rows, showIso, selectedLabelId])
+  }, [activeZ, cols, visibleLabels, selectedObjectIds, objectSelection, selectionMode, playerView, rows, showIso, selectedLabelId])
 
   useEffect(() => {
     const layer = lightingLayerRef.current
@@ -4551,11 +4607,13 @@ export default function App() {
         <Layer ref={lightingLayerRef} listening={false} />
         <Layer ref={lightMarkersLayerRef} listening={!roomEditingMode} />
         <Layer ref={dotLayerRef} listening={false} />
+        <Layer ref={overlayLayerRef} listening={false} />
         <Layer ref={labelsLayerRef} listening={!roomEditingMode} />
         <Layer ref={roomOverwriteLayerRef} listening={false} />
       </Stage>
       {hoverTile && hoverPointer && (
         <div
+          ref={coordinateReadoutRef}
           className="coordinate-readout"
           data-testid="hover-coordinate"
           aria-hidden="true"
