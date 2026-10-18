@@ -3,10 +3,11 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { onMenuEventMock, onCloseRequestedMock, randomSeed } = vi.hoisted(() => ({
+const { onMenuEventMock, onCloseRequestedMock, randomSeed, pushHistoryMock } = vi.hoisted(() => ({
   onMenuEventMock: vi.fn(() => Promise.resolve(() => {})),
   onCloseRequestedMock: vi.fn(() => Promise.resolve(() => {})),
   randomSeed: { value: 1 },
+  pushHistoryMock: vi.fn(),
 }))
 
 vi.mock('konva', () => ({
@@ -40,20 +41,54 @@ vi.mock('./hooks/useStampImages', () => ({
   useStampImages: () => new Map(),
 }))
 
+vi.mock('./history', async importOriginal => {
+  const actual = await importOriginal<typeof import('./history')>()
+  return {
+    ...actual,
+    push: (...args: Parameters<typeof actual.push>) => {
+      pushHistoryMock(...args)
+      return actual.push(...args)
+    },
+  }
+})
+
 vi.mock('./randomDungeon/random', async importOriginal => ({
   ...(await importOriginal<typeof import('./randomDungeon/random')>()),
   createRandomSeed: () => randomSeed.value,
 }))
 
 vi.mock('react-konva', () => ({
-  Stage: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  Stage: ({ children, onMouseDown, onMouseMove }: { children?: React.ReactNode; onMouseDown?: (event: unknown) => void; onMouseMove?: (event: unknown) => void }) => {
+    const stage = {
+      container: () => ({ getBoundingClientRect: () => ({ left: 0, top: 0 }) }),
+      scaleX: () => 1,
+      x: () => 0,
+      y: () => 0,
+    }
+    const clickTile = (col: number, row: number) => onMouseDown?.({
+      evt: { button: 0, clientX: col * 20 + 1, clientY: row * 20 + 1 },
+      target: { getStage: () => stage },
+    } as never)
+    const moveTile = (col: number, row: number) => onMouseMove?.({
+      evt: { clientX: col * 20 + 1, clientY: row * 20 + 1 },
+      target: { getStage: () => stage },
+    } as never)
+    return (
+      <div data-testid="mock-stage">
+        <button data-testid="mock-stage-tile-0-0" onClick={() => clickTile(0, 0)}>Tile 0,0</button>
+        <button data-testid="mock-stage-tile-2-2" onClick={() => clickTile(2, 2)}>Tile 2,2</button>
+        <button data-testid="mock-stage-hover-tile-2-2" onMouseMove={() => moveTile(2, 2)}>Hover 2,2</button>
+        {children}
+      </div>
+    )
+  },
   Layer: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
 import App from './App'
 import { ALL_LOOP_CHALLENGES, LOOP_CHALLENGE_DESCRIPTIONS } from './randomDungeon/missionFirst'
 
-const openWorkspace = (name: 'Assets' | 'Generate' | 'File') => {
+const openWorkspace = (name: 'Draw' | 'Assets' | 'Generate' | 'File') => {
   fireEvent.click(screen.getByRole('tab', { name }))
 }
 
@@ -146,6 +181,62 @@ describe('App load lifecycle', () => {
     expect(select).toHaveClass('active')
     expect(screen.getByText('Select', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText(/drag across visible objects on this level/i)).toBeInTheDocument()
+  })
+
+  it('exposes room-region editing while retaining the object-selection tool', () => {
+    render(<App />)
+    openWorkspace('Draw')
+
+    const roomSelect = screen.getByRole('button', { name: 'Select room region' })
+    fireEvent.click(roomSelect)
+    expect(roomSelect).toHaveClass('active')
+    expect(screen.getByText(/drag a rectangle on the active z level/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Include Map layer')).toBeChecked()
+
+    fireEvent.click(roomSelect)
+    openWorkspace('Assets')
+    const objectSelect = screen.getByRole('button', { name: 'Select objects' })
+    fireEvent.click(objectSelect)
+    expect(objectSelect).toHaveClass('active')
+    expect(screen.getByText(/drag across visible objects on this level/i)).toBeInTheDocument()
+  })
+
+  it('previews and cancels without history, then commits one room transaction', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Lighting' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Place light' }))
+    fireEvent.click(screen.getByTestId('mock-stage-tile-0-0'))
+    expect(pushHistoryMock).toHaveBeenCalledTimes(1)
+    pushHistoryMock.mockClear()
+
+    openWorkspace('Draw')
+    fireEvent.click(screen.getByRole('button', { name: 'Select room region' }))
+    fireEvent.click(screen.getByTestId('mock-stage-tile-0-0'))
+    fireEvent.mouseUp(window, { button: 0 })
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+
+    expect(screen.getByRole('spinbutton', { name: 'Room preview Z level' })).toHaveValue(0)
+    const initialPreviewSummary = screen.getByText(/z0 preview replaces/i)
+    expect(initialPreviewSummary).toHaveTextContent(/canvas background stays on active z0; within the destination bounds, red outlines mark z0 content to be replaced and tinted ghosts show the incoming fragment/i)
+    expect(pushHistoryMock).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Room maximum Z'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Room preview Z level'), { target: { value: '2' } })
+    expect(screen.getByRole('spinbutton', { name: 'Room preview Z level' })).toHaveValue(2)
+    const upperPreviewSummary = screen.getByText(/z2 preview replaces/i)
+    expect(upperPreviewSummary).toHaveTextContent(/all selected z levels.*canvas background stays on active z0/i)
+    fireEvent.mouseMove(screen.getByTestId('mock-stage-hover-tile-2-2'))
+    expect(screen.getByText(/move also marks the source cells and objects that will be cleared/i)).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByText(/drag the selected region or preview to place/i)).not.toBeInTheDocument()
+    expect(pushHistoryMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+    fireEvent.click(screen.getByTestId('mock-stage-tile-2-2'))
+    fireEvent.mouseUp(window, { button: 0 })
+
+    expect(pushHistoryMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(/room moved in one undo step/i)).toBeInTheDocument()
   })
 
   it('removes an uploaded image with its trash button', async () => {

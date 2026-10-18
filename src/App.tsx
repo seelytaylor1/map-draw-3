@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Stage, Layer } from 'react-konva'
-import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
+import { DARKNESS, DARKNESS_COLOR, DEFAULT_COLS, DEFAULT_ROWS, DEFAULT_TILES_PER_INCH, ENVIRONMENTAL_DEFAULTS, FACE_COLOR, FACE_PX, FLOOR, FLOOR_COLOR, getExportTilePixels, getTileColor, GRASS, LAVA, LAVA_COLOR, MOSSY_STONE, MUD, ROAD, RUBBLE, SAND, SNOW, STONE, TILE_PX, TILES_PER_INCH_OPTIONS, normalizeTilesPerInch, WALL, WATER, WATER_COLOR, Z_STEP_HEIGHT, type TileState } from './constants'
 import { isoUnproject, isoUnprojectAtZ, isoProjectAtZ, isoFloorPointsAtZ } from './iso'
 import { buildIsoScene } from './isoScene'
 import { drawIsoBatch, getIsoShapeBounds, groupIsoShapes } from './isoRender'
@@ -14,8 +14,8 @@ import {
   addStamp, colorStamp, mirrorStamp, moveStamp, removeStamp, rotateStamp, scaleStamp, stampFootprintSize,
   type CustomImageAsset, type Stamp,
 } from './stamps'
-import { addStepRun, moveStepRun, removeStepRun, rotateStepRun, toggleStepRunAscending, type StepRun } from './steps'
-import { addRampRun, moveRampRun, removeRampRun, rotateRampRun, toggleRampRunAscending, type RampRun } from './ramps'
+import { addStepRun, moveStepRun, removeStepRun, rotateStepRun, stepRunTiles, toggleStepRunAscending, type StepRun } from './steps'
+import { addRampRun, moveRampRun, rampRunTiles, removeRampRun, rotateRampRun, toggleRampRunAscending, type RampRun } from './ramps'
 import { addLabel, removeLabel, updateLabel, type Label } from './labels'
 import { drawShadow } from './patterns'
 import { useStampImages } from './hooks/useStampImages'
@@ -47,7 +47,8 @@ import { formatTileCoordinate } from './coordinates'
 import { createDefaultLayer, type MapLayer } from './layers'
 import { composeLayerGrid, composeLayerTileColors, createLayerGrids, getLayerGrid, resizeLayerGrids, setLayerGrid, type LayerGrids } from './layerGrids'
 import { exportCropRect, exportDimensions, normalizeExportRegion, wholeMapRegion, type ExportRegion } from './exportRegion'
-import { copySelectedMapObjects, duplicateSelectedMapObjects, expandSelectionToGroups, groupSelectedMapObjects, moveSelectedMapObjects, pasteMapObjects, reorderSelectedMapObjects, rotateSelectedMapObjects, scaleSelectedStamps, selectMapObjects, ungroupSelectedMapObjects, type MapObjectClipboard, type MapObjectSelection } from './selection'
+import { copySelectedMapObjects, duplicateSelectedMapObjects, expandSelectionToGroups, groupSelectedMapObjects, moveSelectedMapObjects, pasteMapObjects, reorderSelectedMapObjects, rotateSelectedMapObjects, scaleSelectedStamps, selectMapObjects, ungroupSelectedMapObjects, type MapObjectClipboard, type MapObjectSelection, type TileBounds } from './selection'
+import { applyMapFragment, extractMapFragment, stampAnchorTile, transformMapFragment, type FragmentTransform, type MapFragment } from './roomEditing'
 import { getShapePreviewPoints, isClosedShapePath, rasterizeShape, snapShapePoint, type ShapeDraft, type ShapePoint, type ShapeToolKind } from './shapeTools'
 import { importExternalDungeon } from './dungeonImport'
 import { BUILT_IN_STYLE_PRESETS, DEFAULT_TEXTURE_SETTINGS, normalizeCustomStylePresets, type StylePreset, type TextureSettings, type VisualStyle } from './styles'
@@ -123,6 +124,24 @@ type AppSnapshot = {
 
 type StructureKind = 'step' | 'ramp'
 
+type RoomAction = 'move' | 'copy' | 'rotate' | 'reflect'
+
+interface RoomCommand {
+  action: RoomAction
+  mode: 'move' | 'copy'
+  transforms: FragmentTransform[]
+  layerIds: string[]
+  destination: Tile | null
+}
+
+interface RoomPlacementDrag {
+  startPointer: Tile
+  startDestination: Tile
+  destination: Tile
+  moved: boolean
+  commitOnClick: boolean
+}
+
 type StructureDrag = {
   kind: StructureKind
   id: string
@@ -172,6 +191,17 @@ export default function App() {
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [objectSelection, setObjectSelection] = useState<MapObjectSelection[]>([])
+  const [roomEditingMode, setRoomEditingMode] = useState(false)
+  const [roomLayerIds, setRoomLayerIds] = useState<string[]>(['map'])
+  const [roomZMin, setRoomZMin] = useState(0)
+  const [roomZMax, setRoomZMax] = useState(0)
+  const [roomPreviewZOffsetState, setRoomPreviewZOffset] = useState(0)
+  const [roomSelection, setRoomSelection] = useState<TileBounds | null>(null)
+  const roomSelectionDragRef = useRef<{ start: Tile; end: Tile } | null>(null)
+  const [roomSelectionDrag, setRoomSelectionDrag] = useState<{ start: Tile; end: Tile } | null>(null)
+  const [roomCommand, setRoomCommand] = useState<RoomCommand | null>(null)
+  const roomPlacementDragRef = useRef<RoomPlacementDrag | null>(null)
+  const [roomNotice, setRoomNotice] = useState<string | null>(null)
   const [shapeTool, setShapeTool] = useState<ShapeToolKind | null>(null)
   const shapeSnap = 1
   const polygonSides = 6
@@ -212,6 +242,15 @@ export default function App() {
   const activeZRef = useRef(0)
   const isPanningRef = useRef(false)
   const panLastRef = useRef({ x: 0, y: 0 })
+  useEffect(() => {
+    setRoomSelection(null)
+    setRoomCommand(null)
+    roomPlacementDragRef.current = null
+    setRoomNotice(null)
+    setRoomZMin(activeZ)
+    setRoomZMax(activeZ)
+    setRoomPreviewZOffset(0)
+  }, [activeZ])
 
   const activeLayer = layers.find(layer => layer.id === activeLayerId) ?? layers[0]
   const activeGrid = activeLayer ? getLayerGrid(layerGrids, activeLayer, activeZ, cols, rows) : getGrid(grids, activeZ, cols, rows)
@@ -237,6 +276,132 @@ export default function App() {
     const layer = layers.find(candidate => candidate.id === (light.layerId ?? createDefaultLayer().id))
     return layer?.visible === true
   })
+  const roomZRangeIncludesActive = roomZMin <= roomZMax && roomZMin <= activeZ && activeZ <= roomZMax
+  const roomPreviewZOffset = roomZRangeIncludesActive
+    ? Math.min(roomZMax - activeZ, Math.max(roomZMin - activeZ, roomPreviewZOffsetState))
+    : 0
+  const roomPreviewZ = activeZ + roomPreviewZOffset
+  let roomFragment: MapFragment | null = null
+  let roomFragmentError: string | null = null
+  const roomCommandLayerIds = roomCommand?.layerIds ?? roomLayerIds
+  if (roomSelection && roomCommandLayerIds.length > 0) {
+    try {
+      roomFragment = extractMapFragment({
+        ...history.present, cols, rows, z: activeZ, zRange: { minZ: roomZMin, maxZ: roomZMax }, bounds: roomSelection, layerIds: roomCommandLayerIds,
+      })
+    } catch (error) {
+      roomFragment = null
+      roomFragmentError = error instanceof Error ? error.message : 'The room selection is invalid.'
+    }
+  } else if (roomSelection) {
+    roomFragmentError = 'Select at least one unlocked layer.'
+  }
+  const transformedRoomFragment = roomFragment && roomCommand
+    ? roomCommand.transforms.reduce((fragment, transform) => transformMapFragment(fragment, transform), roomFragment)
+    : roomFragment
+  const roomPlacementPreview = transformedRoomFragment && roomCommand?.destination
+    ? roomCommand.mode === 'copy'
+      ? applyMapFragment({
+          snapshot: history.present, fragment: transformedRoomFragment,
+          destination: roomCommand.destination, mode: 'copy', cols, rows,
+          createId: (kind, sourceId) => `room-preview-${kind}-${sourceId}`,
+          createGroupId: sourceId => `room-preview-group-${sourceId}`,
+        })
+      : applyMapFragment({
+          snapshot: history.present, fragment: transformedRoomFragment,
+          destination: roomCommand.destination, mode: 'move', cols, rows,
+        })
+    : null
+  const roomDisplayBounds = roomSelectionDrag
+    ? {
+        minCol: Math.min(roomSelectionDrag.start.col, roomSelectionDrag.end.col),
+        minRow: Math.min(roomSelectionDrag.start.row, roomSelectionDrag.end.row),
+        maxCol: Math.max(roomSelectionDrag.start.col, roomSelectionDrag.end.col),
+        maxRow: Math.max(roomSelectionDrag.start.row, roomSelectionDrag.end.row),
+      }
+    : roomSelection
+
+  const chooseRoomAction = (action: RoomAction) => {
+    if (!roomSelection) return
+    if (action === 'move' || action === 'copy') {
+      if (action === 'move' && !roomFragment) return
+      if (action === 'copy' && (!activeLayer || activeLayer.locked)) {
+        setRoomNotice('Copy requires the active layer to be unlocked.')
+        return
+      }
+      const layerIds = action === 'copy' ? [activeLayer.id] : roomLayerIds
+      setRoomCommand({
+        action,
+        mode: action,
+        transforms: [],
+        layerIds,
+        destination: { col: roomSelection.minCol, row: roomSelection.minRow },
+      })
+      setRoomPreviewZOffset(0)
+      setRoomNotice(null)
+      return
+    }
+    if (!roomFragment) return
+
+    const transform: FragmentTransform = action === 'rotate' ? 'rotate-cw' : 'reflect-horizontal'
+    const existing = roomCommand
+    const currentFragment = existing
+      ? existing.transforms.reduce((fragment, previous) => transformMapFragment(fragment, previous), roomFragment)
+      : roomFragment
+    const transformed = transformMapFragment(currentFragment, transform)
+    const baseDestination = existing?.destination ?? { col: roomSelection.minCol, row: roomSelection.minRow }
+    const offsetCol = existing
+      ? Math.round((currentFragment.width - transformed.width) / 2)
+      : Math.round((roomSelection.maxCol - roomSelection.minCol + 1 - transformed.width) / 2)
+    const offsetRow = existing
+      ? Math.round((currentFragment.height - transformed.height) / 2)
+      : Math.round((roomSelection.maxRow - roomSelection.minRow + 1 - transformed.height) / 2)
+    setRoomCommand({
+      action,
+      mode: existing?.mode ?? 'move',
+      transforms: [...(existing?.transforms ?? []), transform],
+      layerIds: existing?.layerIds ?? roomLayerIds,
+      destination: { col: baseDestination.col + offsetCol, row: baseDestination.row + offsetRow },
+    })
+    setRoomPreviewZOffset(0)
+    setRoomNotice(null)
+  }
+
+  const commitRoomCommand = (destination: Tile) => {
+    if (!roomSelection || !roomCommand) return
+    let source: MapFragment
+    try {
+      source = extractMapFragment({
+        ...history.present, cols, rows, z: activeZ, zRange: { minZ: roomZMin, maxZ: roomZMax }, bounds: roomSelection, layerIds: roomCommand.layerIds,
+      })
+    } catch (error) {
+      setRoomNotice(error instanceof Error ? error.message : 'The room selection is invalid.')
+      return
+    }
+    const fragment = roomCommand.transforms.reduce((current, transform) => transformMapFragment(current, transform), source)
+    const createId = (kind: 'stamp' | 'step' | 'ramp' | 'label' | 'light', sourceId: string) => `${kind}-${crypto.randomUUID()}-${sourceId}`
+    const createGroupId = () => crypto.randomUUID()
+    const result = roomCommand.mode === 'copy'
+      ? applyMapFragment({ snapshot: history.present, fragment, destination, mode: 'copy', cols, rows, createId, createGroupId })
+      : applyMapFragment({ snapshot: history.present, fragment, destination, mode: 'move', cols, rows })
+    if (result.error) {
+      setRoomNotice(result.error)
+      return
+    }
+    if (!result.changed) {
+      setRoomNotice('That placement makes no changes.')
+      setRoomCommand(null)
+      return
+    }
+    setHistory(h => push(h, result.snapshot))
+    const maxCol = destination.col + fragment.width - 1
+    const maxRow = destination.row + fragment.height - 1
+    setRoomSelection({ minCol: destination.col, minRow: destination.row, maxCol, maxRow })
+    if (roomCommand.mode === 'copy') setRoomLayerIds(roomCommand.layerIds)
+    roomPlacementDragRef.current = null
+    setRoomCommand(null)
+    setRoomNotice(`Room ${roomCommand.mode === 'copy' ? 'copied' : 'moved'} in one undo step; ${result.overwrittenCellCount} terrain cells and ${result.overwrittenObjectCount} map objects were replaced.`)
+  }
 
   const withActiveLayerGrid = (snapshot: AppSnapshot, z: number, grid: Uint8Array): AppSnapshot => {
     const layerId = activeLayer?.id ?? createDefaultLayer().id
@@ -386,6 +551,7 @@ export default function App() {
   const lightMarkersLayerRef = useRef<Konva.Layer>(null)
   const dotLayerRef = useRef<Konva.Layer>(null)
   const labelsLayerRef = useRef<Konva.Layer>(null)
+  const roomOverwriteLayerRef = useRef<Konva.Layer>(null)
   const labelEditorRef = useRef<HTMLInputElement>(null)
   const draggedLabelRef = useRef<string | null>(null)
   const structureDragRef = useRef<StructureDrag | null>(null)
@@ -518,6 +684,16 @@ export default function App() {
       }
       if (e.key === 'Escape' && lightPlacement) {
         setLightPlacement(false)
+        return
+      }
+      if (e.key === 'Escape' && roomEditingMode) {
+        roomSelectionDragRef.current = null
+        roomPlacementDragRef.current = null
+        setRoomSelectionDrag(null)
+        if (roomCommand) setRoomCommand(null)
+        else if (roomSelection) setRoomSelection(null)
+        else setRoomEditingMode(false)
+        setRoomNotice(null)
         return
       }
       if (e.ctrlKey && e.key === 'z') { setHistory(h => undo(h)); return }
@@ -680,7 +856,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [labels, layers, lights, objectSelection, ramps, selectionMode, selectedLightId, stamps, steps, lightPlacement])
+  }, [labels, layers, lights, objectSelection, ramps, roomCommand, roomEditingMode, roomSelection, selectionMode, selectedLightId, stamps, steps, lightPlacement])
 
   const stageToTile = (stage: Konva.Stage, clientX: number, clientY: number): Tile | null => {
     const rect = stage.container().getBoundingClientRect()
@@ -749,6 +925,52 @@ export default function App() {
         tile = stageToTile(stage, e.evt.clientX, e.evt.clientY)
       }
       if (!tile) return
+
+      if (roomEditingMode) {
+        if (e.evt.button === 2) {
+          roomSelectionDragRef.current = null
+          roomPlacementDragRef.current = null
+          setRoomSelectionDrag(null)
+          if (roomCommand) setRoomCommand(null)
+          else setRoomSelection(null)
+          setRoomNotice(null)
+          return
+        }
+        if (e.evt.button !== 0) return
+        if (roomCommand) {
+          roomPlacementDragRef.current = {
+            startPointer: tile,
+            startDestination: tile,
+            destination: tile,
+            moved: false,
+            commitOnClick: true,
+          }
+          setRoomCommand(current => current ? { ...current, destination: tile } : null)
+          return
+        }
+        if (roomSelection && roomFragment
+          && tile.col >= roomSelection.minCol && tile.col <= roomSelection.maxCol
+          && tile.row >= roomSelection.minRow && tile.row <= roomSelection.maxRow) {
+          const destination = { col: roomSelection.minCol, row: roomSelection.minRow }
+          roomPlacementDragRef.current = {
+            startPointer: tile,
+            startDestination: destination,
+            destination,
+            moved: false,
+            commitOnClick: false,
+          }
+          setRoomCommand({
+            action: 'move', mode: 'move', transforms: [], layerIds: roomLayerIds, destination,
+          })
+          return
+        }
+        const drag = { start: tile, end: tile }
+        roomSelectionDragRef.current = drag
+        setRoomSelectionDrag(drag)
+        setRoomSelection(null)
+        setRoomNotice(null)
+        return
+      }
 
       if (cropMode) {
         if (e.evt.button === 2) {
@@ -916,7 +1138,7 @@ export default function App() {
       // Paint mode: area select start
       dispatch({ type: 'PAINT_START', tile, button: e.evt.button === 2 ? 2 : 0 })
     },
-    [activeLayer?.id, activeLayer?.locked, cols, cropMode, exportRegion, rows, editingLabelId, selectionMode, showIso, shapeTool, shapeSnap, lightPlacement, lights.length],
+    [activeLayer?.id, activeLayer?.locked, cols, cropMode, exportRegion, rows, editingLabelId, roomCommand, roomEditingMode, roomSelection, roomLayerIds, roomFragment, commitRoomCommand, selectionMode, showIso, shapeTool, shapeSnap, lightPlacement, lights.length],
   )
 
   const handleMouseMove = useCallback(
@@ -978,6 +1200,34 @@ export default function App() {
       hoverTileRef.current = tile
 
       const ds = drawingStateRef.current
+      if (roomEditingMode) {
+        const placementDrag = roomPlacementDragRef.current
+        if (placementDrag && tile) {
+          const deltaCol = tile.col - placementDrag.startPointer.col
+          const deltaRow = tile.row - placementDrag.startPointer.row
+          const destination = {
+            col: placementDrag.startDestination.col + deltaCol,
+            row: placementDrag.startDestination.row + deltaRow,
+          }
+          const nextDrag = {
+            ...placementDrag,
+            destination,
+            moved: placementDrag.moved || deltaCol !== 0 || deltaRow !== 0,
+          }
+          roomPlacementDragRef.current = nextDrag
+          setRoomCommand(current => current ? { ...current, destination } : null)
+          return
+        }
+        const drag = roomSelectionDragRef.current
+        if (drag && tile) {
+          const next = { ...drag, end: tile }
+          roomSelectionDragRef.current = next
+          setRoomSelectionDrag(next)
+        } else if (roomCommand && tile) {
+          setRoomCommand(current => current ? { ...current, destination: tile } : null)
+        }
+        return
+      }
       const selection = selectionDragRef.current
       if (selectionMode && selection && tile) {
         const next = { ...selection, end: tile }
@@ -1025,12 +1275,43 @@ export default function App() {
         dispatch({ type: 'PAINT_UPDATE', tile })
       }
     },
-    [cols, cropMode, rows, selectionMode, showIso, shapeSnap],
+    [cols, cropMode, roomCommand, roomEditingMode, rows, selectionMode, showIso, shapeSnap],
   )
 
   const handleMouseUp = useCallback((e: MouseEvent) => {
     if (e.button === 1) {
       isPanningRef.current = false
+      return
+    }
+
+    const placementDrag = roomPlacementDragRef.current
+    if (roomEditingMode && placementDrag && e.button === 0) {
+      roomPlacementDragRef.current = null
+      const finalTile = stageRef.current ? stageToTile(stageRef.current, e.clientX, e.clientY) : null
+      const deltaCol = finalTile ? finalTile.col - placementDrag.startPointer.col : 0
+      const deltaRow = finalTile ? finalTile.row - placementDrag.startPointer.row : 0
+      const destination = finalTile
+        ? { col: placementDrag.startDestination.col + deltaCol, row: placementDrag.startDestination.row + deltaRow }
+        : placementDrag.destination
+      if (placementDrag.commitOnClick || placementDrag.moved || deltaCol !== 0 || deltaRow !== 0) {
+        commitRoomCommand(destination)
+      } else {
+        setRoomCommand(null)
+        setRoomNotice(null)
+      }
+      return
+    }
+
+    const roomDrag = roomSelectionDragRef.current
+    if (roomEditingMode && roomDrag && e.button === 0) {
+      roomSelectionDragRef.current = null
+      setRoomSelectionDrag(null)
+      setRoomSelection({
+        minCol: Math.min(roomDrag.start.col, roomDrag.end.col),
+        minRow: Math.min(roomDrag.start.row, roomDrag.end.row),
+        maxCol: Math.max(roomDrag.start.col, roomDrag.end.col),
+        maxRow: Math.max(roomDrag.start.row, roomDrag.end.row),
+      })
       return
     }
 
@@ -1172,7 +1453,7 @@ export default function App() {
       })
       dispatch({ type: 'PAINT_COMMIT' })
     }
-  }, [activeLayer, cols, cropMode, layerGrids, visibleLabels, visibleRamps, rows, selectionMode, visibleStamps, visibleSteps, showIso, polygonSides, pathSimplification, selectedPaintState, shapeSnap])
+  }, [activeLayer, cols, cropMode, layerGrids, visibleLabels, visibleRamps, rows, roomCommand, roomEditingMode, commitRoomCommand, selectionMode, visibleStamps, visibleSteps, showIso, polygonSides, pathSimplification, selectedPaintState, shapeSnap])
 
   useEffect(() => {
     window.addEventListener('mouseup', handleMouseUp)
@@ -1692,6 +1973,127 @@ export default function App() {
       }))
     }
 
+    if (roomEditingMode && roomDisplayBounds && !showIso) {
+      const bounds = roomDisplayBounds
+      layer.add(new Konva.Rect({
+        x: bounds.minCol * TILE_PX,
+        y: bounds.minRow * TILE_PX,
+        width: (bounds.maxCol - bounds.minCol + 1) * TILE_PX,
+        height: (bounds.maxRow - bounds.minRow + 1) * TILE_PX,
+        stroke: '#38c7b2', strokeWidth: 2, dash: [6, 3], fill: 'rgba(56,199,178,0.12)', listening: false,
+      }))
+    }
+
+    if (roomEditingMode && roomCommand?.destination && transformedRoomFragment && !showIso) {
+      const destination = roomCommand.destination
+      const valid = roomPlacementPreview?.error === undefined
+      const previewBounds = {
+        x: destination.col * TILE_PX,
+        y: destination.row * TILE_PX,
+        width: transformedRoomFragment.width * TILE_PX,
+        height: transformedRoomFragment.height * TILE_PX,
+      }
+      layer.add(new Konva.Rect({
+        ...previewBounds,
+        stroke: valid ? '#e4bd77' : '#ff625e', strokeWidth: 2, dash: [6, 3],
+        fill: valid ? 'rgba(228,189,119,0.1)' : 'rgba(255,80,80,0.14)', listening: false,
+      }))
+      const previewZOffset = roomPreviewZOffset
+      if (valid) {
+        const previewTerrain = transformedRoomFragment.terrain.filter(tile => tile.state !== WALL && tile.zOffset === previewZOffset)
+        layer.add(new Konva.Shape({
+          listening: false,
+          perfectDrawEnabled: false,
+          sceneFunc: context => {
+            for (const tile of previewTerrain) {
+              context.fillStyle = hexToRgba(getTileColor(tile.state, environmentalColors as Map<TileState, string>), 0.5)
+              context.fillRect((destination.col + tile.col) * TILE_PX, (destination.row + tile.row) * TILE_PX, TILE_PX, TILE_PX)
+            }
+          },
+        }))
+
+        for (const stamp of transformedRoomFragment.stamps) {
+          if (stamp.zOffset !== previewZOffset) continue
+          const footprint = stampFootprintSize(stamp)
+          const scale = stamp.scale ?? 1
+          const rotated = stamp.rotation === 90 || stamp.rotation === 270
+          const width = (rotated ? footprint.rows : footprint.cols) * scale
+          const height = (rotated ? footprint.cols : footprint.rows) * scale
+          const centerCol = destination.col + stamp.col + footprint.cols / 2
+          const centerRow = destination.row + stamp.row + footprint.rows / 2
+          layer.add(new Konva.Rect({
+            x: (centerCol - width / 2) * TILE_PX,
+            y: (centerRow - height / 2) * TILE_PX,
+            width: width * TILE_PX, height: height * TILE_PX,
+            stroke: '#d9c7ff', strokeWidth: 2, dash: [3, 2], fill: 'rgba(170,130,230,0.28)', listening: false,
+          }))
+          if (stampImages) {
+            const absoluteStamp = {
+              ...stamp,
+              col: destination.col + stamp.col,
+              row: destination.row + stamp.row,
+              z: activeZ + stamp.zOffset,
+            } as Stamp
+            const stampScene = buildStampScene({
+              stamps: [absoluteStamp], selectedStampId: null, stampImages,
+              activeZ: activeZ + stamp.zOffset, tilePx: TILE_PX, showIso: false,
+            })[0]
+            const image = stampScene && stampImages.get(stampScene.stampType)
+            if (stampScene?.variant.kind === 'topdown' && image) {
+              const variant = stampScene.variant
+              layer.add(new Konva.Image({
+                image: colorizeStampImage(image, absoluteStamp.color),
+                x: variant.x, y: variant.y, width: variant.w, height: variant.h,
+                offsetX: variant.w / 2, offsetY: variant.h / 2,
+                rotation: variant.rotation, scaleX: variant.mirrored ? -1 : 1,
+                opacity: 0.78 * layerOpacityFor(absoluteStamp), listening: false,
+              }))
+            }
+          }
+        }
+        for (const run of transformedRoomFragment.steps) {
+          if (run.zOffset !== previewZOffset) continue
+          const { zOffset, ...rest } = run
+          const absoluteRun = { ...rest, col: destination.col + run.col, row: destination.row + run.row, z: activeZ + zOffset } as StepRun
+          for (const tile of stepRunTiles(absoluteRun)) layer.add(new Konva.Rect({
+            x: tile.col * TILE_PX, y: tile.row * TILE_PX, width: TILE_PX, height: TILE_PX,
+            stroke: '#f2d36f', strokeWidth: 2, fill: 'rgba(242,211,111,0.3)', listening: false,
+          }))
+        }
+        for (const run of transformedRoomFragment.ramps) {
+          if (run.zOffset !== previewZOffset) continue
+          const { zOffset, ...rest } = run
+          const absoluteRun = { ...rest, col: destination.col + run.col, row: destination.row + run.row, z: activeZ + zOffset } as RampRun
+          for (const tile of rampRunTiles(absoluteRun)) layer.add(new Konva.Rect({
+            x: tile.col * TILE_PX, y: tile.row * TILE_PX, width: TILE_PX, height: TILE_PX,
+            stroke: '#f3a36f', strokeWidth: 2, fill: 'rgba(243,163,111,0.3)', listening: false,
+          }))
+        }
+        for (const label of transformedRoomFragment.labels) {
+          if (label.zOffset !== previewZOffset) continue
+          const text = label.number === undefined ? label.text : label.numberOnly ? String(label.number) : `${label.number} ${label.text}`
+          layer.add(new Konva.Text({
+            x: (destination.col + label.col) * TILE_PX,
+            y: (destination.row + label.row) * TILE_PX,
+            text, fontSize: 12, width: TILE_PX * 4, height: TILE_PX,
+            fill: label.color ?? '#ffffff', opacity: 0.9, listening: false,
+          }))
+        }
+        for (const light of transformedRoomFragment.lights) {
+          if (light.zOffset !== previewZOffset) continue
+          layer.add(new Konva.Circle({
+            x: (destination.col + light.col + 0.5) * TILE_PX,
+            y: (destination.row + light.row + 0.5) * TILE_PX,
+            radius: TILE_PX * 0.22, fill: light.color, stroke: '#fff5d6', strokeWidth: 2, opacity: 0.9, listening: false,
+          }))
+        }
+      }
+      layer.add(new Konva.Rect({
+        ...previewBounds,
+        stroke: valid ? '#e4bd77' : '#ff625e', strokeWidth: 2, dash: [6, 3], fill: 'transparent', listening: false,
+      }))
+    }
+
     if (cropMode) {
       const region = cropDrag
         ? normalizeExportRegion({
@@ -1825,7 +2227,171 @@ export default function App() {
     }
 
     layer.batchDraw()
-  }, [grids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, selectionDrag, cropMode, cropDrag, exportRegion, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor, shapeDraft, polygonSides, pathSimplification])
+  }, [grids, stamps, playerView, activeZ, activeGrid, ghostTiles, cols, rows, wallColor, wallOpacity, roughStart, roughEnd, roughPhase, roughPreview, selectionDrag, roomEditingMode, roomDisplayBounds, roomCommand, transformedRoomFragment, roomPlacementPreview, environmentalColors, roomPreviewZOffset, stampImages, layers, cropMode, cropDrag, exportRegion, showIso, selectedPaintState, floorColor, waterColor, lavaColor, darknessColor, shapeDraft, polygonSides, pathSimplification])
+
+  // Topmost overwrite markers reveal the actual destination level's content
+  // inside the placement area, even when the canvas backdrop shows another Z.
+  useEffect(() => {
+    const layer = roomOverwriteLayerRef.current
+    if (!layer) return
+    layer.destroyChildren()
+    const destination = roomCommand?.destination
+    if (!roomEditingMode || !destination || !transformedRoomFragment || !roomPlacementPreview || roomPlacementPreview.error || showIso) {
+      layer.batchDraw()
+      return
+    }
+
+    const previewZ = roomPreviewZ
+    const selectedLayers = new Set(transformedRoomFragment.layerIds)
+    const previewLayers = roomPlacementPreview.snapshot.layers
+    const previewLayerGrids = roomPlacementPreview.snapshot.layerGrids
+    const finalStateAt = (index: number): TileState => {
+      let state: TileState = WALL
+      for (const mapLayer of previewLayers) {
+        if (!mapLayer.visible) continue
+        const layerState = previewLayerGrids.get(mapLayer.id)?.get(previewZ)?.[index]
+        if (layerState !== undefined && layerState !== WALL) state = layerState as TileState
+      }
+      return state
+    }
+    const targetBounds = {
+      minCol: destination.col,
+      minRow: destination.row,
+      maxCol: destination.col + transformedRoomFragment.width - 1,
+      maxRow: destination.row + transformedRoomFragment.height - 1,
+    }
+    const containsTarget = (col: number, row: number) =>
+      col >= targetBounds.minCol && col <= targetBounds.maxCol && row >= targetBounds.minRow && row <= targetBounds.maxRow
+    const redFill = 'rgba(255, 75, 70, 0.13)'
+    const redStroke = 'rgba(255, 75, 70, 0.95)'
+    const drawPostCommitTerrain = (bounds: TileBounds, skipDestination = false, sourceMark = false) => {
+      const rawSelectedGrids = [...selectedLayers]
+        .map(layerId => layerGrids.get(layerId)?.get(previewZ))
+        .filter((grid): grid is Uint8Array => grid !== undefined)
+      layer.add(new Konva.Shape({
+        listening: false,
+        perfectDrawEnabled: false,
+        sceneFunc: context => {
+          for (let row = bounds.minRow; row <= bounds.maxRow; row++) {
+            for (let col = bounds.minCol; col <= bounds.maxCol; col++) {
+              if (skipDestination && containsTarget(col, row)) continue
+              const index = row * cols + col
+              const finalState = finalStateAt(index)
+              const existingSelectedTerrain = rawSelectedGrids.some(grid => grid[index] !== undefined && grid[index] !== WALL)
+              const x = col * TILE_PX
+              const y = row * TILE_PX
+              context.fillStyle = finalState === WALL
+                ? 'rgba(58, 67, 78, 0.19)'
+                : hexToRgba(getTileColor(finalState, environmentalColors as Map<TileState, string>), 0.43)
+              context.fillRect(x, y, TILE_PX, TILE_PX)
+              context.strokeStyle = sourceMark || existingSelectedTerrain
+                ? redStroke
+                : finalState === WALL ? 'rgba(88, 99, 110, 0.85)' : 'rgba(56, 199, 178, 0.95)'
+              context.lineWidth = 1.5
+              context.strokeRect(x, y, TILE_PX, TILE_PX)
+            }
+          }
+        },
+      }))
+    }
+
+    const sourceZOffset = previewZ - activeZ
+    const sourceStampIds = new Set((roomFragment?.stamps ?? []).filter(item => item.zOffset === sourceZOffset).map(item => item.id))
+    const sourceStepIds = new Set((roomFragment?.steps ?? []).filter(item => item.zOffset === sourceZOffset).map(item => item.id))
+    const sourceRampIds = new Set((roomFragment?.ramps ?? []).filter(item => item.zOffset === sourceZOffset).map(item => item.id))
+    const sourceLabelIds = new Set((roomFragment?.labels ?? []).filter(item => item.zOffset === sourceZOffset).map(item => item.id))
+    const sourceLightIds = new Set((roomFragment?.lights ?? []).filter(item => item.zOffset === sourceZOffset).map(item => item.id))
+    const addRunFootprint = (tiles: readonly Tile[]) => {
+      for (const tile of tiles) layer.add(new Konva.Rect({
+        x: tile.col * TILE_PX, y: tile.row * TILE_PX, width: TILE_PX, height: TILE_PX,
+        fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+      }))
+    }
+    const moveClearsSource = roomCommand.mode === 'move' && roomPlacementPreview.changed && roomFragment !== null
+    if (moveClearsSource && roomFragment) {
+      drawPostCommitTerrain(roomFragment.sourceBounds, true, true)
+      layer.add(new Konva.Rect({
+        x: roomFragment.sourceBounds.minCol * TILE_PX,
+        y: roomFragment.sourceBounds.minRow * TILE_PX,
+        width: roomFragment.width * TILE_PX,
+        height: roomFragment.height * TILE_PX,
+        stroke: redStroke, strokeWidth: 2, dash: [6, 4], fill: 'transparent', listening: false,
+      }))
+    }
+    drawPostCommitTerrain(targetBounds)
+
+    if (moveClearsSource) {
+      for (const stamp of stamps) {
+        if (!sourceStampIds.has(stamp.id) || stamp.z !== previewZ) continue
+        const footprint = stampFootprintSize(stamp)
+        const scale = stamp.scale ?? 1
+        const width = footprint.cols * scale * TILE_PX
+        const height = footprint.rows * scale * TILE_PX
+        layer.add(new Konva.Rect({
+          x: (stamp.col + footprint.cols / 2) * TILE_PX,
+          y: (stamp.row + footprint.rows / 2) * TILE_PX,
+          width, height, offsetX: width / 2, offsetY: height / 2,
+          rotation: stamp.rotation, fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+        }))
+      }
+      for (const run of steps) if (sourceStepIds.has(run.id) && run.z === previewZ) addRunFootprint(stepRunTiles(run))
+      for (const run of ramps) if (sourceRampIds.has(run.id) && run.z === previewZ) addRunFootprint(rampRunTiles(run))
+      for (const label of labels) if (sourceLabelIds.has(label.id) && (label.z ?? 0) === previewZ) {
+        layer.add(new Konva.Rect({
+          x: label.col * TILE_PX, y: label.row * TILE_PX, width: TILE_PX, height: TILE_PX,
+          fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+        }))
+      }
+      for (const light of lights) if (sourceLightIds.has(light.id) && light.z === previewZ) {
+        layer.add(new Konva.Circle({
+          x: (light.col + 0.5) * TILE_PX, y: (light.row + 0.5) * TILE_PX,
+          radius: TILE_PX * 0.36, fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+        }))
+      }
+    }
+
+    for (const stamp of stamps) {
+      if (stamp.z !== previewZ || sourceStampIds.has(stamp.id) || !selectedLayers.has(stamp.layerId ?? 'map')
+        || !containsTarget(stampAnchorTile(stamp).col, stampAnchorTile(stamp).row)) continue
+      const footprint = stampFootprintSize(stamp)
+      const scale = stamp.scale ?? 1
+      const centerX = (stamp.col + footprint.cols / 2) * TILE_PX
+      const centerY = (stamp.row + footprint.rows / 2) * TILE_PX
+      layer.add(new Konva.Rect({
+        x: centerX, y: centerY,
+        width: footprint.cols * scale * TILE_PX, height: footprint.rows * scale * TILE_PX,
+        offsetX: footprint.cols * scale * TILE_PX / 2, offsetY: footprint.rows * scale * TILE_PX / 2,
+        rotation: stamp.rotation,
+        fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+      }))
+    }
+
+    for (const run of steps) {
+      const footprint = stepRunTiles(run)
+      if (run.z === previewZ && !sourceStepIds.has(run.id) && selectedLayers.has(run.layerId ?? 'map') && footprint.every(tile => containsTarget(tile.col, tile.row))) addRunFootprint(footprint)
+    }
+    for (const run of ramps) {
+      const footprint = rampRunTiles(run)
+      if (run.z === previewZ && !sourceRampIds.has(run.id) && selectedLayers.has(run.layerId ?? 'map') && footprint.every(tile => containsTarget(tile.col, tile.row))) addRunFootprint(footprint)
+    }
+    for (const label of labels) {
+      if ((label.z ?? 0) === previewZ && !sourceLabelIds.has(label.id) && selectedLayers.has(label.layerId ?? 'map') && containsTarget(label.col, label.row)) {
+        layer.add(new Konva.Rect({
+          x: label.col * TILE_PX, y: label.row * TILE_PX, width: TILE_PX, height: TILE_PX,
+          fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+        }))
+      }
+    }
+    for (const light of lights) {
+      if (light.z === previewZ && !sourceLightIds.has(light.id) && selectedLayers.has(light.layerId ?? 'map') && containsTarget(light.col, light.row)) {
+        layer.add(new Konva.Circle({
+          x: (light.col + 0.5) * TILE_PX, y: (light.row + 0.5) * TILE_PX,
+          radius: TILE_PX * 0.36, fill: redFill, stroke: redStroke, strokeWidth: 2, dash: [4, 2], listening: false,
+        }))
+      }
+    }
+    layer.batchDraw()
+  }, [roomEditingMode, roomCommand, roomFragment, transformedRoomFragment, roomPlacementPreview, roomPreviewZ, showIso, layerGrids, stamps, steps, ramps, labels, lights, environmentalColors, cols, rows, activeZ])
 
   // Labels layer
   useEffect(() => {
@@ -3019,6 +3585,125 @@ export default function App() {
           {shapeTool === 'path' && <div className="hint">Drag a path. Return to its start to fill the enclosed area; release elsewhere for a line.</div>}
         </Section>
 
+        <Section title="Room region" icon={<IconFrame size={14} />}>
+          <ToolButton
+            icon={<IconFrame size={14} />}
+            label="Select room region"
+            active={roomEditingMode}
+            onClick={() => {
+              if (roomEditingMode) {
+                setRoomEditingMode(false)
+                setRoomCommand(null)
+                roomSelectionDragRef.current = null
+                roomPlacementDragRef.current = null
+                setRoomSelectionDrag(null)
+                return
+              }
+              const firstEditableLayer = activeLayer && !activeLayer.locked
+                ? activeLayer.id
+                : layers.find(layer => !layer.locked)?.id
+              setRoomLayerIds(firstEditableLayer ? [firstEditableLayer] : [])
+              setRoomSelection(null)
+              setRoomCommand(null)
+              roomPlacementDragRef.current = null
+              setRoomNotice(null)
+              setRoomZMin(activeZ)
+              setRoomZMax(activeZ)
+              setRoomEditingMode(true)
+              setSelectionMode(false)
+              setShapeTool(null)
+              setLightPlacement(false)
+              setCropMode(false)
+              setShowIso(false)
+            }}
+          />
+          {roomEditingMode && (
+            <div className="field-stack">
+              <div className="hint">Drag a rectangle on the active Z level. Set a Z range to include other floors; their offsets stay together. Terrain is selected per checked unlocked layer; map objects use their anchor and stairs or ramps require their full footprint. Drag inside the selected border to move the region directly.</div>
+              <label className="field-row">
+                <span>Minimum Z</span>
+                <input aria-label="Room minimum Z" type="number" step={1} value={roomZMin} onChange={event => {
+                  const value = Number(event.target.value)
+                  if (Number.isInteger(value)) setRoomZMin(value)
+                }} />
+              </label>
+              <label className="field-row">
+                <span>Maximum Z</span>
+                <input aria-label="Room maximum Z" type="number" step={1} value={roomZMax} onChange={event => {
+                  const value = Number(event.target.value)
+                  if (Number.isInteger(value)) setRoomZMax(value)
+                }} />
+              </label>
+              {roomSelection && roomFragmentError && <div className="hint" role="alert">{roomFragmentError}</div>}
+              <strong>Layers · Z{activeZ}</strong>
+              {layers.map(layer => (
+                <label className="field-row" key={layer.id}>
+                  <span>{layer.name}{layer.locked ? ' · locked' : ''}</span>
+                  <input
+                    type="checkbox"
+                    aria-label={`Include ${layer.name} layer`}
+                    checked={!layer.locked && roomLayerIds.includes(layer.id)}
+                    disabled={layer.locked || Boolean(roomCommand)}
+                    onChange={event => setRoomLayerIds(current => event.target.checked
+                      ? [...new Set([...current, layer.id])]
+                      : current.filter(id => id !== layer.id))}
+                  />
+                </label>
+              ))}
+              {roomSelection && (
+                <>
+                  <div className="hint">Selected {roomSelection.maxCol - roomSelection.minCol + 1} × {roomSelection.maxRow - roomSelection.minRow + 1} tiles at Z{activeZ}.</div>
+                  <div className="button-row">
+                    {(['move', 'copy', 'rotate', 'reflect'] as const).map(action => (
+                      <button
+                        key={action}
+                        className={`btn${roomCommand?.action === action ? ' btn-primary' : ''}`}
+                        disabled={action === 'copy' ? !activeLayer || activeLayer.locked : !roomFragment}
+                        onClick={() => chooseRoomAction(action)}
+                      >
+                        {action === 'move' ? 'Move' : action === 'copy' ? 'Copy' : action === 'rotate' ? 'Rotate 90°' : 'Mirror'}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {roomCommand?.mode === 'copy' && (
+                <div className="hint">Copy uses only the active layer: {layers.find(layer => layer.id === roomCommand.layerIds[0])?.name ?? 'active layer'}.</div>
+              )}
+              {roomCommand?.transforms.length ? (
+                <div className="hint">Click Rotate 90° or Mirror again to keep transforming the preview. Mirror flips the room left-to-right.</div>
+              ) : null}
+              {roomCommand && <div className="hint">Drag the selected region or preview to place it, or click to commit at the current destination. Escape cancels.</div>}
+              {roomCommand?.mode === 'move' && roomPlacementPreview?.changed && <div className="hint">Move also marks the source cells and objects that will be cleared.</div>}
+              {roomCommand && roomFragment && roomZRangeIncludesActive && (
+                <label className="field-row">
+                  <span>Preview Z level</span>
+                  <input
+                    aria-label="Room preview Z level"
+                    type="number"
+                    step={1}
+                    min={roomZMin}
+                    max={roomZMax}
+                    value={activeZ + roomPreviewZOffset}
+                    onChange={event => {
+                      const value = Number(event.target.value)
+                      if (Number.isInteger(value)) setRoomPreviewZOffset(value - activeZ)
+                    }}
+                  />
+                </label>
+              )}
+              {roomCommand && roomPlacementPreview && !roomPlacementPreview.error && roomCommand.destination && (
+                <div className="hint">
+                  Z{roomPreviewZ} preview replaces {roomPlacementPreview.overwrittenByZ[roomPreviewZ]?.cells ?? 0} painted terrain cells and {roomPlacementPreview.overwrittenByZ[roomPreviewZ]?.objects ?? 0} map objects on that level. Across all selected Z levels: {roomPlacementPreview.overwrittenCellCount} terrain cells and {roomPlacementPreview.overwrittenObjectCount} map objects. The canvas background stays on active Z{activeZ}; within the destination bounds, red outlines mark Z{roomPreviewZ} content to be replaced and tinted ghosts show the incoming fragment.
+                </div>
+              )}
+              {roomCommand && roomPlacementPreview?.error && <div className="hint" role="status">{roomPlacementPreview.error}</div>}
+              {roomNotice && <div className="hint" role="status">{roomNotice}</div>}
+              {roomSelection && <Btn onClick={() => { setRoomSelection(null); setRoomCommand(null); setRoomNotice(null) }}>Clear room region</Btn>}
+            </div>
+          )}
+        </Section>
+
         <Section title="Level & View" icon={<IconLayers size={14} />} defaultOpen>
           <div className="stepper">
             <button aria-label="Previous level" onClick={() => setActiveZ(z => z - 1)}><IconMinus size={13} /></button>
@@ -3198,6 +3883,11 @@ export default function App() {
             label="Select objects"
             active={selectionMode}
             onClick={() => {
+              setRoomEditingMode(false)
+              setRoomCommand(null)
+              roomSelectionDragRef.current = null
+              roomPlacementDragRef.current = null
+              setRoomSelectionDrag(null)
               setSelectionMode(active => !active)
               setShapeTool(null)
               setLightPlacement(false)
@@ -3836,7 +4526,7 @@ export default function App() {
         <MapLegend />
       </div>
       <div className="canvas-status" aria-live="polite">
-        <strong>{cropMode ? 'Export crop' : shapeDraft?.tool === 'path' || shapeTool === 'path' ? 'Path' : shapeDraft?.tool ?? (shapeTool ? `Shape: ${shapeTool}` : selectionMode ? 'Select' : drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label')}</strong>
+        <strong>{cropMode ? 'Export crop' : roomEditingMode ? 'Select room' : shapeDraft?.tool === 'path' || shapeTool === 'path' ? 'Path' : shapeDraft?.tool ?? (shapeTool ? `Shape: ${shapeTool}` : selectionMode ? 'Select' : drawingState.tool === 'paint' ? 'Paint' : drawingState.tool === 'rough' ? 'Cave' : drawingState.tool === 'stamp' ? 'Stamp' : drawingState.tool === 'steps' ? 'Steps' : drawingState.tool === 'ramps' ? 'Ramp' : 'Label')}</strong>
         <span>Z{activeZ}</span>
         <span>{showIso ? 'Isometric preview' : 'Top-down editing'}</span>
       </div>
@@ -3854,14 +4544,15 @@ export default function App() {
         }}
         onWheel={handleWheel}
         onContextMenu={e => e.evt.preventDefault()}
-        style={{ cursor: cropMode || shapeTool || lightPlacement || selectionMode || drawingState.tool === 'paint' || drawingState.tool === 'rough' ? 'crosshair' : 'cell' }}
+        style={{ cursor: cropMode || shapeTool || lightPlacement || roomEditingMode || selectionMode || drawingState.tool === 'paint' || drawingState.tool === 'rough' ? 'crosshair' : 'cell' }}
       >
-        <Layer ref={layerRef} />
-        <Layer ref={stampLayerRef} />
+        <Layer ref={layerRef} listening={!roomEditingMode} />
+        <Layer ref={stampLayerRef} listening={!roomEditingMode} />
         <Layer ref={lightingLayerRef} listening={false} />
-        <Layer ref={lightMarkersLayerRef} />
+        <Layer ref={lightMarkersLayerRef} listening={!roomEditingMode} />
         <Layer ref={dotLayerRef} listening={false} />
-        <Layer ref={labelsLayerRef} />
+        <Layer ref={labelsLayerRef} listening={!roomEditingMode} />
+        <Layer ref={roomOverwriteLayerRef} listening={false} />
       </Stage>
       {hoverTile && hoverPointer && (
         <div
